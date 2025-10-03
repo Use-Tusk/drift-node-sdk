@@ -1,0 +1,18 @@
+{
+  "name": "tusk-drift-pg-integration-test",
+  "version": "1.0.0",
+  "description": "Integration test for PostgreSQL instrumentation",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.11.5",
+    "pg-cursor": "^2.15.3",
+    "pg-pool": "^3.10.1"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^11.5.1"
+  }
+}

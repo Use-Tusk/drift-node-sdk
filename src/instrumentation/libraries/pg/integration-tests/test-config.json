@@ -1,0 +1,48 @@
+{
+  "module": "pg",
+  "version": "8.11.5",
+  "endpoints": [
+    {
+      "path": "/test/basic-query",
+      "method": "GET"
+    },
+    {
+      "path": "/test/parameterized-query",
+      "method": "POST",
+      "body": {
+        "userId": 1
+      }
+    },
+    {
+      "path": "/test/client-query",
+      "method": "GET"
+    },
+    {
+      "path": "/test/client-connect",
+      "method": "GET"
+    },
+    {
+      "path": "/test/client-close",
+      "method": "GET"
+    },
+    {
+      "path": "/test/pool-query",
+      "method": "GET"
+    },
+    {
+      "path": "/test/pool-parameterized",
+      "method": "POST",
+      "body": {
+        "userId": 2
+      }
+    },
+    {
+      "path": "/test/pool-connect",
+      "method": "GET"
+    },
+    {
+      "path": "/test/pool-transaction",
+      "method": "GET"
+    }
+  ]
+}

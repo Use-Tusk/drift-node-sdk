@@ -1,0 +1,172 @@
+{
+  "module": "mongodb",
+  "version": "6.0.0",
+  "needsServices": true,
+  "endpoints": [
+    {
+      "path": "/test/list-collections",
+      "method": "GET",
+      "description": "Test listing database collections"
+    },
+    {
+      "path": "/test/find-all-users",
+      "method": "GET",
+      "description": "Test finding all documents in a collection"
+    },
+    {
+      "path": "/test/find-user-by-id/507f1f77bcf86cd799439011",
+      "method": "GET",
+      "description": "Test finding a document by ObjectId"
+    },
+    {
+      "path": "/test/find-users-by-status/active",
+      "method": "GET",
+      "description": "Test finding documents by field value with sorting"
+    },
+    {
+      "path": "/test/insert-user",
+      "method": "POST",
+      "body": {
+        "name": "Test User",
+        "email": "test@example.com",
+        "age": 28
+      },
+      "description": "Test inserting a single document"
+    },
+    {
+      "path": "/test/insert-many-users",
+      "method": "POST",
+      "body": {
+        "users": [
+          { "name": "User 1", "email": "user1@test.com", "age": 30 },
+          { "name": "User 2", "email": "user2@test.com", "age": 25 }
+        ]
+      },
+      "description": "Test inserting multiple documents"
+    },
+    {
+      "path": "/test/update-user/507f1f77bcf86cd799439012",
+      "method": "PUT",
+      "body": {
+        "age": 26,
+        "status": "updated"
+      },
+      "description": "Test updating a single document"
+    },
+    {
+      "path": "/test/update-many-users",
+      "method": "PUT",
+      "body": {
+        "filter": { "status": "active" },
+        "updates": { "lastUpdated": "2024-01-15" }
+      },
+      "description": "Test updating multiple documents"
+    },
+    {
+      "path": "/test/delete-user/507f1f77bcf86cd799439013",
+      "method": "DELETE",
+      "description": "Test deleting a single document"
+    },
+    {
+      "path": "/test/delete-many-users",
+      "method": "POST",
+      "body": {
+        "filter": { "age": { "$gte": 100 } }
+      },
+      "description": "Test deleting multiple documents"
+    },
+    {
+      "path": "/test/count-users",
+      "method": "GET",
+      "description": "Test counting documents in collection"
+    },
+    {
+      "path": "/test/count-users-by-status/active",
+      "method": "GET",
+      "description": "Test counting documents with filter"
+    },
+    {
+      "path": "/test/distinct-user-statuses",
+      "method": "GET",
+      "description": "Test distinct values query"
+    },
+    {
+      "path": "/test/aggregate-users-by-status",
+      "method": "GET",
+      "description": "Test aggregation pipeline operations"
+    },
+    {
+      "path": "/test/aggregate-products-by-category",
+      "method": "GET",
+      "description": "Test complex aggregation with multiple operations"
+    },
+    {
+      "path": "/test/list-user-indexes",
+      "method": "GET",
+      "description": "Test listing collection indexes"
+    },
+    {
+      "path": "/test/create-index",
+      "method": "POST",
+      "body": {
+        "collection": "test_users",
+        "indexSpec": { "name": 1 },
+        "options": { "name": "name_index" }
+      },
+      "description": "Test creating an index"
+    },
+    {
+      "path": "/test/bulk-write",
+      "method": "POST",
+      "body": {
+        "operations": [
+          {
+            "insertOne": {
+              "document": { "name": "Bulk User 1", "email": "bulk1@test.com", "age": 20 }
+            }
+          },
+          {
+            "updateOne": {
+              "filter": { "name": "John Doe" },
+              "update": { "$set": { "bulkUpdated": true } }
+            }
+          }
+        ]
+      },
+      "description": "Test bulk write operations"
+    },
+    {
+      "path": "/test/start-session",
+      "method": "POST",
+      "description": "Test starting and ending MongoDB session"
+    },
+    {
+      "path": "/test/create-collection",
+      "method": "POST",
+      "body": {
+        "collectionName": "test_temp_collection",
+        "options": {}
+      },
+      "description": "Test creating a new collection"
+    },
+    {
+      "path": "/test/drop-collection/test_temp_collection",
+      "method": "DELETE",
+      "description": "Test dropping a collection"
+    },
+    {
+      "path": "/test/find-users-cursor?limit=2&skip=0",
+      "method": "GET",
+      "description": "Test cursor operations with pagination"
+    },
+    {
+      "path": "/test/find-and-modify-user",
+      "method": "POST",
+      "body": {
+        "filter": { "name": "Jane Smith" },
+        "update": { "modified": true, "modifiedAt": "2024-01-15" }
+      },
+      "description": "Test findOneAndUpdate operation"
+    }
+  ]
+}

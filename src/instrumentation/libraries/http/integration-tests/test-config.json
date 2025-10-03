@@ -1,0 +1,35 @@
+{
+  "module": "http",
+  "version": "latest",
+  "needsServices": false,
+  "endpoints": [
+    {
+      "path": "/test/axios-get",
+      "method": "GET"
+    },
+    {
+      "path": "/test/https-post",
+      "method": "POST",
+      "body": {
+        "name": "John Doe",
+        "age": 30
+      }
+    },
+    {
+      "path": "/test/http-get",
+      "method": "GET"
+    },
+    {
+      "path": "/test/https-get",
+      "method": "GET"
+    },
+    {
+      "path": "/weather",
+      "method": "GET"
+    },
+    {
+      "path": "/weather?location=London",
+      "method": "GET"
+    }
+  ]
+}

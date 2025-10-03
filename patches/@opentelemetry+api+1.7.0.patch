@@ -1,0 +1,13 @@
+diff --git a/node_modules/@opentelemetry/api/build/src/internal/global-utils.js b/node_modules/@opentelemetry/api/build/src/internal/global-utils.js
+index 11a1a44..1047853 100644
+--- a/node_modules/@opentelemetry/api/build/src/internal/global-utils.js
++++ b/node_modules/@opentelemetry/api/build/src/internal/global-utils.js
+@@ -20,7 +20,7 @@ const platform_1 = require("../platform");
+ const version_1 = require("../version");
+ const semver_1 = require("./semver");
+ const major = version_1.VERSION.split('.')[0];
+-const GLOBAL_OPENTELEMETRY_API_KEY = Symbol.for(`opentelemetry.js.api.${major}`);
++const GLOBAL_OPENTELEMETRY_API_KEY = Symbol.for(`td-opentelemetry.js.api.${major}`);
+ const _global = platform_1._globalThis;
+ function registerGlobal(type, instance, diag, allowOverride = false) {
+     var _a;

@@ -1,0 +1,428 @@
+import { SpanUtilsErrorTesting, ErrorType } from "../../../test-utils/spanUtilsErrorTesting";
+import { JsonwebtokenInstrumentation } from "./Instrumentation";
+import { TuskDriftMode } from "../../../core/TuskDrift";
+
+// Mock jsonwebtoken module
+const mockJsonwebtokenModule = {
+  sign: (payload: any, secret: string, options?: any, callback?: Function): any => {
+    if (callback) {
+      // Async version with callback
+      process.nextTick(() => {
+        callback(null, "mocked.jwt.token");
+      });
+      return;
+    } else {
+      // Sync version
+      return "mocked.jwt.token";
+    }
+  },
+  verify: (token: string, secret: string, options?: any, callback?: Function): any => {
+    if (callback) {
+      // Async version with callback
+      process.nextTick(() => {
+        callback(null, { userId: 123, exp: Date.now() / 1000 + 3600 });
+      });
+      return;
+    } else {
+      // Sync version
+      return { userId: 123, exp: Date.now() / 1000 + 3600 };
+    }
+  },
+  JsonWebTokenError: class MockJwtError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "JsonWebTokenError";
+    }
+  },
+  TokenExpiredError: class MockTokenExpiredError extends Error {
+    expiredAt: Date;
+    constructor(message: string, expiredAt: Date) {
+      super(message);
+      this.name = "TokenExpiredError";
+      this.expiredAt = expiredAt;
+    }
+  },
+  NotBeforeError: class MockNotBeforeError extends Error {
+    date: Date;
+    constructor(message: string, date: Date) {
+      super(message);
+      this.name = "NotBeforeError";
+      this.date = date;
+    }
+  },
+  _tdPatched: false,
+};
+
+// Test payload and secrets
+const testPayload = { userId: 123, role: "user" };
+const testSecret = "test-secret";
+const testToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.token";
+
+// Helper function to execute JWT sign operations
+function executeJwtSign(
+  signType: "sync" | "async",
+  payload: any = testPayload,
+  secret: string = testSecret,
+  options?: any,
+): any {
+  if (signType === "sync") {
+    return mockJsonwebtokenModule.sign(payload, secret, options);
+  } else {
+    return new Promise((resolve, reject) => {
+      mockJsonwebtokenModule.sign(
+        payload,
+        secret,
+        options,
+        (error: Error | null, token?: string) => {
+          if (error) reject(error);
+          else resolve(token);
+        },
+      );
+    });
+  }
+}
+
+// Helper function to execute JWT verify operations
+function executeJwtVerify(
+  verifyType: "sync" | "async",
+  token: string = testToken,
+  secret: string = testSecret,
+  options?: any,
+): any {
+  if (verifyType === "sync") {
+    return mockJsonwebtokenModule.verify(token, secret, options);
+  } else {
+    return new Promise((resolve, reject) => {
+      mockJsonwebtokenModule.verify(
+        token,
+        secret,
+        options,
+        (error: Error | null, decoded?: any) => {
+          if (error) reject(error);
+          else resolve(decoded);
+        },
+      );
+    });
+  }
+}
+
+describe("Jsonwebtoken Instrumentation Error Resilience", () => {
+  let jsonwebtokenInstrumentation: JsonwebtokenInstrumentation;
+  let originalSign: any;
+  let originalVerify: any;
+
+  beforeAll(() => {
+    // Store original functions once
+    originalSign = mockJsonwebtokenModule.sign;
+    originalVerify = mockJsonwebtokenModule.verify;
+
+    jsonwebtokenInstrumentation = new JsonwebtokenInstrumentation({
+      mode: TuskDriftMode.RECORD,
+    });
+
+    // Initialize instrumentation which patches the modules
+    const modules = jsonwebtokenInstrumentation.init();
+
+    // Apply patches to our mock modules
+    modules.forEach((module) => {
+      if (module.name === "jsonwebtoken" && module.patch) {
+        module.patch(mockJsonwebtokenModule);
+      }
+    });
+  });
+
+  afterEach(() => {
+    SpanUtilsErrorTesting.teardownErrorResilienceTest();
+    jest.restoreAllMocks();
+  });
+
+  afterAll(() => {
+    // Restore original functions
+    mockJsonwebtokenModule.sign = originalSign;
+    mockJsonwebtokenModule.verify = originalVerify;
+  });
+
+  describe("JWT Sign Error Resilience", () => {
+    it("should complete JWT sign (sync) when SpanUtils.createSpan throws", () => {
+      SpanUtilsErrorTesting.mockCreateSpanWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span create span network error",
+      });
+
+      const result = executeJwtSign("sync");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (async) when SpanUtils.createSpan throws", async () => {
+      SpanUtilsErrorTesting.mockCreateSpanWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span create span network error",
+      });
+
+      const result = await executeJwtSign("async");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (sync) when SpanUtils.addSpanAttributes throws", () => {
+      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span attributes network error",
+      });
+
+      const result = executeJwtSign("sync");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (async) when SpanUtils.addSpanAttributes throws", async () => {
+      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span attributes network error",
+      });
+
+      const result = await executeJwtSign("async");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (sync) when SpanUtils.setStatus throws", () => {
+      SpanUtilsErrorTesting.mockSetStatusWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span set status network error",
+      });
+
+      const result = executeJwtSign("sync");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (async) when SpanUtils.setStatus throws", async () => {
+      SpanUtilsErrorTesting.mockSetStatusWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span set status network error",
+      });
+
+      const result = await executeJwtSign("async");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (sync) when SpanUtils.endSpan throws", () => {
+      SpanUtilsErrorTesting.mockEndSpanWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span end span network error",
+      });
+
+      const result = executeJwtSign("sync");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (async) when SpanUtils.endSpan throws", async () => {
+      SpanUtilsErrorTesting.mockEndSpanWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span end span network error",
+      });
+
+      const result = await executeJwtSign("async");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (sync) when SpanUtils.getCurrentSpanInfo throws", () => {
+      SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span get current span info network error",
+      });
+
+      const result = executeJwtSign("sync");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (async) when SpanUtils.getCurrentSpanInfo throws", async () => {
+      SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span get current span info network error",
+      });
+
+      const result = await executeJwtSign("async");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (sync) when SpanUtils.getCurrentTraceId throws", () => {
+      SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span get current trace id network error",
+      });
+
+      const result = executeJwtSign("sync");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (async) when SpanUtils.getCurrentTraceId throws", async () => {
+      SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span get current trace id network error",
+      });
+
+      const result = await executeJwtSign("async");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (sync) when SpanUtils.setCurrentReplayTraceId throws", () => {
+      SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span set current replay trace id network error",
+      });
+
+      const result = executeJwtSign("sync");
+      expect(result).toBe("mocked.jwt.token");
+    });
+
+    it("should complete JWT sign (async) when SpanUtils.setCurrentReplayTraceId throws", async () => {
+      SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span set current replay trace id network error",
+      });
+
+      const result = await executeJwtSign("async");
+      expect(result).toBe("mocked.jwt.token");
+    });
+  });
+
+  describe("JWT Verify Error Resilience", () => {
+    it("should complete JWT verify (sync) when SpanUtils.createSpan throws", () => {
+      SpanUtilsErrorTesting.mockCreateSpanWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span create span network error",
+      });
+
+      const result = executeJwtVerify("sync");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (async) when SpanUtils.createSpan throws", async () => {
+      SpanUtilsErrorTesting.mockCreateSpanWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span create span network error",
+      });
+
+      const result = await executeJwtVerify("async");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (sync) when SpanUtils.addSpanAttributes throws", () => {
+      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span attributes network error",
+      });
+
+      const result = executeJwtVerify("sync");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (async) when SpanUtils.addSpanAttributes throws", async () => {
+      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span attributes network error",
+      });
+
+      const result = await executeJwtVerify("async");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (sync) when SpanUtils.setStatus throws", () => {
+      SpanUtilsErrorTesting.mockSetStatusWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span set status network error",
+      });
+
+      const result = executeJwtVerify("sync");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (async) when SpanUtils.setStatus throws", async () => {
+      SpanUtilsErrorTesting.mockSetStatusWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span set status network error",
+      });
+
+      const result = await executeJwtVerify("async");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (sync) when SpanUtils.endSpan throws", () => {
+      SpanUtilsErrorTesting.mockEndSpanWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span end span network error",
+      });
+
+      const result = executeJwtVerify("sync");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (async) when SpanUtils.endSpan throws", async () => {
+      SpanUtilsErrorTesting.mockEndSpanWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span end span network error",
+      });
+
+      const result = await executeJwtVerify("async");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (sync) when SpanUtils.getCurrentSpanInfo throws", () => {
+      SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span get current span info network error",
+      });
+
+      const result = executeJwtVerify("sync");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (async) when SpanUtils.getCurrentSpanInfo throws", async () => {
+      SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span get current span info network error",
+      });
+
+      const result = await executeJwtVerify("async");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (sync) when SpanUtils.getCurrentTraceId throws", () => {
+      SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span get current trace id network error",
+      });
+
+      const result = executeJwtVerify("sync");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (async) when SpanUtils.getCurrentTraceId throws", async () => {
+      SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span get current trace id network error",
+      });
+
+      const result = await executeJwtVerify("async");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (sync) when SpanUtils.setCurrentReplayTraceId throws", () => {
+      SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span set current replay trace id network error",
+      });
+
+      const result = executeJwtVerify("sync");
+      expect(result.userId).toBe(123);
+    });
+
+    it("should complete JWT verify (async) when SpanUtils.setCurrentReplayTraceId throws", async () => {
+      SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
+        errorType: ErrorType.NETWORK_ERROR,
+        errorMessage: "Span set current replay trace id network error",
+      });
+
+      const result = await executeJwtVerify("async");
+      expect(result.userId).toBe(123);
+    });
+  });
+});

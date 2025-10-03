@@ -1,0 +1,46 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+
+General gotchas to look for when reviewing code. Gotchas marked with "POTENTIAL BUG" have a high likelihood of causing a bug if not followed.
+Check for these gotchas in symbols that are being modified. If a potential gotcha exists in the code (but isn't being caused by the current changes), still mention it to improve code quality over time.
+
+**IMPORTANT: When reviewing code, make sure to check for any logical bugs or flawed assumptions that could be introduced by the changes (even if they are not listed below).**
+
+## Instrumentation Self-Reference (POTENTIAL BUG)
+
+**Problem**: Using instrumented global functions within the SDK's own instrumentation code can cause:
+
+- Circular dependencies between instrumentation and utility modules
+- Infinite recursion when instrumented code calls itself
+- Incorrect behavior where SDK internals use mocked/replayed data instead of real data
+
+**Examples of problematic code**:
+
+```typescript
+// BAD: Using potentially instrumented Date in logger
+private formatMessage(message: string): string {
+  const timestamp = new Date().toISOString(); // This Date might be instrumented!
+  return `${timestamp} ${message}`;
+}
+
+// BAD: Using potentially instrumented env vars in SDK code
+const config = process.env.API_KEY; // This might be mocked in replay mode!
+```
+
+**Solution**: Use `OriginalGlobalUtils` or create new original utilities to access uninstrumented versions:
+
+```typescript
+// GOOD: Using original Date for SDK internal logging
+import { OriginalGlobalUtils } from '../utils/originalGlobalUtils';
+
+private formatMessage(message: string): string {
+  const timestamp = OriginalGlobalUtils.getOriginalDate().toISOString();
+  return `${timestamp} ${message}`;
+}
+
+// GOOD: Using original process.env for SDK internal config
+const config = OriginalGlobalUtils.getOriginalProcessEnvVar("API_KEY");
+```

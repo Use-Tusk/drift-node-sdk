@@ -1,0 +1,83 @@
+{
+  "module": "graphql",
+  "version": "16.8.1",
+  "needsServices": false,
+  "endpoints": [
+    {
+      "path": "/test/basic-query",
+      "method": "GET",
+      "description": "Test basic GraphQL query using graphql-request"
+    },
+    {
+      "path": "/test/query-with-variables",
+      "method": "GET",
+      "description": "Test GraphQL query with variables using graphql-request"
+    },
+    {
+      "path": "/test/mutation",
+      "method": "POST",
+      "body": {
+        "name": "Test User",
+        "email": "test@example.com"
+      },
+      "description": "Test GraphQL mutation using graphql-request"
+    },
+    {
+      "path": "/test/nested-query",
+      "method": "GET",
+      "description": "Test nested GraphQL query using graphql-request"
+    },
+    {
+      "path": "/test/batch-queries",
+      "method": "GET",
+      "description": "Test multiple GraphQL queries in batch using graphql-request"
+    },
+    {
+      "path": "/test/error-handling",
+      "method": "GET",
+      "description": "Test GraphQL error handling using graphql-request"
+    },
+    {
+      "path": "/test/introspection",
+      "method": "GET",
+      "description": "Test GraphQL introspection query using graphql-request"
+    },
+    {
+      "path": "/test/custom-headers",
+      "method": "GET",
+      "description": "Test GraphQL request with custom headers using graphql-request"
+    },
+    {
+      "path": "/test/raw-request",
+      "method": "GET",
+      "description": "Test GraphQL rawRequest method to verify client patching"
+    },
+    {
+      "path": "/graphql",
+      "method": "POST",
+      "body": {
+        "query": "{ hello }"
+      },
+      "description": "Direct GraphQL endpoint test"
+    },
+    {
+      "path": "/graphql",
+      "method": "POST",
+      "body": {
+        "query": "{ users { id name email } }"
+      },
+      "description": "Direct GraphQL query test"
+    },
+    {
+      "path": "/graphql",
+      "method": "POST",
+      "body": {
+        "query": "query GetUser($userId: ID!) { user(id: $userId) { id name email posts { id title } } }",
+        "variables": {
+          "userId": "1"
+        }
+      },
+      "description": "Direct GraphQL query with variables test"
+    }
+  ]
+}
