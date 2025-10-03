@@ -3,8 +3,9 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@use-tusk/drift-node-sdk"><img src="https://img.shields.io/npm/v/@use-tusk/drift-node-sdk" alt="npm version"></a>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
-  <a href="https://github.com/Use-Tusk/tusk-drift-sdk/commits/main"><img src="https://img.shields.io/github/last-commit/Use-Tusk/tusk-drift-sdk" alt="GitHub last commit"></a>
+  <a href="https://github.com/Use-Tusk/drift-node-sdk/commits/main/"><img src="https://img.shields.io/github/last-commit/Use-Tusk/drift-node-sdk" alt="GitHub last commit"></a>
 </p>
 
 The Node.js Tusk Drift SDK enables fast and deterministic API testing by capturing and replaying API calls made to/from your service. Automatically record real-world API calls, then replay them as tests using the [Tusk CLI](https://github.com/Use-Tusk/tusk-drift-cli) to find regressions. During replay, all outbound requests are intercepted with recorded data to ensure consistent behavior without side-effects.
