@@ -618,7 +618,7 @@ interface TuskDriftPublicAPI {
    *
    * @example
    * ```typescript
-   * import { TuskDrift } from 'tusk-drift-sdk';
+   * import  { TuskDrift } from "@use-tusk/drift-node-sdk"
    *
    * TuskDrift.initialize({
    *   apiKey: 'your-api-key',
