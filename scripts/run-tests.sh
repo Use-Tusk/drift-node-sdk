@@ -7,7 +7,10 @@ dockerdown() {
 }
 
 code=0
-case "$1" in
+command="$1"
+shift
+
+case "$command" in
         up)
                 dockerup
                 ;;
@@ -16,15 +19,15 @@ case "$1" in
                 ;;
         int)
                 dockerup
-                npx jest --testMatch "**/*.test.int.ts" || code=$?
+                npx jest --testMatch "**/*.test.int.ts" "$@" || code=$?
                 dockerdown
                 ;;
         unit)
-                npx jest --testMatch "**/*.test.ts" || code=$?
+                npx jest --testMatch "**/*.test.ts" "$@" || code=$?
                 ;;
         *)
                 dockerup
-                npx jest || code=$?
+                npx jest "$@" || code=$?
                 dockerdown
                 ;;
 esac
