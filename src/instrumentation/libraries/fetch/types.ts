@@ -10,6 +10,7 @@ export interface FetchInputValue {
   method: string;
   headers: Record<string, string>;
   body?: any;
+  [key: string]: unknown;
 }
 
 export interface FetchOutputValue {
@@ -18,4 +19,5 @@ export interface FetchOutputValue {
   headers: Record<string, string>;
   body?: string;
   bodySize: number;
+  [key: string]: unknown;
 }

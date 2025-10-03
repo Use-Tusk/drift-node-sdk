@@ -298,7 +298,7 @@ export class TdMockClientRequest extends EventEmitter {
         inputValueSchemaMerges: {
           body: {
             encoding: EncodingType.BASE64,
-            decodedType: getDecodedType(rawInputValue.headers["content-type"] || ""),
+            decodedType: getDecodedType((rawInputValue.headers["content-type"] as string | string[]) || ""),
           },
           headers: {
             matchImportance: 0,

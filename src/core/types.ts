@@ -61,10 +61,10 @@ export type CleanSpanData = {
   packageType?: PackageType;
 
   // keep these as plain JSON for readability
-  inputValue: any;
-  outputValue: any;
-  inputSchema: any;
-  outputSchema: any;
+  inputValue: unknown;
+  outputValue: unknown;
+  inputSchema: unknown;
+  outputSchema: unknown;
 
   inputSchemaHash: string;
   outputSchemaHash: string;
@@ -107,12 +107,12 @@ export type MockRequestData = {
   packageType?: PackageType;
   instrumentationName: string;
   submoduleName: string;
-  inputValue: any;
+  inputValue: unknown;
   kind: SpanKind;
 };
 
 export type MetadataObject = {
-  ENV_VARS?: Record<string, any>;
+  ENV_VARS?: Record<string, unknown>;
 };
 
 export type OneOf<T extends object> = {

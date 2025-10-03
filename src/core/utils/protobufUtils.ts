@@ -2,7 +2,7 @@ import { Value, Struct } from "@use-tusk/drift-schemas/google/protobuf/struct";
 import { SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { SpanKind as PbSpanKind } from "@use-tusk/drift-schemas/core/span";
 
-export const toStruct = (obj: any | undefined) => (obj ? objectToProtobufStruct(obj) : undefined);
+export const toStruct = (obj: unknown | undefined) => (obj ? objectToProtobufStruct(obj) : undefined);
 
 // Map OpenTelemetry SpanKind -> protobuf SpanKind
 export const mapOtToPb = (k: OtSpanKind): PbSpanKind => {
@@ -25,10 +25,10 @@ export const mapOtToPb = (k: OtSpanKind): PbSpanKind => {
 /**
  * Converts a JavaScript object to protobuf Struct format
  */
-export function objectToProtobufStruct(obj: any): Struct {
+export function objectToProtobufStruct(obj: unknown): Struct {
   const fields: Record<string, Value> = {};
 
-  for (const [key, value] of Object.entries(obj)) {
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
     fields[key] = valueToProtobufValue(value);
   }
 
@@ -38,7 +38,7 @@ export function objectToProtobufStruct(obj: any): Struct {
 /**
  * Converts a JavaScript value to protobuf Value format
  */
-export function valueToProtobufValue(value: any): Value {
+export function valueToProtobufValue(value: unknown): Value {
   if (value === null || value === undefined) {
     return Value.create({ kind: { oneofKind: "nullValue", nullValue: 0 } });
   }

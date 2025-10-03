@@ -411,7 +411,8 @@ describe("JsonSchemaHelper", () => {
         },
       };
 
-      // Should not throw and should keep original value
+      // This test intentionally triggers a JSON decode error to test error handling
+      // The warning message is expected and demonstrates graceful error handling
       const result = JsonSchemaHelper.generateSchemaAndHash(data, schemaMerges);
       expect(result.schema.properties?.body).toEqual({
         type: "STRING",

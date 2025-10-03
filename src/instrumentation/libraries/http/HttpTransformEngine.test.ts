@@ -88,10 +88,10 @@ const exampleServerSpanData: HttpSpanData = {
     headers: {
       "content-type": "application/json",
     },
-    body: {
+    body: Buffer.from(JSON.stringify({
       success: true,
       token: "jwt-token-here",
-    },
+    })).toString("base64"),
     bodySize: 50,
   } as HttpServerOutputValue,
 };
@@ -129,11 +129,11 @@ const stripeClientSpanData: HttpSpanData = {
     headers: {
       "content-type": "application/json",
     },
-    body: {
+    body: Buffer.from(JSON.stringify({
       id: "ch_123456",
       amount: 1000,
       currency: "usd",
-    },
+    })).toString("base64"),
     bodySize: 80,
   } as HttpClientOutputValue,
 };
@@ -200,7 +200,9 @@ describe("HttpTransformEngine", () => {
     expect(transformed).not.toBeNull();
     const span = transformed as HttpSpanData;
 
-    expect((span.inputValue as HttpServerInputValue).body.password).toMatch(/^PWD_[0-9a-f]{12}\.\.\.$/);
+    expect((span.inputValue as HttpServerInputValue).body.password).toMatch(
+      /^PWD_[0-9a-f]{12}\.\.\.$/,
+    );
     expect(span.transformMetadata?.actions).toEqual([
       expect.objectContaining({
         type: "redact",
@@ -232,7 +234,9 @@ describe("HttpTransformEngine", () => {
     const span = transformed as HttpSpanData;
 
     const inputValue = span.inputValue as HttpServerInputValue;
-    expect(inputValue.url).toBe("http://localhost:3000/api/user/lookup?ssn=XXXXXXXXXXX&email=user%40example.com");
+    expect(inputValue.url).toBe(
+      "http://localhost:3000/api/user/lookup?ssn=XXXXXXXXXXX&email=user%40example.com",
+    );
     expect(inputValue.target).toBe("/api/user/lookup?ssn=XXXXXXXXXXX&email=user%40example.com");
     expect(inputValue.body.user.password).toBe("HIDDEN");
     expect(span.transformMetadata?.actions).toEqual(
@@ -261,12 +265,9 @@ describe("HttpTransformEngine", () => {
     const engine = new HttpTransformEngine(inboundDropConfig);
 
     expect(
-      engine.shouldDropInboundRequest(
-        "POST",
-        "http://localhost:3000/api/auth/login",
-        "localhost",
-        { "content-type": "application/json" },
-      ),
+      engine.shouldDropInboundRequest("POST", "http://localhost:3000/api/auth/login", "localhost", {
+        "content-type": "application/json",
+      }),
     ).toBe(true);
 
     expect(
@@ -279,12 +280,9 @@ describe("HttpTransformEngine", () => {
     ).toBe(false);
 
     expect(
-      engine.shouldDropInboundRequest(
-        "GET",
-        "http://localhost:3000/api/auth/login",
-        "localhost",
-        { "content-type": "application/json" },
-      ),
+      engine.shouldDropInboundRequest("GET", "http://localhost:3000/api/auth/login", "localhost", {
+        "content-type": "application/json",
+      }),
     ).toBe(false);
   });
 
@@ -306,7 +304,10 @@ describe("HttpTransformEngine", () => {
       const engine = new HttpTransformEngine(outboundHostConfig);
       const result = engine.applyTransforms(cloneSpan(stripeClientSpanData));
 
-      expect((result.outputValue as HttpClientOutputValue).body).toBe("[REDACTED]");
+      // Output body is base64-encoded, so we need to decode it or check for base64 of "[REDACTED]"
+      expect((result.outputValue as HttpClientOutputValue).body).toBe(
+        Buffer.from("[REDACTED]").toString("base64")
+      );
     });
 
     it("correctly matches inbound spans by extracting hostname from URL", () => {
@@ -326,6 +327,7 @@ describe("HttpTransformEngine", () => {
       const engine = new HttpTransformEngine(inboundHostConfig);
       const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
+      // Input body for server spans is a plain object (request body)
       expect((result.inputValue as HttpServerInputValue).body).toBe("[REDACTED]");
     });
 
@@ -346,7 +348,10 @@ describe("HttpTransformEngine", () => {
       const engine = new HttpTransformEngine(outboundPathConfig);
       const result = engine.applyTransforms(cloneSpan(stripeClientSpanData));
 
-      expect((result.outputValue as HttpClientOutputValue).body).toBe("[REDACTED]");
+      // Output body is base64-encoded
+      expect((result.outputValue as HttpClientOutputValue).body).toBe(
+        Buffer.from("[REDACTED]").toString("base64")
+      );
     });
 
     it("correctly matches inbound spans using url field", () => {
@@ -473,7 +478,9 @@ describe("HttpTransformEngine", () => {
       const engine = new HttpTransformEngine(redactConfig);
       const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-      expect((result.inputValue as HttpServerInputValue).body.password).toMatch(/^HIDDEN_[0-9a-f]{12}\.\.\.$/);
+      expect((result.inputValue as HttpServerInputValue).body.password).toMatch(
+        /^HIDDEN_[0-9a-f]{12}\.\.\.$/,
+      );
     });
 
     it("applies replace transform", () => {
@@ -495,7 +502,9 @@ describe("HttpTransformEngine", () => {
       const engine = new HttpTransformEngine(replaceConfig);
       const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-      expect((result.inputValue as HttpServerInputValue).body.username).toBe("anonymous@example.com");
+      expect((result.inputValue as HttpServerInputValue).body.username).toBe(
+        "anonymous@example.com",
+      );
     });
   });
 
@@ -517,7 +526,9 @@ describe("HttpTransformEngine", () => {
       const engine = new HttpTransformEngine(methodOnlyConfig);
       const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-      expect((result.inputValue as HttpServerInputValue).body.password).toMatch(/^REDACTED_[0-9a-f]{12}\.\.\.$/);
+      expect((result.inputValue as HttpServerInputValue).body.password).toMatch(
+        /^REDACTED_[0-9a-f]{12}\.\.\.$/,
+      );
     });
 
     it("matches multiple methods when array is provided", () => {
@@ -676,8 +687,12 @@ describe("HttpTransformEngine", () => {
       const result = engine.applyTransforms(spanWithQuery);
 
       const inputValue = result.inputValue as HttpServerInputValue;
-      expect(inputValue.url).toMatch(/http:\/\/localhost:3000\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
-      expect(inputValue.target).toMatch(/\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
+      expect(inputValue.url).toMatch(
+        /http:\/\/localhost:3000\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/,
+      );
+      expect(inputValue.target).toMatch(
+        /\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/,
+      );
     });
 
     it("transforms query parameter in client path with existing params", () => {
@@ -703,7 +718,9 @@ describe("HttpTransformEngine", () => {
       const result = engine.applyTransforms(spanWithQuery);
 
       const inputValue = result.inputValue as HttpClientInputValue;
-      expect(inputValue.path).toMatch(/\/v1\/charges\?api_key=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
+      expect(inputValue.path).toMatch(
+        /\/v1\/charges\?api_key=REDACTED_[0-9a-f]{12}\.\.\.&other=value/,
+      );
     });
 
     it("handles query param that doesn't exist", () => {
@@ -743,7 +760,9 @@ describe("HttpTransformEngine", () => {
       const engine = new HttpTransformEngine(headerConfig);
       const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-      expect((result.inputValue as HttpServerInputValue).headers["content-type"]).toBe("application/redacted");
+      expect((result.inputValue as HttpServerInputValue).headers["content-type"]).toBe(
+        "application/redacted",
+      );
     });
 
     it("transforms multiple headers with same name (case variations)", () => {

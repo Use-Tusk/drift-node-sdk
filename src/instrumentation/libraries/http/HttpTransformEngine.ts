@@ -404,9 +404,26 @@ export class HttpTransformEngine {
         return false;
       }
 
-      target.body = actionFunction(
-        typeof target.body === "string" ? target.body : JSON.stringify(target.body),
-      );
+      if (direction === "outbound") {
+        // Output bodies are base64-encoded strings - decode, transform, re-encode
+        if (typeof target.body === "string") {
+          try {
+            const decoded = Buffer.from(target.body, "base64").toString("utf8");
+            const transformed = actionFunction(decoded);
+            target.body = Buffer.from(transformed).toString("base64");
+          } catch (error) {
+            // If not valid base64, treat as plain string
+            target.body = Buffer.from(actionFunction(target.body)).toString("base64");
+          }
+        } else {
+          target.body = Buffer.from(actionFunction(JSON.stringify(target.body))).toString("base64");
+        }
+      } else {
+        // Input bodies can be objects or strings - keep as is
+        target.body = actionFunction(
+          typeof target.body === "string" ? target.body : JSON.stringify(target.body),
+        );
+      }
       return true;
     };
   }

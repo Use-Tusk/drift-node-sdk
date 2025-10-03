@@ -1,4 +1,4 @@
-import { SpanUtilsErrorTesting, ErrorType } from "../../../test-utils/spanUtilsErrorTesting";
+import { SpanUtilsErrorTesting, ErrorType } from "../../../core/tracing/SpanUtils.test.helpers";
 import { JsonwebtokenInstrumentation } from "./Instrumentation";
 import { TuskDriftMode } from "../../../core/TuskDrift";
 

@@ -275,6 +275,36 @@ You should see output similar to:
 
 3. **Check dependencies**: Verify you're using supported package versions
 
+#### Package compatibility issues
+
+If you're using packages or versions not in our compatibility matrix, [contact our support team](https://google.com) for assistance.
+
+## Integration Testing
+
+For testing instrumentation functionality, use the dedicated npm scripts:
+
+```bash
+# Run only regular unit tests that do not require Docker
+npm run test:unit
+
+# Run only the integration tests that require Docker (will setup and teardown for you)
+npm run test:int
+
+# Run all tests
+npm test
+```
+
+Integration tests live in files ending with `.test.int.ts` ("int" stands for
+integration). Normal unit tests continue to use the `.test.ts`. This naming
+scheme is because `.int.test.ts` would also match on `.test.ts`.
+
+The http and fetch module are probably the only few that don't require spinning
+up docker for their dependencies, those integration tests are instead done by
+simply launching an express server.
+
+Finally, please note that these commands don't accept arguments. If you want to
+filter which files to run, you might want to do `npx jest xyz.test.ts` instead.
+
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

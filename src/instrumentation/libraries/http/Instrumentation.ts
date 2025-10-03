@@ -759,7 +759,9 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                   ...schemaMerges,
                   body: {
                     encoding: EncodingType.BASE64,
-                    decodedType: getDecodedType(inputValue.headers["content-type"] || ""),
+                    decodedType: getDecodedType(
+                      (inputValue.headers["content-type"] as string | string[]) || "",
+                    ),
                   },
                 },
               });
