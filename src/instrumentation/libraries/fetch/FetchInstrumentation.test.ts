@@ -1,6 +1,6 @@
 import * as http from "http";
 import { AddressInfo } from "net";
-import { SpanUtilsErrorTesting, ErrorType } from "../../../test-utils/spanUtilsErrorTesting";
+import { SpanUtilsErrorTesting, ErrorType } from "../../../core/tracing/SpanUtils.test.helpers";
 import { FetchInstrumentation } from "./Instrumentation";
 import { TuskDriftMode } from "../../../core/TuskDrift";
 
@@ -48,9 +48,9 @@ async function createServerAndMakeFetchRequest(
       }
     });
 
-    server.listen(0, async () => {
+    server.listen(0, "127.0.0.1", async () => {
       const port = (server.address() as AddressInfo).port;
-      const url = `http://localhost:${port}${path}`;
+      const url = `http://127.0.0.1:${port}${path}`;
 
       try {
         const fetchOptions: RequestInit = {
@@ -83,7 +83,48 @@ async function createServerAndMakeFetchRequest(
   });
 }
 
-describe("Fetch Instrumentation Error Resilience", () => {
+async function withLocalServer(
+  handler: (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>,
+  testFn: (baseUrl: string) => Promise<void>,
+): Promise<void> {
+  const server = http.createServer((req, res) => {
+    Promise.resolve(handler(req, res)).catch((error) => {
+      res.statusCode = 500;
+      res.end(error instanceof Error ? error.message : String(error));
+    });
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+
+  const address = server.address() as AddressInfo;
+
+  try {
+    await testFn(`http://127.0.0.1:${address.port}`);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+}
+
+async function readJsonBody(req: http.IncomingMessage): Promise<any> {
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  const raw = Buffer.concat(chunks).toString("utf8");
+  return raw ? JSON.parse(raw) : undefined;
+}
+
+describe("Fetch Instrumentation", () => {
   let fetchInstrumentation: FetchInstrumentation;
   let originalFetch: typeof globalThis.fetch;
 
@@ -98,6 +139,7 @@ describe("Fetch Instrumentation Error Resilience", () => {
 
     fetchInstrumentation = new FetchInstrumentation({
       mode: TuskDriftMode.RECORD,
+      enabled: true,
     });
 
     // Initialize instrumentation which patches global fetch
@@ -111,6 +153,118 @@ describe("Fetch Instrumentation Error Resilience", () => {
     SpanUtilsErrorTesting.teardownErrorResilienceTest();
     // Restore original fetch
     globalThis.fetch = originalFetch;
+  });
+
+  describe("basic fetch behavior", () => {
+    it("should perform GET requests successfully", async () => {
+      await withLocalServer(
+        async (req, res) => {
+          expect(req.method).toBe("GET");
+          expect(req.url).toBe("/test-fetch");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ message: "ok" }));
+        },
+        async (baseUrl) => {
+          const response = await globalThis.fetch(`${baseUrl}/test-fetch`);
+          expect(response.status).toBe(200);
+          const data = await response.json();
+          expect(data).toEqual({ message: "ok" });
+        },
+      );
+    });
+
+    it("should send POST bodies and receive JSON responses", async () => {
+      const payload = { title: "Test Post", body: "Payload", userId: 42 };
+
+      await withLocalServer(
+        async (req, res) => {
+          expect(req.method).toBe("POST");
+          const body = await readJsonBody(req);
+          expect(body).toEqual(payload);
+          res.writeHead(201, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              received: true,
+              contentLength: JSON.stringify(body).length,
+            }),
+          );
+        },
+        async (baseUrl) => {
+          const response = await globalThis.fetch(`${baseUrl}/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          expect(response.status).toBe(201);
+          const data = await response.json();
+          expect(data.received).toBe(true);
+          expect(data.contentLength).toBe(JSON.stringify(payload).length);
+        },
+      );
+    });
+
+    it("should forward custom request headers", async () => {
+      await withLocalServer(
+        async (req, res) => {
+          expect(req.headers["x-custom-header"]).toBe("test-value");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+        },
+        async (baseUrl) => {
+          const response = await globalThis.fetch(`${baseUrl}/headers`, {
+            headers: {
+              "X-Custom-Header": "test-value",
+            },
+          });
+
+          expect(response.ok).toBe(true);
+          const data = await response.json();
+          expect(data.ok).toBe(true);
+        },
+      );
+    });
+
+    it("should handle JSON responses correctly", async () => {
+      const items = [
+        { id: 1, name: "Item 1" },
+        { id: 2, name: "Item 2" },
+        { id: 3, name: "Item 3" },
+      ];
+
+      await withLocalServer(
+        async (_req, res) => {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(items));
+        },
+        async (baseUrl) => {
+          const response = await globalThis.fetch(`${baseUrl}/items`);
+          expect(response.status).toBe(200);
+          expect(response.headers.get("content-type")).toContain("application/json");
+          const data = await response.json();
+          expect(data).toEqual(items);
+        },
+      );
+    });
+
+    it("should support URL objects as fetch input", async () => {
+      await withLocalServer(
+        async (req, res) => {
+          expect(req.url).toBe("/query?limit=5");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ query: req.url }));
+        },
+        async (baseUrl) => {
+          const url = new URL("/query", baseUrl);
+          url.searchParams.set("limit", "5");
+
+          const response = await globalThis.fetch(url);
+          expect(response.ok).toBe(true);
+          const data = await response.json();
+          expect(data.query).toBe("/query?limit=5");
+        },
+      );
+    });
   });
 
   describe("Fetch Request Error Resilience", () => {

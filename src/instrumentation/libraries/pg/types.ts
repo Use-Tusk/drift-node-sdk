@@ -19,6 +19,7 @@ export interface PgClientInputValue {
   text: string;
   values?: any[];
   clientType: string;
+  [key: string]: unknown;
 }
 
 export interface PgModuleExports {

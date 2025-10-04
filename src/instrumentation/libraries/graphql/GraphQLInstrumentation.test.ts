@@ -1,4 +1,4 @@
-import { SpanUtilsErrorTesting, ErrorType } from "../../../test-utils/spanUtilsErrorTesting";
+import { SpanUtilsErrorTesting, ErrorType } from "../../../core/tracing/SpanUtils.test.helpers";
 import { GraphqlInstrumentation } from "./Instrumentation";
 import { TuskDriftMode } from "../../../core/TuskDrift";
 import { SpanUtils } from "../../../core/tracing/SpanUtils";
@@ -75,6 +75,11 @@ function executeGraphQLOperation(
   }
 }
 
+/**
+ * NOTE: This test suite intentionally generates error messages to test error resilience.
+ * Messages like "Error extracting GraphQL metadata" are expected and demonstrate
+ * that the instrumentation gracefully handles failures without crashing.
+ */
 describe("GraphQL Instrumentation Error Resilience", () => {
   let graphqlInstrumentation: GraphqlInstrumentation;
   let originalExecute: any;

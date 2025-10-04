@@ -1,8 +1,7 @@
-import { SpanUtilsErrorTesting, ErrorType } from "../../../test-utils/spanUtilsErrorTesting";
+import { SpanUtilsErrorTesting, ErrorType } from "../../../core/tracing/SpanUtils.test.helpers";
 import { PgInstrumentation } from "./Instrumentation";
 import { TuskDriftMode } from "../../../core/TuskDrift";
 
-// Mock implementations for pg and pg-pool
 class MockPgClient {
   _queries: any[] = [];
   _connections: any[] = [];
@@ -132,7 +131,6 @@ class MockPgPool {
   }
 }
 
-// Mock pg module exports
 const mockPgModule = {
   Client: MockPgClient,
   Query: function () {},
@@ -146,7 +144,6 @@ const mockPgModule = {
   Result: function () {},
 };
 
-// Mock pg-pool module exports (constructor function)
 const mockPgPoolModule = function () {
   return new MockPgPool();
 };

@@ -19,12 +19,14 @@ export interface JwtVerifyInputValue {
   token: string;
   secretOrPublicKey?: string | Buffer;
   options?: any;
+  [key: string]: unknown;
 }
 
 export interface JwtSignInputValue {
   payload: string | Buffer | object;
   secretOrPrivateKey?: string | Buffer;
   options?: any;
+  [key: string]: unknown;
 }
 
 export interface VerifyQueryConfig {

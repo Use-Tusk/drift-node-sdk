@@ -1,0 +1,21 @@
+service:
+  id: "d7fd9519-3151-4638-b59d-8da8f6d63514"  # set your own
+  name: "tusk-backend"
+  port: 9000
+  start:
+    command: "PORT=9000 npm run dev:no-watch"
+  readiness_check:
+    command: "curl http://localhost:9000/readiness_check"
+    timeout: 45s
+    interval: 5s
+
+tusk_api:
+  url: "http://localhost:8000"
+
+test_execution:
+  concurrency: 10
+  timeout: 30s
+
+recording:
+  sampling_rate: 1.0
+  export_spans: false # set to true if you want to export to Tusk DB via tusk_api.url

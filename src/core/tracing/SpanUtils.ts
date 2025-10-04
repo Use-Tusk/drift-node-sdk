@@ -45,7 +45,7 @@ export interface SpanExecutorOptions {
   packageName: string;
   instrumentationName: string;
   submodule: string;
-  inputValue: Record<string, any>;
+  inputValue: Record<string, unknown>;
   isPreAppStart: boolean;
   inputSchemaMerges?: SchemaMerges;
   metadata?: MetadataObject;
@@ -58,8 +58,8 @@ export interface AddSpanAttributesOptions {
   packageType?: PackageType;
   submodule?: string;
   isPreAppStart?: boolean;
-  inputValue?: Record<string, any>;
-  outputValue?: Record<string, any>;
+  inputValue?: Record<string, unknown>;
+  outputValue?: Record<string, unknown>;
   inputSchemaMerges?: SchemaMerges;
   outputSchemaMerges?: SchemaMerges;
   metadata?: MetadataObject;
