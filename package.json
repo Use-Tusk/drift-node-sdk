@@ -23,11 +23,7 @@
     "prepare": "npm run build",
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
-    "test": "ava",
-    "test:int": "ava",
-    "test:int:file": "ava",
-    "test:unit": "ava",
-    "test:file": "ava"
+    "test": "ava"
   },
   "keywords": [
     "instrumentation",
