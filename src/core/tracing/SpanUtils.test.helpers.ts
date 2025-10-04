@@ -31,15 +31,15 @@ export interface ErrorTestConfig {
  * Mock implementation registry for SpanUtils methods
  */
 interface SpanUtilsMocks {
-  createSpan?: jest.SpyInstance;
-  getCurrentSpanInfo?: jest.SpyInstance;
-  addSpanAttributes?: jest.SpyInstance;
-  setStatus?: jest.SpyInstance;
-  endSpan?: jest.SpyInstance;
-  getCurrentTraceId?: jest.SpyInstance;
-  getCurrentSpanId?: jest.SpyInstance;
-  getTraceInfo?: jest.SpyInstance;
-  setCurrentReplayTraceId?: jest.SpyInstance;
+  createSpan?: { original: any };
+  getCurrentSpanInfo?: { original: any };
+  addSpanAttributes?: { original: any };
+  setStatus?: { original: any };
+  endSpan?: { original: any };
+  getCurrentTraceId?: { original: any };
+  getCurrentSpanId?: { original: any };
+  getTraceInfo?: { original: any };
+  setCurrentReplayTraceId?: { original: any };
 }
 
 /**
@@ -104,11 +104,11 @@ export class SpanUtilsErrorTesting {
   /**
    * Sets up error simulation for SpanUtils.createSpan
    */
-  static mockCreateSpanWithError(config: ErrorTestConfig): jest.SpyInstance {
+  static mockCreateSpanWithError(config: ErrorTestConfig): void {
     SpanUtilsErrorTesting.ensureLoggerSilenced();
-    const spy = jest.spyOn(SpanUtils, "createSpan");
+    const original = SpanUtils.createSpan;
 
-    spy.mockImplementation(() => {
+    (SpanUtils as any).createSpan = () => {
       if (config.shouldReturnNull) {
         return null;
       }
@@ -122,118 +122,128 @@ export class SpanUtilsErrorTesting {
       }
 
       throw SpanUtilsErrorTesting.createError(config);
-    });
+    };
 
-    SpanUtilsErrorTesting.mocks.createSpan = spy;
-    return spy;
+    SpanUtilsErrorTesting.mocks.createSpan = { original };
   }
   /**
    * Sets up error simulation for SpanUtils.addSpanAttributes
    */
-  static mockAddSpanAttributesWithError(config: ErrorTestConfig): jest.SpyInstance {
+  static mockAddSpanAttributesWithError(config: ErrorTestConfig): void {
     SpanUtilsErrorTesting.ensureLoggerSilenced();
-    const spy = jest.spyOn(SpanUtils, "addSpanAttributes");
+    const original = SpanUtils.addSpanAttributes;
 
-    spy.mockImplementation(() => {
+    (SpanUtils as any).addSpanAttributes = () => {
       throw SpanUtilsErrorTesting.createError(config);
-    });
+    };
 
-    SpanUtilsErrorTesting.mocks.addSpanAttributes = spy;
-    return spy;
+    SpanUtilsErrorTesting.mocks.addSpanAttributes = { original };
   }
 
   /**
    * Sets up error simulation for SpanUtils.setStatus
    */
-  static mockSetStatusWithError(config: ErrorTestConfig): jest.SpyInstance {
+  static mockSetStatusWithError(config: ErrorTestConfig): void {
     SpanUtilsErrorTesting.ensureLoggerSilenced();
-    const spy = jest.spyOn(SpanUtils, "setStatus");
+    const original = SpanUtils.setStatus;
 
-    spy.mockImplementation(() => {
+    (SpanUtils as any).setStatus = () => {
       throw SpanUtilsErrorTesting.createError(config);
-    });
+    };
 
-    SpanUtilsErrorTesting.mocks.setStatus = spy;
-    return spy;
+    SpanUtilsErrorTesting.mocks.setStatus = { original };
   }
 
   /**
    * Sets up error simulation for SpanUtils.endSpan
    */
-  static mockEndSpanWithError(config: ErrorTestConfig): jest.SpyInstance {
+  static mockEndSpanWithError(config: ErrorTestConfig): void {
     SpanUtilsErrorTesting.ensureLoggerSilenced();
-    const spy = jest.spyOn(SpanUtils, "endSpan");
+    const original = SpanUtils.endSpan;
 
-    spy.mockImplementation(() => {
+    (SpanUtils as any).endSpan = () => {
       throw SpanUtilsErrorTesting.createError(config);
-    });
+    };
 
-    SpanUtilsErrorTesting.mocks.endSpan = spy;
-    return spy;
+    SpanUtilsErrorTesting.mocks.endSpan = { original };
   }
 
   /**
    * Sets up error simulation for SpanUtils.getCurrentSpanInfo
    */
-  static mockGetCurrentSpanInfoWithError(config: ErrorTestConfig): jest.SpyInstance {
+  static mockGetCurrentSpanInfoWithError(config: ErrorTestConfig): void {
     SpanUtilsErrorTesting.ensureLoggerSilenced();
-    const spy = jest.spyOn(SpanUtils, "getCurrentSpanInfo");
+    const original = SpanUtils.getCurrentSpanInfo;
 
-    spy.mockImplementation(() => {
+    (SpanUtils as any).getCurrentSpanInfo = () => {
       if (config.shouldReturnNull) {
         return null;
       }
       throw SpanUtilsErrorTesting.createError(config);
-    });
+    };
 
-    SpanUtilsErrorTesting.mocks.getCurrentSpanInfo = spy;
-    return spy;
+    SpanUtilsErrorTesting.mocks.getCurrentSpanInfo = { original };
   }
 
   /**
    * Sets up error simulation for SpanUtils.getCurrentTraceId
    */
-  static mockGetCurrentTraceIdWithError(config: ErrorTestConfig): jest.SpyInstance {
+  static mockGetCurrentTraceIdWithError(config: ErrorTestConfig): void {
     SpanUtilsErrorTesting.ensureLoggerSilenced();
-    const spy = jest.spyOn(SpanUtils, "getCurrentTraceId");
+    const original = SpanUtils.getCurrentTraceId;
 
-    spy.mockImplementation(() => {
+    (SpanUtils as any).getCurrentTraceId = () => {
       if (config.shouldReturnNull) {
         return null;
       }
       throw SpanUtilsErrorTesting.createError(config);
-    });
+    };
 
-    SpanUtilsErrorTesting.mocks.getCurrentTraceId = spy;
-    return spy;
+    SpanUtilsErrorTesting.mocks.getCurrentTraceId = { original };
   }
 
   /**
    * Sets up error simulation for SpanUtils.setCurrentReplayTraceId
    */
-  static mockSetCurrentReplayTraceIdWithError(config: ErrorTestConfig): jest.SpyInstance {
+  static mockSetCurrentReplayTraceIdWithError(config: ErrorTestConfig): void {
     SpanUtilsErrorTesting.ensureLoggerSilenced();
-    const spy = jest.spyOn(SpanUtils, "setCurrentReplayTraceId");
-    spy.mockImplementation(() => {
-      throw SpanUtilsErrorTesting.createError(config);
-    });
+    const original = SpanUtils.setCurrentReplayTraceId;
 
-    SpanUtilsErrorTesting.mocks.setCurrentReplayTraceId = spy;
-    return spy;
+    (SpanUtils as any).setCurrentReplayTraceId = () => {
+      throw SpanUtilsErrorTesting.createError(config);
+    };
+
+    SpanUtilsErrorTesting.mocks.setCurrentReplayTraceId = { original };
   }
 
   /**
    * Restores all mocked SpanUtils methods
    */
   static restoreAllMocks(): void {
-    Object.values(SpanUtilsErrorTesting.mocks).forEach((mock) => {
-      if (mock && typeof mock.mockRestore === "function") {
-        mock.mockRestore();
-      }
-    });
+    // Restore all mocked methods
+    if (SpanUtilsErrorTesting.mocks.createSpan) {
+      (SpanUtils as any).createSpan = SpanUtilsErrorTesting.mocks.createSpan.original;
+    }
+    if (SpanUtilsErrorTesting.mocks.addSpanAttributes) {
+      (SpanUtils as any).addSpanAttributes = SpanUtilsErrorTesting.mocks.addSpanAttributes.original;
+    }
+    if (SpanUtilsErrorTesting.mocks.setStatus) {
+      (SpanUtils as any).setStatus = SpanUtilsErrorTesting.mocks.setStatus.original;
+    }
+    if (SpanUtilsErrorTesting.mocks.endSpan) {
+      (SpanUtils as any).endSpan = SpanUtilsErrorTesting.mocks.endSpan.original;
+    }
+    if (SpanUtilsErrorTesting.mocks.getCurrentSpanInfo) {
+      (SpanUtils as any).getCurrentSpanInfo = SpanUtilsErrorTesting.mocks.getCurrentSpanInfo.original;
+    }
+    if (SpanUtilsErrorTesting.mocks.getCurrentTraceId) {
+      (SpanUtils as any).getCurrentTraceId = SpanUtilsErrorTesting.mocks.getCurrentTraceId.original;
+    }
+    if (SpanUtilsErrorTesting.mocks.setCurrentReplayTraceId) {
+      (SpanUtils as any).setCurrentReplayTraceId = SpanUtilsErrorTesting.mocks.setCurrentReplayTraceId.original;
+    }
 
     SpanUtilsErrorTesting.mocks = {};
-    jest.restoreAllMocks();
     SpanUtilsErrorTesting.restoreLogger();
   }
 

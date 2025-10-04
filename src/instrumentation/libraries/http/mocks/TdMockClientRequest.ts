@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { ClientRequest, IncomingMessage } from "http";
+import type { IncomingMessage } from "http";
 import { TdHttpMockSocket, TdHttpMockSocketOptions } from "./TdHttpMockSocket";
 import { SpanInfo } from "../../../../core/tracing/SpanUtils";
 import { getDecodedType, httpBodyEncoder, normalizeHeaders } from "../utils";
@@ -8,6 +8,9 @@ import { TuskDriftCore } from "../../../../core/TuskDrift";
 import { createMockInputValue } from "../../../../core/utils";
 import { findMockResponseAsync } from "../../../core/utils/mockResponseUtils";
 import { SpanKind } from "@opentelemetry/api";
+
+// Lazy-loaded to avoid loading http module at import time
+let ClientRequest: any;
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { EncodingType } from "../../../../core/tracing/JsonSchemaHelper";
 import { logger } from "../../../../core/utils/logger";
@@ -51,6 +54,7 @@ export class TdMockClientRequest extends EventEmitter {
     callback?: (res: IncomingMessage) => void,
   ) {
     super();
+    TdMockClientRequest._setupPrototype();
     this.tuskDrift = TuskDriftCore.getInstance();
 
     this.spanInfo = spanInfo;
@@ -448,6 +452,17 @@ export class TdMockClientRequest extends EventEmitter {
     this.socket.destroy();
     return this;
   }
-}
 
-Object.setPrototypeOf(TdMockClientRequest.prototype, ClientRequest.prototype);
+  // Set up prototype chain to extend ClientRequest
+  private static _setupPrototype() {
+    if (!ClientRequest) {
+      ClientRequest = require("http").ClientRequest;
+      Object.setPrototypeOf(TdMockClientRequest.prototype, ClientRequest.prototype);
+    }
+  }
+
+  // Call this before creating instances
+  static initialize() {
+    TdMockClientRequest._setupPrototype();
+  }
+}

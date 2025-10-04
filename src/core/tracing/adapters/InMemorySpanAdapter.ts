@@ -56,8 +56,7 @@ function getSpanExporter(): TdSpanExporter | undefined {
 export function registerInMemoryAdapter(adapter: InMemorySpanAdapter): void {
   const spanExporter = getSpanExporter();
 
-  clearRegisteredInMemoryAdapters();
-
+  spanExporter?.clearAdapters();
   registeredAdapters.push(adapter);
   spanExporter?.addAdapter(adapter);
 }

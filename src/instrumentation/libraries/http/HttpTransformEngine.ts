@@ -345,7 +345,33 @@ export class HttpTransformEngine {
       }
 
       try {
-        const nodes = jp.apply((target as any).body, jsonPath, actionFunction);
+        const body = (target as any).body;
+        if (!body) {
+          return false;
+        }
+
+        // Body is base64-encoded, decode and parse it
+        let bodyObj;
+        if (typeof body === "string") {
+          try {
+            const decoded = Buffer.from(body, "base64").toString("utf8");
+            bodyObj = JSON.parse(decoded);
+          } catch (e) {
+            // If decoding/parsing fails, body might not be JSON
+            return false;
+          }
+        } else {
+          bodyObj = body;
+        }
+
+        const nodes = jp.apply(bodyObj, jsonPath, actionFunction);
+
+        // Re-encode the modified body as base64
+        if (typeof body === "string" && nodes.length > 0) {
+          const reencoded = Buffer.from(JSON.stringify(bodyObj)).toString("base64");
+          (target as any).body = reencoded;
+        }
+
         return nodes.length > 0;
       } catch (error) {
         return false;
@@ -359,10 +385,12 @@ export class HttpTransformEngine {
     direction: HttpTransformMatcher["direction"],
   ): (span: HttpSpanData) => boolean {
     const lowerHeader = headerName.toLowerCase();
-    const selector = direction === "inbound" ? "inputValue" : "outputValue";
 
     return (span) => {
-      const target = span[selector] as any;
+      // For inbound: transform request headers (SERVER span inputValue)
+      // For outbound: transform request headers (CLIENT span inputValue)
+      // Note: We always transform the request headers, which is inputValue for both directions
+      const target = span.inputValue as any;
       if (!target?.headers) {
         return false;
       }

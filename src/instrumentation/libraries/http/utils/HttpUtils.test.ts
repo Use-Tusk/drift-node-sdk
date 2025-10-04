@@ -1,3 +1,4 @@
+import test from "ava";
 import {
   decompressBuffer,
   isSupportedEncoding,
@@ -14,238 +15,214 @@ import {
   HttpBodyType
 } from './httpBodyEncoder';
 
-describe('HTTP Utils', () => {
-  describe('Body Decompression', () => {
-    describe('decompressBuffer', () => {
-      it('should decompress gzip encoded data', async () => {
-        const original = Buffer.from('Hello, World!');
-        const zlib = require('zlib');
-        const compressed = zlib.gzipSync(original);
-        const decompressed = await decompressBuffer(compressed, 'gzip');
-        expect(decompressed.toString()).toBe('Hello, World!');
-      });
+// Body Decompression Tests
+test("decompressBuffer - should decompress gzip encoded data", async (t) => {
+  const original = Buffer.from('Hello, World!');
+  const zlib = require('zlib');
+  const compressed = zlib.gzipSync(original);
+  const decompressed = await decompressBuffer(compressed, 'gzip');
+  t.is(decompressed.toString(), 'Hello, World!');
+});
 
-      it('should decompress deflate encoded data', async () => {
-        const original = Buffer.from('Hello, World!');
-        const zlib = require('zlib');
-        const compressed = zlib.deflateSync(original);
-        const decompressed = await decompressBuffer(compressed, 'deflate');
-        expect(decompressed.toString()).toBe('Hello, World!');
-      });
+test("decompressBuffer - should decompress deflate encoded data", async (t) => {
+  const original = Buffer.from('Hello, World!');
+  const zlib = require('zlib');
+  const compressed = zlib.deflateSync(original);
+  const decompressed = await decompressBuffer(compressed, 'deflate');
+  t.is(decompressed.toString(), 'Hello, World!');
+});
 
-      it('should handle unsupported encodings', async () => {
-        const buffer = Buffer.from('test data');
-        const result = await decompressBuffer(buffer, 'unsupported');
-        expect(result).toBe(buffer);
-      });
+test("decompressBuffer - should handle unsupported encodings", async (t) => {
+  const buffer = Buffer.from('test data');
+  const result = await decompressBuffer(buffer, 'unsupported');
+  t.is(result, buffer);
+});
 
-      it('should handle invalid compressed data gracefully', async () => {
-        const invalidData = Buffer.from('not compressed data');
-        try {
-          const result = await decompressBuffer(invalidData, 'gzip');
-          // If it doesn't throw, it should return the original buffer
-          expect(result).toBe(invalidData);
-        } catch (error) {
-          // If it throws, that's also acceptable behavior for invalid data
-          expect(error).toBeDefined();
-        }
-      });
-    });
+test("decompressBuffer - should handle invalid compressed data gracefully", async (t) => {
+  const invalidData = Buffer.from('not compressed data');
+  try {
+    const result = await decompressBuffer(invalidData, 'gzip');
+    // If it doesn't throw, it should return the original buffer
+    t.is(result, invalidData);
+  } catch (error) {
+    // If it throws, that's also acceptable behavior for invalid data
+    t.truthy(error);
+  }
+});
 
-    describe('isSupportedEncoding', () => {
-      it('should return true for supported encodings', () => {
-        expect(isSupportedEncoding('gzip')).toBe(true);
-        expect(isSupportedEncoding('deflate')).toBe(true);
-        expect(isSupportedEncoding('br')).toBe(true);
-      });
+test("isSupportedEncoding - should return true for supported encodings", (t) => {
+  t.is(isSupportedEncoding('gzip'), true);
+  t.is(isSupportedEncoding('deflate'), true);
+  t.is(isSupportedEncoding('br'), true);
+});
 
-      it('should return false for unsupported encodings', () => {
-        expect(isSupportedEncoding('unsupported')).toBe(false);
-        expect(isSupportedEncoding('')).toBe(false);
-      });
-    });
+test("isSupportedEncoding - should return false for unsupported encodings", (t) => {
+  t.is(isSupportedEncoding('unsupported'), false);
+  t.is(isSupportedEncoding(''), false);
+});
 
-    describe('normalizeHeaders', () => {
-      it('should convert header names to lowercase', () => {
-        const headers = { 'Content-Type': 'application/json', 'AUTHORIZATION': 'Bearer token' };
-        const normalized = normalizeHeaders(headers);
-        expect(normalized['content-type']).toBe('application/json');
-        expect(normalized['authorization']).toBe('Bearer token');
-      });
+test("normalizeHeaders - should convert header names to lowercase", (t) => {
+  const headers = { 'Content-Type': 'application/json', 'AUTHORIZATION': 'Bearer token' };
+  const normalized = normalizeHeaders(headers);
+  t.is(normalized['content-type'], 'application/json');
+  t.is(normalized['authorization'], 'Bearer token');
+});
 
-      it('should handle empty headers object', () => {
-        const result = normalizeHeaders({});
-        expect(result).toEqual({});
-      });
-    });
+test("normalizeHeaders - should handle empty headers object", (t) => {
+  const result = normalizeHeaders({});
+  t.deepEqual(result, {});
+});
+
+// Binary Data Handler Tests
+test("isUtf8 - should return true for valid UTF-8 text", (t) => {
+  const buffer = Buffer.from('Hello, World!', 'utf8');
+  t.is(isUtf8(buffer), true);
+});
+
+test("isUtf8 - should return false for binary data", (t) => {
+  const buffer = Buffer.from([0x00, 0x01, 0xFF, 0xFE]);
+  t.is(isUtf8(buffer), false);
+});
+
+test("isUtf8 - should return true for empty buffer", (t) => {
+  const buffer = Buffer.alloc(0);
+  t.is(isUtf8(buffer), true);
+});
+
+test("bufferToString - should convert UTF-8 buffer to string", (t) => {
+  const buffer = Buffer.from('Hello, World!', 'utf8');
+  const result = bufferToString(buffer);
+  t.is(result.content, 'Hello, World!');
+  t.is(result.encoding, 'utf8');
+});
+
+test("bufferToString - should convert binary buffer to base64 string", (t) => {
+  const buffer = Buffer.from([0x00, 0x01, 0xFF, 0xFE]);
+  const result = bufferToString(buffer);
+  t.is(result.content, buffer.toString('base64'));
+  t.is(result.encoding, 'base64');
+});
+
+test("bufferToString - should handle empty buffer", (t) => {
+  const buffer = Buffer.alloc(0);
+  const result = bufferToString(buffer);
+  t.is(result.content, '');
+  t.is(result.encoding, 'utf8');
+});
+
+test("combineChunks - should combine string chunks into a buffer", (t) => {
+  const chunks = ['Hello, ', 'World!'];
+  const result = combineChunks(chunks);
+  t.is(result.toString(), 'Hello, World!');
+});
+
+test("combineChunks - should combine buffer chunks", (t) => {
+  const chunks = [Buffer.from('Hello, '), Buffer.from('World!')];
+  const result = combineChunks(chunks);
+  t.is(result.toString(), 'Hello, World!');
+});
+
+test("combineChunks - should handle empty chunks array", (t) => {
+  const result = combineChunks([]);
+  t.deepEqual(result, Buffer.alloc(0));
+});
+
+// HTTP Body Encoder Tests
+test("httpBodyEncoder - should base64 encode a simple buffer", async (t) => {
+  const buffer = Buffer.from('Hello, World!');
+  const result = await httpBodyEncoder({ bodyBuffer: buffer });
+  t.is(result, buffer.toString('base64'));
+});
+
+test("httpBodyEncoder - should handle empty buffer", async (t) => {
+  const buffer = Buffer.alloc(0);
+  const result = await httpBodyEncoder({ bodyBuffer: buffer });
+  t.is(result, '');
+});
+
+test("httpBodyEncoder - should decompress gzip before encoding", async (t) => {
+  const original = Buffer.from('Hello, World!');
+  const zlib = require('zlib');
+  const compressed = zlib.gzipSync(original);
+  const result = await httpBodyEncoder({
+    bodyBuffer: compressed,
+    contentEncoding: 'gzip'
   });
+  t.is(result, original.toString('base64'));
+});
 
-  describe('Binary Data Handler', () => {
-    describe('isUtf8', () => {
-      it('should return true for valid UTF-8 text', () => {
-        const buffer = Buffer.from('Hello, World!', 'utf8');
-        expect(isUtf8(buffer)).toBe(true);
-      });
-
-      it('should return false for binary data', () => {
-        const buffer = Buffer.from([0x00, 0x01, 0xFF, 0xFE]);
-        expect(isUtf8(buffer)).toBe(false);
-      });
-
-      it('should return true for empty buffer', () => {
-        const buffer = Buffer.alloc(0);
-        expect(isUtf8(buffer)).toBe(true);
-      });
-    });
-
-    describe('bufferToString', () => {
-      it('should convert UTF-8 buffer to string', () => {
-        const buffer = Buffer.from('Hello, World!', 'utf8');
-        const result = bufferToString(buffer);
-        expect(result.content).toBe('Hello, World!');
-        expect(result.encoding).toBe('utf8');
-      });
-
-      it('should convert binary buffer to base64 string', () => {
-        const buffer = Buffer.from([0x00, 0x01, 0xFF, 0xFE]);
-        const result = bufferToString(buffer);
-        expect(result.content).toBe(buffer.toString('base64'));
-        expect(result.encoding).toBe('base64');
-      });
-
-      it('should handle empty buffer', () => {
-        const buffer = Buffer.alloc(0);
-        const result = bufferToString(buffer);
-        expect(result.content).toBe('');
-        expect(result.encoding).toBe('utf8');
-      });
-    });
-
-    describe('combineChunks', () => {
-      it('should combine string chunks into a buffer', () => {
-        const chunks = ['Hello, ', 'World!'];
-        const result = combineChunks(chunks);
-        expect(result.toString()).toBe('Hello, World!');
-      });
-
-      it('should combine buffer chunks', () => {
-        const chunks = [Buffer.from('Hello, '), Buffer.from('World!')];
-        const result = combineChunks(chunks);
-        expect(result.toString()).toBe('Hello, World!');
-      });
-
-      it('should handle empty chunks array', () => {
-        const result = combineChunks([]);
-        expect(result).toEqual(Buffer.alloc(0));
-      });
-    });
+test("httpBodyEncoder - should handle unsupported content encoding gracefully", async (t) => {
+  const buffer = Buffer.from('Hello, World!');
+  const result = await httpBodyEncoder({
+    bodyBuffer: buffer,
+    contentEncoding: 'unsupported'
   });
+  t.is(result, buffer.toString('base64'));
+});
 
-  describe('HTTP Body Encoder', () => {
-    describe('httpBodyEncoder', () => {
-      it('should base64 encode a simple buffer', async () => {
-        const buffer = Buffer.from('Hello, World!');
-        const result = await httpBodyEncoder({ bodyBuffer: buffer });
-        expect(result).toBe(buffer.toString('base64'));
-      });
+test("getDecodedType - should return correct decoded type for JSON content types", (t) => {
+  t.is(getDecodedType('application/json'), HttpBodyType.JSON);
+  t.is(getDecodedType('application/json; charset=utf-8'), HttpBodyType.JSON);
+});
 
-      it('should handle empty buffer', async () => {
-        const buffer = Buffer.alloc(0);
-        const result = await httpBodyEncoder({ bodyBuffer: buffer });
-        expect(result).toBe('');
-      });
+test("getDecodedType - should return correct decoded type for text content types", (t) => {
+  // Based on the actual enum and mapping, text/plain maps to PLAIN_TEXT, not TEXT
+  t.is(getDecodedType('text/plain'), 'PLAIN_TEXT');
+  t.is(getDecodedType('text/html'), 'HTML');
+});
 
-      it('should decompress gzip before encoding', async () => {
-        const original = Buffer.from('Hello, World!');
-        const zlib = require('zlib');
-        const compressed = zlib.gzipSync(original);
-        const result = await httpBodyEncoder({
-          bodyBuffer: compressed,
-          contentEncoding: 'gzip'
-        });
-        expect(result).toBe(original.toString('base64'));
-      });
+test("getDecodedType - should return undefined for unknown content types", (t) => {
+  t.is(getDecodedType('unknown/type'), undefined);
+  t.is(getDecodedType(''), undefined);
+});
 
-      it('should handle unsupported content encoding gracefully', async () => {
-        const buffer = Buffer.from('Hello, World!');
-        const result = await httpBodyEncoder({
-          bodyBuffer: buffer,
-          contentEncoding: 'unsupported'
-        });
-        expect(result).toBe(buffer.toString('base64'));
-      });
-    });
+test("getDecodedType - should handle array of content types", (t) => {
+  t.is(getDecodedType(['application/json', 'text/plain']), HttpBodyType.JSON);
+});
 
-    describe('getDecodedType', () => {
-      it('should return correct decoded type for JSON content types', () => {
-        expect(getDecodedType('application/json')).toBe(HttpBodyType.JSON);
-        expect(getDecodedType('application/json; charset=utf-8')).toBe(HttpBodyType.JSON);
-      });
+test("getDecodedType - should handle case insensitive content types", (t) => {
+  t.is(getDecodedType('APPLICATION/JSON'), HttpBodyType.JSON);
+});
 
-      it('should return correct decoded type for text content types', () => {
-        // Based on the actual enum and mapping, text/plain maps to PLAIN_TEXT, not TEXT
-        expect(getDecodedType('text/plain')).toBe('PLAIN_TEXT');
-        expect(getDecodedType('text/html')).toBe('HTML');
-      });
+test("HttpBodyType - should have correct enum values", (t) => {
+  t.is(HttpBodyType.JSON, 'JSON');
+  t.is(HttpBodyType.TEXT, 'TEXT');
+  t.is(HttpBodyType.RAW, 'RAW');
+  t.is(HttpBodyType.NONE, 'NONE');
+});
 
-      it('should return undefined for unknown content types', () => {
-        expect(getDecodedType('unknown/type')).toBeUndefined();
-        expect(getDecodedType('')).toBeUndefined();
-      });
+// Integration Tests
+test("Integration - should work together - decompress, detect encoding, and encode", async (t) => {
+  const originalData = JSON.stringify({ message: 'Hello, World!' });
+  const buffer = Buffer.from(originalData);
+  const zlib = require('zlib');
+  const compressed = zlib.gzipSync(buffer);
 
-      it('should handle array of content types', () => {
-        expect(getDecodedType(['application/json', 'text/plain'])).toBe(HttpBodyType.JSON);
-      });
+  // Decompress
+  const decompressed = await decompressBuffer(compressed, 'gzip');
+  t.is(decompressed.toString(), originalData);
 
-      it('should handle case insensitive content types', () => {
-        expect(getDecodedType('APPLICATION/JSON')).toBe(HttpBodyType.JSON);
-      });
-    });
+  // Encode
+  const encoded = await httpBodyEncoder({ bodyBuffer: decompressed });
+  t.is(encoded, buffer.toString('base64'));
 
-    describe('HttpBodyType enum', () => {
-      it('should have correct enum values', () => {
-        expect(HttpBodyType.JSON).toBe('JSON');
-        expect(HttpBodyType.TEXT).toBe('TEXT');
-        expect(HttpBodyType.RAW).toBe('RAW');
-        expect(HttpBodyType.NONE).toBe('NONE');
-      });
-    });
-  });
+  // Get type
+  const type = getDecodedType('application/json');
+  t.is(type, HttpBodyType.JSON);
+});
 
-  describe('Integration', () => {
-    it('should work together - decompress, detect encoding, and encode', async () => {
-      const originalData = JSON.stringify({ message: 'Hello, World!' });
-      const buffer = Buffer.from(originalData);
-      const zlib = require('zlib');
-      const compressed = zlib.gzipSync(buffer);
+test("Integration - should handle binary data flow", async (t) => {
+  const binaryData = Buffer.from([0x00, 0x01, 0xFF, 0xFE]);
 
-      // Decompress
-      const decompressed = await decompressBuffer(compressed, 'gzip');
-      expect(decompressed.toString()).toBe(originalData);
+  // Check if binary
+  t.is(isUtf8(binaryData), false);
 
-      // Encode
-      const encoded = await httpBodyEncoder({ bodyBuffer: decompressed });
-      expect(encoded).toBe(buffer.toString('base64'));
+  // Convert to string (should be base64)
+  const stringified = bufferToString(binaryData);
+  t.is(stringified.content, binaryData.toString('base64'));
+  t.is(stringified.encoding, 'base64');
 
-      // Get type
-      const type = getDecodedType('application/json');
-      expect(type).toBe(HttpBodyType.JSON);
-    });
-
-    it('should handle binary data flow', async () => {
-      const binaryData = Buffer.from([0x00, 0x01, 0xFF, 0xFE]);
-
-      // Check if binary
-      expect(isUtf8(binaryData)).toBe(false);
-
-      // Convert to string (should be base64)
-      const stringified = bufferToString(binaryData);
-      expect(stringified.content).toBe(binaryData.toString('base64'));
-      expect(stringified.encoding).toBe('base64');
-
-      // Encode through httpBodyEncoder
-      const encoded = await httpBodyEncoder({ bodyBuffer: binaryData });
-      expect(encoded).toBe(binaryData.toString('base64'));
-    });
-  });
+  // Encode through httpBodyEncoder
+  const encoded = await httpBodyEncoder({ bodyBuffer: binaryData });
+  t.is(encoded, binaryData.toString('base64'));
 });

@@ -24,40 +24,48 @@ TuskDrift.initialize({
 });
 TuskDrift.markAppAsReady();
 
-import axios from "axios";
 import {
   InMemorySpanAdapter,
   registerInMemoryAdapter,
   clearRegisteredInMemoryAdapters,
 } from "../../../../core/tracing/adapters/InMemorySpanAdapter";
 import { setupTestServers, cleanupServers, waitForSpans, TestServers } from "./test-utils";
+import test from 'ava';
+ 
 
-describe("Inbound Drop Transform", () => {
-  let spanAdapter: InMemorySpanAdapter;
+const spanAdapter = new InMemorySpanAdapter();
+registerInMemoryAdapter(spanAdapter);
+
+// Import http at runtime to ensure TuskDrift patches are applied first
+const http = require("http");
+
+
   let servers: TestServers;
 
-  beforeAll(async () => {
+test.before(async () => {
     servers = await setupTestServers();
-    spanAdapter = new InMemorySpanAdapter();
-    registerInMemoryAdapter(spanAdapter);
   });
 
-  afterAll(async () => {
+test.after.always(async () => {
     await cleanupServers(servers);
     clearRegisteredInMemoryAdapters();
   });
 
-  it("should not create any span when inbound request is dropped", async () => {
-    const response = await axios.get(`http://127.0.0.1:${servers.mainServerPort}/admin/users`, {
-      proxy: false,
+test("should not create any span when inbound request is dropped", async (t) => {
+    const response = await new Promise<{ statusCode: number; data: any }>((resolve, reject) => {
+      const req = http.get(`http://127.0.0.1:${servers.mainServerPort}/admin/users`, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          resolve({ statusCode: res.statusCode || 0, data: JSON.parse(data) });
+        });
+      });
+      req.on("error", reject);
     });
 
-    if (response.status !== 200) {
-      throw new Error(`Expected status 200, got ${response.status}`);
-    }
-    if (!Array.isArray(response.data.users) || response.data.users.length !== 1) {
-      throw new Error("Expected users array with 1 element");
-    }
+    t.is(response.statusCode, 200);
+    t.truthy(Array.isArray(response.data.users), "Expected users array");
+    t.is(response.data.users.length, 1, "Expected users array with 1 element");
 
     await waitForSpans();
 
@@ -70,8 +78,5 @@ describe("Inbound Drop Transform", () => {
       return url && url.includes("/admin/users");
     });
 
-    if (adminSpans.length !== 0) {
-      throw new Error(`Expected 0 admin spans, got ${adminSpans.length}`);
-    }
+    t.is(adminSpans.length, 0, `Expected 0 admin spans, got ${adminSpans.length}`);
   });
-});

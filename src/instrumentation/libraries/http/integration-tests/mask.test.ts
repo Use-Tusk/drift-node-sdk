@@ -23,7 +23,6 @@ TuskDrift.initialize({
 });
 TuskDrift.markAppAsReady();
 
-import axios from "axios";
 import { SpanKind } from "@opentelemetry/api";
 import {
   InMemorySpanAdapter,
@@ -31,30 +30,39 @@ import {
   clearRegisteredInMemoryAdapters,
 } from "../../../../core/tracing/adapters/InMemorySpanAdapter";
 import { setupTestServers, cleanupServers, waitForSpans, TestServers } from "./test-utils";
+import test from 'ava';
+ 
 
-describe("Mask Transform", () => {
-  let spanAdapter: InMemorySpanAdapter;
+const spanAdapter = new InMemorySpanAdapter();
+registerInMemoryAdapter(spanAdapter);
+
+const http = require("http");
+
+
   let servers: TestServers;
 
-  beforeAll(async () => {
+test.before(async () => {
     servers = await setupTestServers();
-    spanAdapter = new InMemorySpanAdapter();
-    registerInMemoryAdapter(spanAdapter);
   });
 
-  afterAll(async () => {
+test.after.always(async () => {
     await cleanupServers(servers);
     clearRegisteredInMemoryAdapters();
   });
 
-  it("should mask API key in outbound request headers", async () => {
-    const response = await axios.get(`http://127.0.0.1:${servers.mainServerPort}/call-service-b`, {
-      proxy: false,
+test("should mask API key in outbound request headers", async (t) => {
+    const response = await new Promise<{ statusCode: number }>((resolve, reject) => {
+      const req = http.get(`http://127.0.0.1:${servers.mainServerPort}/call-service-b`, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          resolve({ statusCode: res.statusCode || 0 });
+        });
+      });
+      req.on("error", reject);
     });
 
-    if (response.status !== 200) {
-      throw new Error(`Expected status 200, got ${response.status}`);
-    }
+    t.is(response.statusCode, 200);
 
     await waitForSpans();
 
@@ -65,23 +73,13 @@ describe("Mask Transform", () => {
       return path && path.includes("/api/public") && span.kind === SpanKind.CLIENT;
     });
 
-    if (!outboundToB) {
-      throw new Error("Outbound span to service B not captured");
-    }
+    t.truthy(outboundToB, "Outbound span to service B not captured");
 
-    const inputValue = outboundToB.inputValue as any;
+    const inputValue = outboundToB!.inputValue as any;
     // API key should be masked
     const apiKey = inputValue?.headers?.["X-API-Key"] || inputValue?.headers?.["x-api-key"];
 
-    if (!apiKey) {
-      throw new Error("API key not found in headers");
-    }
-
-    if (!/^\*+$/.test(apiKey)) {
-      throw new Error(`Expected API key to be masked with asterisks, got ${apiKey}`);
-    }
-    if (apiKey.length === 0) {
-      throw new Error("Expected masked API key to have length > 0");
-    }
+    t.truthy(apiKey, "API key not found in headers");
+    t.truthy(/^\*+$/.test(apiKey), `Expected API key to be masked with asterisks, got ${apiKey}`);
+    t.truthy(apiKey.length > 0, "Expected masked API key to have length > 0");
   });
-});

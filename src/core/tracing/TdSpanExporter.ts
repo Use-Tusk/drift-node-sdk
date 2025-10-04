@@ -62,6 +62,10 @@ export class TdSpanExporter implements SpanExporter {
     }
   }
 
+  getAdapters() {
+    return this.adapters;
+  }
+
   /**
    * Add a custom export adapter
    */

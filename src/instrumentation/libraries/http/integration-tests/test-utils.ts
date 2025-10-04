@@ -1,8 +1,8 @@
-import http from "http";
-import express from "express";
-import axios from "axios";
+import type * as http from "http";
+import type * as express from "express";
 
-export async function waitForSpans(timeoutMs: number = 500): Promise<void> {
+export async function waitForSpans(timeoutMs: number = 2500): Promise<void> {
+  // Wait longer than the batch span processor delay (2000ms) to ensure spans are exported
   await new Promise((resolve) => setTimeout(resolve, timeoutMs));
 }
 
@@ -16,6 +16,11 @@ export interface TestServers {
 }
 
 export async function setupTestServers(): Promise<TestServers> {
+  // IMPORTANT: Import at runtime to ensure TuskDrift patches are applied first
+  // The test file must initialize TuskDrift BEFORE calling setupTestServers()
+  const http = require("http");
+  const express = require("express");
+
   // Start service A (sensitive service we want to drop)
   const serviceAApp = express();
   serviceAApp.use(express.json());
@@ -58,43 +63,77 @@ export async function setupTestServers(): Promise<TestServers> {
   const mainApp = express();
   mainApp.use(express.json());
 
-  // Endpoint that calls service A's sensitive endpoint
+  // Endpoint that calls service A's sensitive endpoint using native http
   mainApp.post("/call-service-a-sensitive", async (req, res) => {
-    try {
-      const response = await axios.post(
-        `http://127.0.0.1:${serviceAPort}/api/sensitive`,
-        { userId: req.body.userId },
-        { proxy: false },
-      );
-      res.json({ upstream: response.data });
-    } catch (error: any) {
+    const postData = JSON.stringify({ userId: req.body.userId });
+    const options = {
+      hostname: "127.0.0.1",
+      port: serviceAPort,
+      path: "/api/sensitive",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(postData),
+      },
+    };
+
+    const httpReq = http.request(options, (httpRes) => {
+      let data = "";
+      httpRes.on("data", (chunk) => (data += chunk));
+      httpRes.on("end", () => {
+        res.json({ upstream: JSON.parse(data) });
+      });
+    });
+    httpReq.on("error", (error) => {
       res.status(500).json({ error: error.message });
-    }
+    });
+    httpReq.write(postData);
+    httpReq.end();
   });
 
-  // Endpoint that calls service A's public endpoint
+  // Endpoint that calls service A's public endpoint using native http
   mainApp.get("/call-service-a-public", async (req, res) => {
-    try {
-      const response = await axios.get(`http://127.0.0.1:${serviceAPort}/api/data`, {
-        proxy: false,
+    const options = {
+      hostname: "127.0.0.1",
+      port: serviceAPort,
+      path: "/api/data",
+      method: "GET",
+    };
+
+    const httpReq = http.request(options, (httpRes) => {
+      let data = "";
+      httpRes.on("data", (chunk) => (data += chunk));
+      httpRes.on("end", () => {
+        res.json({ upstream: JSON.parse(data) });
       });
-      res.json({ upstream: response.data });
-    } catch (error: any) {
+    });
+    httpReq.on("error", (error) => {
       res.status(500).json({ error: error.message });
-    }
+    });
+    httpReq.end();
   });
 
-  // Endpoint that calls service B
+  // Endpoint that calls service B using native http
   mainApp.get("/call-service-b", async (req, res) => {
-    try {
-      const response = await axios.get(`http://127.0.0.1:${serviceBPort}/api/public`, {
-        headers: { "X-API-Key": "super-secret-api-key-12345" },
-        proxy: false,
+    const options = {
+      hostname: "127.0.0.1",
+      port: serviceBPort,
+      path: "/api/public",
+      method: "GET",
+      headers: { "X-API-Key": "super-secret-api-key-12345" },
+    };
+
+    const httpReq = http.request(options, (httpRes) => {
+      let data = "";
+      httpRes.on("data", (chunk) => (data += chunk));
+      httpRes.on("end", () => {
+        res.json({ upstream: JSON.parse(data) });
       });
-      res.json({ upstream: response.data });
-    } catch (error: any) {
+    });
+    httpReq.on("error", (error) => {
       res.status(500).json({ error: error.message });
-    }
+    });
+    httpReq.end();
   });
 
   // Admin endpoint (should be dropped on inbound)

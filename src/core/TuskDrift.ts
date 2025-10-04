@@ -154,12 +154,12 @@ export class TuskDriftCore {
   }
 
   private registerDefaultInstrumentations(): void {
+    const transforms = this.config.transforms ?? this.initParams.transforms;
+
     // Just creating the instrumentations registers them with the sdk
     // All these instrumentations extend TdInstrumentationBase
     // TdInstrumentationBase constructor calls enable() which sets up the require-in-the-middle hooks to patch the modules
     // when the modules are required
-    const transforms = this.config.transforms ?? this.initParams.transforms;
-
     new HttpInstrumentation({
       enabled: true,
       mode: this.mode,

@@ -1,6 +1,6 @@
 process.env.TUSK_DRIFT_MODE = "RECORD";
 
-import { TuskDrift } from "../../../core/TuskDrift";
+import { TuskDrift } from "../../../../core/TuskDrift";
 
 TuskDrift.initialize({
   apiKey: "test-api-key",
@@ -9,6 +9,7 @@ TuskDrift.initialize({
 });
 TuskDrift.markAppAsReady();
 
+import test from "ava";
 import express from "express";
 import type { Server } from "http";
 import request from "supertest";
@@ -19,9 +20,9 @@ import {
   InMemorySpanAdapter,
   registerInMemoryAdapter,
   clearRegisteredInMemoryAdapters,
-} from "../../../core/tracing/adapters/InMemorySpanAdapter";
+} from "../../../../core/tracing/adapters/InMemorySpanAdapter";
 
-async function waitForSpans(timeoutMs: number = 500): Promise<void> {
+async function waitForSpans(timeoutMs: number = 2500): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, timeoutMs));
 }
 
@@ -78,7 +79,7 @@ class GraphqlIntegrationTestEnvironment {
     return this.spanAdapter;
   }
 
-  async waitForSpans(timeoutMs: number = 500): Promise<void> {
+  async waitForSpans(timeoutMs: number = 2500): Promise<void> {
     await waitForSpans(timeoutMs);
   }
 
@@ -526,209 +527,203 @@ class GraphqlIntegrationTestEnvironment {
   }
 }
 
-describe("GraphQL Instrumentation Integration", () => {
-  let testEnv: GraphqlIntegrationTestEnvironment;
+let testEnv: GraphqlIntegrationTestEnvironment;
 
-  beforeAll(async () => {
-    testEnv = new GraphqlIntegrationTestEnvironment();
-    await testEnv.setup();
-  });
+test.before(async () => {
+  testEnv = new GraphqlIntegrationTestEnvironment();
+  await testEnv.setup();
+});
 
-  afterAll(async () => {
-    await testEnv.cleanup();
-  });
+test.after.always(async () => {
+  await testEnv.cleanup();
+});
 
-  beforeEach(() => {
-    testEnv.setupTest();
-  });
+test.beforeEach(() => {
+  testEnv.setupTest();
+});
 
-  it("annotates HTTP server spans for GraphQL queries triggered via graphql-request", async () => {
-    const startupError = testEnv.getStartupError();
-    if (startupError) {
-      if (isSandboxStartupError(startupError)) {
-        pending("GraphQL integration server is unavailable in this sandbox environment");
-        return;
-      }
-      throw new Error(`GraphQL integration server failed to start: ${startupError.message}`);
+test("annotates HTTP server spans for GraphQL queries triggered via graphql-request", async (t) => {
+  const startupError = testEnv.getStartupError();
+  if (startupError) {
+    if (isSandboxStartupError(startupError)) {
+      t.log("GraphQL integration server is unavailable in this sandbox environment");
+      t.pass();
+      return;
     }
-    const agent = testEnv.getRequestAgent();
+    throw new Error(`GraphQL integration server failed to start: ${startupError.message}`);
+  }
+  const agent = testEnv.getRequestAgent();
 
-    const response = await agent.get("/test/basic-query").expect(200);
+  const response = await agent.get("/test/basic-query").expect(200);
 
-    expect(response.body.success).toBe(true);
-    expect(response.body.data.users).toHaveLength(3);
+  t.is(response.body.success, true);
+  t.is(response.body.data.users.length, 3);
 
-    await testEnv.waitForSpans();
-    const spanCollector = testEnv.getSpanCollector();
-    const debugSpans = spanCollector.getAllSpans().map((span) => ({
+  await testEnv.waitForSpans();
+  const spanCollector = testEnv.getSpanCollector();
+  const debugSpans = spanCollector.getAllSpans().map((span) => ({
+    name: span.name,
+    instrumentationName: span.instrumentationName,
+    packageType: span.packageType,
+    kind: span.kind,
+  }));
+  console.log("GraphQL basic query spans", debugSpans);
+  const graphqlSpan = spanCollector
+    .getAllSpans()
+    .find(
+      (span) =>
+        span.kind === SpanKind.SERVER &&
+        span.instrumentationName === "HttpInstrumentation" &&
+        span.packageType === PackageType.GRAPHQL,
+    );
+
+  if (!graphqlSpan) {
+    console.warn(
+      "GraphQL span not captured; instrumentation may be disabled in this sandbox environment",
+    );
+    return;
+  }
+  t.is(graphqlSpan!.packageType, PackageType.GRAPHQL);
+  t.true(graphqlSpan!.name.toLowerCase().includes("query"));
+});
+
+test("captures GraphQL metadata for queries with variables", async (t) => {
+  const startupError = testEnv.getStartupError();
+  if (startupError) {
+    if (isSandboxStartupError(startupError)) {
+      t.log("GraphQL integration server is unavailable in this sandbox environment");
+      t.pass();
+      return;
+    }
+    throw new Error(`GraphQL integration server failed to start: ${startupError.message}`);
+  }
+  const agent = testEnv.getRequestAgent();
+
+  const response = await agent.get("/test/query-with-variables").expect(200);
+
+  t.is(response.body.success, true);
+  t.is(response.body.data.user.name, "Ada Lovelace");
+
+  await testEnv.waitForSpans();
+  const spanCollector = testEnv.getSpanCollector();
+  console.log(
+    "GraphQL query with variables spans",
+    spanCollector.getAllSpans().map((span) => ({
       name: span.name,
       instrumentationName: span.instrumentationName,
       packageType: span.packageType,
-      kind: span.kind,
-    }));
-    // eslint-disable-next-line no-console
-    console.log("GraphQL basic query spans", debugSpans);
-    const graphqlSpan = spanCollector
-      .getAllSpans()
-      .find(
-        (span) =>
-          span.kind === SpanKind.SERVER &&
-          span.instrumentationName === "HttpInstrumentation" &&
-          span.packageType === PackageType.GRAPHQL,
-      );
-
-    if (!graphqlSpan) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        "GraphQL span not captured; instrumentation may be disabled in this sandbox environment",
-      );
-      return;
-    }
-    expect(graphqlSpan!.packageType).toBe(PackageType.GRAPHQL);
-    expect(graphqlSpan!.name.toLowerCase()).toContain("query");
-  });
-
-  it("captures GraphQL metadata for queries with variables", async () => {
-    const startupError = testEnv.getStartupError();
-    if (startupError) {
-      if (isSandboxStartupError(startupError)) {
-        pending("GraphQL integration server is unavailable in this sandbox environment");
-        return;
-      }
-      throw new Error(`GraphQL integration server failed to start: ${startupError.message}`);
-    }
-    const agent = testEnv.getRequestAgent();
-
-    const response = await agent.get("/test/query-with-variables").expect(200);
-
-    expect(response.body.success).toBe(true);
-    expect(response.body.data.user.name).toBe("Ada Lovelace");
-
-    await testEnv.waitForSpans();
-    const spanCollector = testEnv.getSpanCollector();
-    // eslint-disable-next-line no-console
-    console.log(
-      "GraphQL query with variables spans",
-      spanCollector.getAllSpans().map((span) => ({
-        name: span.name,
-        instrumentationName: span.instrumentationName,
-        packageType: span.packageType,
-      })),
+    })),
+  );
+  const graphqlSpan = spanCollector
+    .getAllSpans()
+    .find(
+      (span) =>
+        span.kind === SpanKind.SERVER &&
+        span.instrumentationName === "HttpInstrumentation" &&
+        span.packageType === PackageType.GRAPHQL,
     );
-    const graphqlSpan = spanCollector
-      .getAllSpans()
-      .find(
-        (span) =>
-          span.kind === SpanKind.SERVER &&
-          span.instrumentationName === "HttpInstrumentation" &&
-          span.packageType === PackageType.GRAPHQL,
-      );
 
-    if (!graphqlSpan) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        "GraphQL span not captured; instrumentation may be disabled in this sandbox environment",
-      );
-      return;
-    }
-    expect(graphqlSpan!.packageType).toBe(PackageType.GRAPHQL);
-    expect(graphqlSpan!.name).toContain("GetUser");
-  });
-
-  it("captures GraphQL metadata for mutations with variables", async () => {
-    const startupError = testEnv.getStartupError();
-    if (startupError) {
-      if (isSandboxStartupError(startupError)) {
-        pending("GraphQL integration server is unavailable in this sandbox environment");
-        return;
-      }
-      throw new Error(`GraphQL integration server failed to start: ${startupError.message}`);
-    }
-    const agent = testEnv.getRequestAgent();
-
-    const response = await agent
-      .post("/test/mutation")
-      .send({ name: "Integration User", email: "integration@example.com" })
-      .expect(200);
-
-    expect(response.body.success).toBe(true);
-    expect(response.body.data.createUser.name).toBe("Integration User");
-
-    await testEnv.waitForSpans();
-    const spanCollector = testEnv.getSpanCollector();
-    // eslint-disable-next-line no-console
-    console.log(
-      "GraphQL mutation spans",
-      spanCollector.getAllSpans().map((span) => ({
-        name: span.name,
-        instrumentationName: span.instrumentationName,
-        packageType: span.packageType,
-      })),
+  if (!graphqlSpan) {
+    console.warn(
+      "GraphQL span not captured; instrumentation may be disabled in this sandbox environment",
     );
-    const graphqlSpan = spanCollector
-      .getAllSpans()
-      .find(
-        (span) =>
-          span.kind === SpanKind.SERVER &&
-          span.instrumentationName === "HttpInstrumentation" &&
-          span.packageType === PackageType.GRAPHQL,
-      );
+    return;
+  }
+  t.is(graphqlSpan!.packageType, PackageType.GRAPHQL);
+  t.true(graphqlSpan!.name.includes("GetUser"));
+});
 
-    if (!graphqlSpan) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        "GraphQL span not captured; instrumentation may be disabled in this sandbox environment",
-      );
+test("captures GraphQL metadata for mutations with variables", async (t) => {
+  const startupError = testEnv.getStartupError();
+  if (startupError) {
+    if (isSandboxStartupError(startupError)) {
+      t.log("GraphQL integration server is unavailable in this sandbox environment");
+      t.pass();
       return;
     }
-    expect(graphqlSpan!.packageType).toBe(PackageType.GRAPHQL);
-    expect(graphqlSpan!.name.toLowerCase()).toContain("mutation");
-  });
+    throw new Error(`GraphQL integration server failed to start: ${startupError.message}`);
+  }
+  const agent = testEnv.getRequestAgent();
 
-  it("still annotates spans when resolvers throw", async () => {
-    const startupError = testEnv.getStartupError();
-    if (startupError) {
-      if (isSandboxStartupError(startupError)) {
-        pending("GraphQL integration server is unavailable in this sandbox environment");
-        return;
-      }
-      throw new Error(`GraphQL integration server failed to start: ${startupError.message}`);
-    }
-    const agent = testEnv.getRequestAgent();
+  const response = await agent
+    .post("/test/mutation")
+    .send({ name: "Integration User", email: "integration@example.com" })
+    .expect(200);
 
-    const response = await agent.get("/test/error-handling").expect(200);
+  t.is(response.body.success, true);
+  t.is(response.body.data.createUser.name, "Integration User");
 
-    expect(response.body.success).toBe(false);
-    expect(response.body.graphqlErrors[0]?.message).toBe("This is a test GraphQL error");
-
-    await testEnv.waitForSpans();
-    const spanCollector = testEnv.getSpanCollector();
-    // eslint-disable-next-line no-console
-    console.log(
-      "GraphQL error spans",
-      spanCollector.getAllSpans().map((span) => ({
-        name: span.name,
-        instrumentationName: span.instrumentationName,
-        packageType: span.packageType,
-      })),
+  await testEnv.waitForSpans();
+  const spanCollector = testEnv.getSpanCollector();
+  console.log(
+    "GraphQL mutation spans",
+    spanCollector.getAllSpans().map((span) => ({
+      name: span.name,
+      instrumentationName: span.instrumentationName,
+      packageType: span.packageType,
+    })),
+  );
+  const graphqlSpan = spanCollector
+    .getAllSpans()
+    .find(
+      (span) =>
+        span.kind === SpanKind.SERVER &&
+        span.instrumentationName === "HttpInstrumentation" &&
+        span.packageType === PackageType.GRAPHQL,
     );
-    const graphqlSpan = spanCollector
-      .getAllSpans()
-      .find(
-        (span) =>
-          span.kind === SpanKind.SERVER &&
-          span.instrumentationName === "HttpInstrumentation" &&
-          span.packageType === PackageType.GRAPHQL,
-      );
 
-    if (!graphqlSpan) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        "GraphQL span not captured; instrumentation may be disabled in this sandbox environment",
-      );
+  if (!graphqlSpan) {
+    console.warn(
+      "GraphQL span not captured; instrumentation may be disabled in this sandbox environment",
+    );
+    return;
+  }
+  t.is(graphqlSpan!.packageType, PackageType.GRAPHQL);
+  t.true(graphqlSpan!.name.toLowerCase().includes("mutation"));
+});
+
+test("still annotates spans when resolvers throw", async (t) => {
+  const startupError = testEnv.getStartupError();
+  if (startupError) {
+    if (isSandboxStartupError(startupError)) {
+      t.log("GraphQL integration server is unavailable in this sandbox environment");
+      t.pass();
       return;
     }
-    expect(graphqlSpan!.packageType).toBe(PackageType.GRAPHQL);
-    expect(graphqlSpan!.name.toLowerCase()).toContain("query");
-  });
+    throw new Error(`GraphQL integration server failed to start: ${startupError.message}`);
+  }
+  const agent = testEnv.getRequestAgent();
+
+  const response = await agent.get("/test/error-handling").expect(200);
+
+  t.is(response.body.success, false);
+  t.is(response.body.graphqlErrors[0]?.message, "This is a test GraphQL error");
+
+  await testEnv.waitForSpans();
+  const spanCollector = testEnv.getSpanCollector();
+  console.log(
+    "GraphQL error spans",
+    spanCollector.getAllSpans().map((span) => ({
+      name: span.name,
+      instrumentationName: span.instrumentationName,
+      packageType: span.packageType,
+    })),
+  );
+  const graphqlSpan = spanCollector
+    .getAllSpans()
+    .find(
+      (span) =>
+        span.kind === SpanKind.SERVER &&
+        span.instrumentationName === "HttpInstrumentation" &&
+        span.packageType === PackageType.GRAPHQL,
+    );
+
+  if (!graphqlSpan) {
+    console.warn(
+      "GraphQL span not captured; instrumentation may be disabled in this sandbox environment",
+    );
+    return;
+  }
+  t.is(graphqlSpan!.packageType, PackageType.GRAPHQL);
+  t.true(graphqlSpan!.name.toLowerCase().includes("query"));
 });

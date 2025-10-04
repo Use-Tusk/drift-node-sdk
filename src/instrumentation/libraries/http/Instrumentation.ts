@@ -3,7 +3,7 @@ import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrument
 import { TdInstrumentationConfig } from "../../core/baseClasses/TdInstrumentationAbstract";
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode, context } from "@opentelemetry/api";
-import {
+import type {
   ClientRequest,
   IncomingHttpHeaders,
   IncomingMessage,
@@ -83,7 +83,6 @@ export class HttpInstrumentation extends TdInstrumentationBase {
   ): HttpModuleExports | HttpsModuleExports {
     const protocolUpper = protocol.toUpperCase();
     logger.debug(`[HttpInstrumentation] Patching ${protocolUpper} module in ${this.mode} mode`);
-
     if (httpModule._tdPatched) {
       logger.debug(`[HttpInstrumentation] ${protocolUpper} module already patched, skipping`);
       return httpModule;

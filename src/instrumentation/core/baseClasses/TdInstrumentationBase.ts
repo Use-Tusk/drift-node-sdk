@@ -74,13 +74,11 @@ export abstract class TdInstrumentationBase extends TdInstrumentationAbstract {
 
     // Set up require-in-the-middle hooks for each module
     for (const module of this._modules) {
-      // Also set up hook for future requires
-      const onRequire = (exports: any, name: string, baseDir?: string) => {
-        return this._onRequire(module, exports, name, baseDir);
-      };
-
       const hookOptions: HookOptions = { internals: true };
-      new Hook([module.name], hookOptions, onRequire);
+      new Hook([module.name], hookOptions, (exports: unknown, name: string, baseDir?: string) => {
+        console.log("hi", module);
+        return this._onRequire(module, exports, name, baseDir);
+      });
     }
   }
 

@@ -1,3 +1,4 @@
+import test from "ava";
 import * as http from "http";
 import { AddressInfo } from "net";
 import { SpanUtilsErrorTesting, ErrorType } from "../../../core/tracing/SpanUtils.test.helpers";
@@ -124,331 +125,325 @@ async function readJsonBody(req: http.IncomingMessage): Promise<any> {
   return raw ? JSON.parse(raw) : undefined;
 }
 
-describe("Fetch Instrumentation", () => {
-  let fetchInstrumentation: FetchInstrumentation;
-  let originalFetch: typeof globalThis.fetch;
+let fetchInstrumentation: FetchInstrumentation;
+let originalFetch: typeof globalThis.fetch;
 
-  beforeAll(() => {
-    // Store original fetch before any patches - do this once for all tests
-    originalFetch = globalThis.fetch;
+test.before(() => {
+  // Store original fetch before any patches - do this once for all tests
+  originalFetch = globalThis.fetch;
+});
+
+test.beforeEach(() => {
+  // Ensure we start with clean fetch
+  globalThis.fetch = originalFetch;
+
+  fetchInstrumentation = new FetchInstrumentation({
+    mode: TuskDriftMode.RECORD,
+    enabled: true,
   });
 
-  beforeEach(() => {
-    // Ensure we start with clean fetch
-    globalThis.fetch = originalFetch;
+  // Initialize instrumentation which patches global fetch
+  fetchInstrumentation.init();
 
-    fetchInstrumentation = new FetchInstrumentation({
-      mode: TuskDriftMode.RECORD,
-      enabled: true,
-    });
+  // Manually fix the originalFetch reference to point to the true original
+  (fetchInstrumentation as any).originalFetch = originalFetch;
+});
 
-    // Initialize instrumentation which patches global fetch
-    fetchInstrumentation.init();
+test.afterEach(() => {
+  SpanUtilsErrorTesting.teardownErrorResilienceTest();
+  // Restore original fetch
+  globalThis.fetch = originalFetch;
+});
 
-    // Manually fix the originalFetch reference to point to the true original
-    (fetchInstrumentation as any).originalFetch = originalFetch;
+test("Fetch - should perform GET requests successfully", async (t) => {
+  await withLocalServer(
+    async (req, res) => {
+      t.is(req.method, "GET");
+      t.is(req.url, "/test-fetch");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "ok" }));
+    },
+    async (baseUrl) => {
+      const response = await globalThis.fetch(`${baseUrl}/test-fetch`);
+      t.is(response.status, 200);
+      const data = await response.json();
+      t.deepEqual(data, { message: "ok" });
+    },
+  );
+});
+
+test("Fetch - should send POST bodies and receive JSON responses", async (t) => {
+  const payload = { title: "Test Post", body: "Payload", userId: 42 };
+
+  await withLocalServer(
+    async (req, res) => {
+      t.is(req.method, "POST");
+      const body = await readJsonBody(req);
+      t.deepEqual(body, payload);
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          received: true,
+          contentLength: JSON.stringify(body).length,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await globalThis.fetch(`${baseUrl}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      t.is(response.status, 201);
+      const data = await response.json();
+      t.is(data.received, true);
+      t.is(data.contentLength, JSON.stringify(payload).length);
+    },
+  );
+});
+
+test("Fetch - should forward custom request headers", async (t) => {
+  await withLocalServer(
+    async (req, res) => {
+      t.is(req.headers["x-custom-header"], "test-value");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    },
+    async (baseUrl) => {
+      const response = await globalThis.fetch(`${baseUrl}/headers`, {
+        headers: {
+          "X-Custom-Header": "test-value",
+        },
+      });
+
+      t.is(response.ok, true);
+      const data = await response.json();
+      t.is(data.ok, true);
+    },
+  );
+});
+
+test("Fetch - should handle JSON responses correctly", async (t) => {
+  const items = [
+    { id: 1, name: "Item 1" },
+    { id: 2, name: "Item 2" },
+    { id: 3, name: "Item 3" },
+  ];
+
+  await withLocalServer(
+    async (_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(items));
+    },
+    async (baseUrl) => {
+      const response = await globalThis.fetch(`${baseUrl}/items`);
+      t.is(response.status, 200);
+      t.true(response.headers.get("content-type")?.includes("application/json") || false);
+      const data = await response.json();
+      t.deepEqual(data, items);
+    },
+  );
+});
+
+test("Fetch - should support URL objects as fetch input", async (t) => {
+  await withLocalServer(
+    async (req, res) => {
+      t.is(req.url, "/query?limit=5");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ query: req.url }));
+    },
+    async (baseUrl) => {
+      const url = new URL("/query", baseUrl);
+      url.searchParams.set("limit", "5");
+
+      const response = await globalThis.fetch(url);
+      t.is(response.ok, true);
+      const data = await response.json();
+      t.is(data.query, "/query?limit=5");
+    },
+  );
+});
+
+test("Fetch - should complete fetch requests when SpanUtils.createSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockCreateSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span create span network error",
   });
 
-  afterEach(() => {
-    SpanUtilsErrorTesting.teardownErrorResilienceTest();
-    // Restore original fetch
-    globalThis.fetch = originalFetch;
+  const { responseData, statusCode } = await createServerAndMakeFetchRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
+
+test("Fetch - should complete fetch requests when SpanUtils.addSpanAttributes throws", async (t) => {
+  SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span attributes network error",
   });
 
-  describe("basic fetch behavior", () => {
-    it("should perform GET requests successfully", async () => {
-      await withLocalServer(
-        async (req, res) => {
-          expect(req.method).toBe("GET");
-          expect(req.url).toBe("/test-fetch");
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ message: "ok" }));
-        },
-        async (baseUrl) => {
-          const response = await globalThis.fetch(`${baseUrl}/test-fetch`);
-          expect(response.status).toBe(200);
-          const data = await response.json();
-          expect(data).toEqual({ message: "ok" });
-        },
-      );
-    });
+  const { responseData, statusCode } = await createServerAndMakeFetchRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
 
-    it("should send POST bodies and receive JSON responses", async () => {
-      const payload = { title: "Test Post", body: "Payload", userId: 42 };
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
 
-      await withLocalServer(
-        async (req, res) => {
-          expect(req.method).toBe("POST");
-          const body = await readJsonBody(req);
-          expect(body).toEqual(payload);
-          res.writeHead(201, { "Content-Type": "application/json" });
-          res.end(
-            JSON.stringify({
-              received: true,
-              contentLength: JSON.stringify(body).length,
-            }),
-          );
-        },
-        async (baseUrl) => {
-          const response = await globalThis.fetch(`${baseUrl}/submit`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-
-          expect(response.status).toBe(201);
-          const data = await response.json();
-          expect(data.received).toBe(true);
-          expect(data.contentLength).toBe(JSON.stringify(payload).length);
-        },
-      );
-    });
-
-    it("should forward custom request headers", async () => {
-      await withLocalServer(
-        async (req, res) => {
-          expect(req.headers["x-custom-header"]).toBe("test-value");
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: true }));
-        },
-        async (baseUrl) => {
-          const response = await globalThis.fetch(`${baseUrl}/headers`, {
-            headers: {
-              "X-Custom-Header": "test-value",
-            },
-          });
-
-          expect(response.ok).toBe(true);
-          const data = await response.json();
-          expect(data.ok).toBe(true);
-        },
-      );
-    });
-
-    it("should handle JSON responses correctly", async () => {
-      const items = [
-        { id: 1, name: "Item 1" },
-        { id: 2, name: "Item 2" },
-        { id: 3, name: "Item 3" },
-      ];
-
-      await withLocalServer(
-        async (_req, res) => {
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(items));
-        },
-        async (baseUrl) => {
-          const response = await globalThis.fetch(`${baseUrl}/items`);
-          expect(response.status).toBe(200);
-          expect(response.headers.get("content-type")).toContain("application/json");
-          const data = await response.json();
-          expect(data).toEqual(items);
-        },
-      );
-    });
-
-    it("should support URL objects as fetch input", async () => {
-      await withLocalServer(
-        async (req, res) => {
-          expect(req.url).toBe("/query?limit=5");
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ query: req.url }));
-        },
-        async (baseUrl) => {
-          const url = new URL("/query", baseUrl);
-          url.searchParams.set("limit", "5");
-
-          const response = await globalThis.fetch(url);
-          expect(response.ok).toBe(true);
-          const data = await response.json();
-          expect(data.query).toBe("/query?limit=5");
-        },
-      );
-    });
+test("Fetch - should complete fetch requests when SpanUtils.setStatus throws", async (t) => {
+  SpanUtilsErrorTesting.mockSetStatusWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span set status network error",
   });
 
-  describe("Fetch Request Error Resilience", () => {
-    it("should complete fetch requests when SpanUtils.createSpan throws", async () => {
-      SpanUtilsErrorTesting.mockCreateSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span create span network error",
-      });
+  const { responseData, statusCode } = await createServerAndMakeFetchRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
 
-      const { responseData, statusCode } = await createServerAndMakeFetchRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
 
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete fetch requests when SpanUtils.addSpanAttributes throws", async () => {
-      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span attributes network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeFetchRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete fetch requests when SpanUtils.setStatus throws", async () => {
-      SpanUtilsErrorTesting.mockSetStatusWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span set status network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeFetchRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete fetch requests when SpanUtils.endSpan throws", async () => {
-      SpanUtilsErrorTesting.mockEndSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span end span network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeFetchRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete fetch requests when SpanUtils.getCurrentSpanInfo throws", async () => {
-      SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span get current span info network error",
-        shouldReturnNull: true,
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeFetchRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete fetch requests when SpanUtils.getCurrentTraceId throws", async () => {
-      SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span get current trace id network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeFetchRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete fetch requests when SpanUtils.setCurrentReplayTraceId throws", async () => {
-      SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span set current replay trace id network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeFetchRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
+test("Fetch - should complete fetch requests when SpanUtils.endSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockEndSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span end span network error",
   });
+
+  const { responseData, statusCode } = await createServerAndMakeFetchRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
+
+test("Fetch - should complete fetch requests when SpanUtils.getCurrentSpanInfo throws", async (t) => {
+  SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span get current span info network error",
+    shouldReturnNull: true,
+  });
+
+  const { responseData, statusCode } = await createServerAndMakeFetchRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
+
+test("Fetch - should complete fetch requests when SpanUtils.getCurrentTraceId throws", async (t) => {
+  SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span get current trace id network error",
+  });
+
+  const { responseData, statusCode } = await createServerAndMakeFetchRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
+
+test("Fetch - should complete fetch requests when SpanUtils.setCurrentReplayTraceId throws", async (t) => {
+  SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span set current replay trace id network error",
+  });
+
+  const { responseData, statusCode } = await createServerAndMakeFetchRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
 });
