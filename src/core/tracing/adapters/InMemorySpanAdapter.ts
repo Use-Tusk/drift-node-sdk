@@ -48,8 +48,7 @@ export class InMemorySpanAdapter implements SpanExportAdapter {
 const registeredAdapters: InMemorySpanAdapter[] = [];
 
 function getSpanExporter(): TdSpanExporter | undefined {
-  const tuskDrift = TuskDriftCore.getInstance() as unknown as { spanExporter?: TdSpanExporter };
-  return tuskDrift.spanExporter;
+  return TuskDriftCore.getInstance().spanExporter;
 }
 
 /** Clears *all* other adapters and registers the in memory adapter. Probably
@@ -85,8 +84,4 @@ export function clearRegisteredInMemoryAdapters(): void {
   }
 
   registeredAdapters.length = 0;
-}
-
-export function getRegisteredInMemoryAdapterCount(): number {
-  return registeredAdapters.length;
 }

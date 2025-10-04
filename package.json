@@ -24,7 +24,7 @@
     "prepare": "npm run build",
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
-    "test": "./scripts/run-tests.sh",
+    "test": "./scripts/run-tests.sh all",
     "test:int": "./scripts/run-tests.sh int",
     "test:unit": "./scripts/run-tests.sh unit"
   },

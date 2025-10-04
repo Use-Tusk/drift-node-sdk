@@ -25,7 +25,7 @@ case "$command" in
         unit)
                 npx jest --testMatch "**/*.test.ts" "$@" || code=$?
                 ;;
-        *)
+        all)
                 dockerup
                 npx jest "$@" || code=$?
                 dockerdown

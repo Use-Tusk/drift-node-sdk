@@ -65,7 +65,7 @@ export class TuskDriftCore {
   private cliConnectionPromise: Promise<void> | null;
   // Add a flag to track connection status
   private isConnectedWithCLI = false;
-  private spanExporter?: TdSpanExporter;
+  spanExporter?: TdSpanExporter;
 
   constructor() {
     this.mode = this.detectMode();
