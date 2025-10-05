@@ -48,26 +48,27 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       return postgresModule;
     }
 
-    // The postgres package exports a function as the default export
-    // For ESM compatibility, we need to wrap it using the shimmer wrap utility
     const self = this;
 
-    // Check if this is a default export (function)
-    if (postgresModule.default && typeof postgresModule.default === "function") {
-      // ESM default export - wrap it in place
+    // ESM Support: Detect if this is an ESM module by checking Symbol.toStringTag
+    // ESM modules have Symbol.toStringTag === 'Module'
+    const isESM = (postgresModule as any)[Symbol.toStringTag] === 'Module';
+
+    if (isESM) {
+      // ESM Case: Default function exports are in the .default property
+      // In ESM: import postgres from 'postgres' gives { default: function(...) {...} }
+      // We need to wrap moduleExports.default, not the module itself
       logger.debug(`[PostgresInstrumentation] Wrapping ESM default export`);
       this._wrap(postgresModule, "default", (originalFunction: any) => {
         return function (this: any, ...args: any[]) {
-          logger.debug(`[PostgresInstrumentation] Wrapped postgres() (ESM default) called with args:`, args);
           return self._handlePostgresConnection(originalFunction, args);
         };
       });
-    } else if (typeof postgresModule === "function") {
-      // CJS module export or direct function - need to wrap it if it has a callable property
+    } else {
+      // CommonJS Case: The module IS the function directly
+      // In CJS: const postgres = require('postgres') gives the function directly
+      // We need to create a wrapped function and return it
       logger.debug(`[PostgresInstrumentation] Module is a function (CJS style)`);
-
-      // For CJS, we can't replace the function itself, but we can wrap it if it has a callable property
-      // Actually for CJS functions exported directly, we need to return a wrapped version
       const originalFunction = postgresModule as any;
 
       const wrappedFunction = function (...args: any[]) {
@@ -76,17 +77,18 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       } as any;
 
       // Copy ALL properties from original function to wrapped function
+      // This ensures the wrapped function has all the same properties (like .sql, etc.)
       Object.setPrototypeOf(wrappedFunction, Object.getPrototypeOf(originalFunction));
       Object.defineProperty(wrappedFunction, "name", { value: originalFunction.name });
 
-      // Copy all properties
+      // Copy all enumerable properties
       for (const key in originalFunction) {
         if (originalFunction.hasOwnProperty(key)) {
           wrappedFunction[key] = originalFunction[key];
         }
       }
 
-      // Copy all own property descriptors
+      // Copy all own property descriptors (for non-enumerable properties)
       Object.getOwnPropertyNames(originalFunction).forEach((key) => {
         if (key !== "prototype" && key !== "length" && key !== "name") {
           const descriptor = Object.getOwnPropertyDescriptor(originalFunction, key);
@@ -99,6 +101,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       postgresModule = wrappedFunction;
     }
 
+    // TODO: need to test that this actually gets patched in ESM mode
     // Also patch the sql function if it exists as a named export
     if (postgresModule.sql && typeof postgresModule.sql === "function") {
       this._wrap(postgresModule, "sql", this._getSqlPatchFn());

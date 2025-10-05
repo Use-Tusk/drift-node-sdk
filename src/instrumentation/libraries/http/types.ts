@@ -79,7 +79,6 @@ export interface HttpModuleExports {
   maxHeaderSize: number;
   globalAgent: Agent;
   // Custom property added by our instrumentation
-  _tdPatched?: boolean;
 }
 
 export interface HttpsModuleExports {
@@ -90,5 +89,4 @@ export interface HttpsModuleExports {
   get: Function;
   request: Function;
   // Custom property added by our instrumentation
-  _tdPatched?: boolean;
 }

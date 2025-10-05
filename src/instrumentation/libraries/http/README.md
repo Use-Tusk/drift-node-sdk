@@ -60,3 +60,12 @@ HTTP request and response instrumentation for both client (outbound requests) an
 - Uses `TUSK_SKIP_HEADER` to identify and bypass SDK requests
 - Checks `isTuskDriftIngestionUrl()` to avoid instrumenting drift exports
 - Prevents infinite loops and span pollution
+
+### ESM-Specific Handling
+
+The HTTP instrumentation handles both CommonJS and ESM modules:
+
+- **ESM Detection**: Uses `Symbol.toStringTag === 'Module'` to detect ESM modules
+- **Default Export Sync**: When ESM is detected, wrapped methods are also set on `moduleExports.default` to ensure both named and default imports work correctly
+
+This ensures proper instrumentation whether users import via `import http from 'http'` (default) or `import * as http from 'http'` (namespace).

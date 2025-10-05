@@ -103,10 +103,6 @@ export abstract class TdInstrumentationBase extends TdInstrumentationAbstract {
       // Register ESM hook (import-in-the-middle)
       const esmHook = new HookImport([module.name], { internals: false }, hookFn);
       this._hooks.push(esmHook);
-
-      logger.debug(
-        `Registered hooks for module ${module.name} (instrumentation: ${this.instrumentationName})`,
-      );
     }
   }
 
@@ -115,34 +111,17 @@ export abstract class TdInstrumentationBase extends TdInstrumentationAbstract {
   }
 
   /**
-   * Mark a module as patched. Works for both CJS and ESM modules.
-   * For CJS, sets _tdPatched property. For ESM, adds to WeakSet (since ESM exports are immutable).
+   * Mark a module as patched.
    */
   protected markModuleAsPatched(moduleExports: any): void {
-    try {
-      // Try to set property (works for CJS)
-      moduleExports._tdPatched = true;
-    } catch {
-      // If that fails (ESM), add to WeakSet
-      if (typeof moduleExports === "object" && moduleExports !== null) {
-        TdInstrumentationBase._patchedModules.add(moduleExports);
-      }
-    }
+    TdInstrumentationBase._patchedModules.add(moduleExports);
   }
 
   /**
-   * Check if a module has already been patched. Works for both CJS and ESM modules.
+   * Check if a module has already been patched.
    */
   protected isModulePatched(moduleExports: any): boolean {
-    // Check property first (CJS)
-    if (moduleExports._tdPatched) {
-      return true;
-    }
-    // Check WeakSet (ESM)
-    if (typeof moduleExports === "object" && moduleExports !== null) {
-      return TdInstrumentationBase._patchedModules.has(moduleExports);
-    }
-    return false;
+    return TdInstrumentationBase._patchedModules.has(moduleExports);
   }
 
   private _onRequire(

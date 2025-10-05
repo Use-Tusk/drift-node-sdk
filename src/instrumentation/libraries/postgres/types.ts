@@ -23,7 +23,6 @@ export interface PostgresConnectionInputValue {
 export interface PostgresModuleExports {
   sql?: Function;
   default?: Function;
-  _tdPatched?: boolean;
   [key: string]: any;
 }
 
