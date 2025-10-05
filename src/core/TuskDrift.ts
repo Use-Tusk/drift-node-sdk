@@ -593,7 +593,6 @@ export class TuskDriftCore {
   createReplayMappingsForTrace(traceId: string): void {
     if (!this.memoryStore.isInitialized()) {
       // Only initialized for integration tests
-      logger.error("Memory store not initialized. Cannot create replay mappings.");
       return;
     }
 
