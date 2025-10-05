@@ -44,7 +44,7 @@ export class TcpInstrumentation extends TdInstrumentationBase {
   private _patchNetModule(netModule: any): any {
     logger.debug(`[TcpInstrumentation] Patching NET module in ${this.mode} mode`);
 
-    if (netModule._tdPatched) {
+    if (this.isModulePatched(netModule)) {
       logger.debug(`[TcpInstrumentation] NET module already patched, skipping`);
       return netModule;
     }
@@ -70,7 +70,7 @@ export class TcpInstrumentation extends TdInstrumentationBase {
       return self._handleTcpCall("write", originalWrite, args, this);
     };
 
-    netModule._tdPatched = true;
+    this.markModuleAsPatched(netModule);
     return netModule;
   }
 

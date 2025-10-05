@@ -12,6 +12,9 @@ import {
   PostgresInstrumentationConfig,
   PostgresRow,
   PostgresConvertedResult,
+  PostgresReturnType,
+  PostgresOutputValueType,
+  isPostgresOutputValueType,
 } from "./types";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils/logger";
@@ -40,27 +43,60 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
   private _patchPostgresModule(postgresModule: PostgresModuleExports): PostgresModuleExports {
     logger.debug(`[PostgresInstrumentation] Patching Postgres module in ${this.mode} mode`);
 
-    if (postgresModule._tdPatched) {
+    if (this.isModulePatched(postgresModule)) {
       logger.debug(`[PostgresInstrumentation] Postgres module already patched, skipping`);
       return postgresModule;
     }
 
-    // The postgres package exports a function that creates sql instances
-    // We need to wrap the main function to intercept connection creation and sql queries
-    if (typeof postgresModule === "function") {
-      // For default export (the main function that creates sql instances)
+    // The postgres package exports a function as the default export
+    // For ESM compatibility, we need to wrap it using the shimmer wrap utility
+    const self = this;
+
+    // Check if this is a default export (function)
+    if (postgresModule.default && typeof postgresModule.default === "function") {
+      // ESM default export - wrap it in place
+      logger.debug(`[PostgresInstrumentation] Wrapping ESM default export`);
+      this._wrap(postgresModule, "default", (originalFunction: any) => {
+        return function (this: any, ...args: any[]) {
+          logger.debug(`[PostgresInstrumentation] Wrapped postgres() (ESM default) called with args:`, args);
+          return self._handlePostgresConnection(originalFunction, args);
+        };
+      });
+    } else if (typeof postgresModule === "function") {
+      // CJS module export or direct function - need to wrap it if it has a callable property
+      logger.debug(`[PostgresInstrumentation] Module is a function (CJS style)`);
+
+      // For CJS, we can't replace the function itself, but we can wrap it if it has a callable property
+      // Actually for CJS functions exported directly, we need to return a wrapped version
       const originalFunction = postgresModule as any;
-      const self = this;
 
       const wrappedFunction = function (...args: any[]) {
+        logger.debug(`[PostgresInstrumentation] Wrapped postgres() (CJS) called with args:`, args);
         return self._handlePostgresConnection(originalFunction, args);
-      };
+      } as any;
 
-      // Copy properties from original function
+      // Copy ALL properties from original function to wrapped function
       Object.setPrototypeOf(wrappedFunction, Object.getPrototypeOf(originalFunction));
       Object.defineProperty(wrappedFunction, "name", { value: originalFunction.name });
 
-      postgresModule = wrappedFunction as any;
+      // Copy all properties
+      for (const key in originalFunction) {
+        if (originalFunction.hasOwnProperty(key)) {
+          wrappedFunction[key] = originalFunction[key];
+        }
+      }
+
+      // Copy all own property descriptors
+      Object.getOwnPropertyNames(originalFunction).forEach((key) => {
+        if (key !== "prototype" && key !== "length" && key !== "name") {
+          const descriptor = Object.getOwnPropertyDescriptor(originalFunction, key);
+          if (descriptor) {
+            Object.defineProperty(wrappedFunction, key, descriptor);
+          }
+        }
+      });
+
+      postgresModule = wrappedFunction;
     }
 
     // Also patch the sql function if it exists as a named export
@@ -69,7 +105,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       logger.debug(`[PostgresInstrumentation] Wrapped sql function`);
     }
 
-    postgresModule._tdPatched = true;
+    this.markModuleAsPatched(postgresModule);
     logger.debug(`[PostgresInstrumentation] Postgres module patching complete`);
 
     return postgresModule;
@@ -803,8 +839,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     // postgres.js returns an array with metadata properties attached
     const resultArray = Object.assign(rows, {
-      command: isResultObject ? processedResult.command : "SELECT",
-      count: isResultObject ? processedResult.count : rows.length,
+      command: isResultObject ? processedResult.command : undefined,
+      count: isResultObject ? processedResult.count : undefined,
     });
     return resultArray;
   }
@@ -899,8 +935,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
           // Return array with metadata
           return Object.assign(valueArrays, {
-            command: isResultObject ? result.command : "SELECT",
-            count: isResultObject ? result.count : valueArrays.length,
+            command: isResultObject ? result.command : undefined,
+            count: isResultObject ? result.count : undefined,
           });
         });
       },
@@ -913,115 +949,54 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
    * Convert PostgreSQL string values back to appropriate JavaScript types
    * based on common PostgreSQL data patterns.
    */
-  private convertPostgresTypes(result: any): PostgresConvertedResult {
-    if (!result) {
-      return result;
+  private convertPostgresTypes(result: any): PostgresConvertedResult | undefined {
+    // if result is not of type PostgresOutputValueType, throw an error
+    if (!isPostgresOutputValueType(result)) {
+      logger.error(`[PostgresInstrumentation] output value is not of type PostgresOutputValueType: ${JSON.stringify(result)}`);
+      return undefined;
     }
+
+    if (!result) {
+      return undefined;
+    }
+
+    // Check for our metadata flag
+    const { _tdOriginalFormat: originalFormat, ...convertedResult } = result;
 
     // Handle postgres.js result format: { command, count, rows }
-    if (result && typeof result === "object" && "rows" in result) {
-      const convertedResult = { ...result };
-
-      if (Array.isArray(result.rows)) {
-        convertedResult.rows = result.rows.map((row: any) => {
-          if (typeof row !== "object" || row === null) {
-            return row;
-          }
-
-          const convertedRow = { ...row };
-
-          Object.keys(row).forEach((fieldName) => {
-            const value = row[fieldName];
-
-            if (value === null || value === undefined) {
-              return; // Keep null/undefined values as-is
-            }
-
-            // Try to detect and convert date/timestamp strings
-            if (typeof value === "string") {
-              // Check if it looks like an ISO date string
-              const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
-              if (isoDateRegex.test(value)) {
-                const dateObj = new Date(value);
-                if (!isNaN(dateObj.getTime())) {
-                  convertedRow[fieldName] = dateObj;
-                }
-              }
-            }
-          });
-
-          return convertedRow;
-        });
-      }
-
+    if (originalFormat === PostgresReturnType.OBJECT) {
       return convertedResult;
+    } else if (originalFormat === PostgresReturnType.ARRAY) {
+      return convertedResult.rows || [];
+    } else {
+      logger.error(`[PostgresInstrumentation] Invalid result format: ${JSON.stringify(result)}`);
+      return undefined;
     }
-
-    // Handle direct array format (fallback)
-    if (Array.isArray(result)) {
-      const convertedRows = result.map((row: any) => {
-        if (typeof row !== "object" || row === null) {
-          return row;
-        }
-
-        const convertedRow = { ...row };
-
-        Object.keys(row).forEach((fieldName) => {
-          const value = row[fieldName];
-
-          if (value === null || value === undefined) {
-            return; // Keep null/undefined values as-is
-          }
-
-          // Try to detect and convert date/timestamp strings
-          if (typeof value === "string") {
-            // Check if it looks like an ISO date string
-            const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
-            if (isoDateRegex.test(value)) {
-              const dateObj = new Date(value);
-              if (!isNaN(dateObj.getTime())) {
-                convertedRow[fieldName] = dateObj;
-              }
-            }
-          }
-        });
-
-        return convertedRow;
-      });
-
-      return convertedRows;
-    }
-
-    // Return as-is for other formats
-    return result;
   }
 
   private _addOutputAttributesToSpan(spanInfo: SpanInfo, result?: any): void {
     if (!result) return;
 
-    let outputValue: any;
+    let outputValue: PostgresOutputValueType;
 
     if (Array.isArray(result)) {
-      // Direct array result
+      // Direct array result - wrap with metadata to indicate original format
+      logger.debug(`[PostgresInstrumentation] Adding output attributes to span for array result: ${JSON.stringify(result)}`);
       outputValue = {
-        count: result.length,
+        _tdOriginalFormat: PostgresReturnType.ARRAY,
         rows: result,
-        command: "SELECT", // Default assumption for array results
       };
-    } else if (result && typeof result === "object" && "count" in result) {
-      // postgres.js style result with count property
+    } else if (typeof result === "object") {
+      logger.debug(`[PostgresInstrumentation] Adding output attributes to span for object result: ${JSON.stringify(result)}`);
       outputValue = {
-        count: result.count || 0,
-        rows: result.rows || result,
-        command: result.command || "UNKNOWN",
+        _tdOriginalFormat: PostgresReturnType.OBJECT,
+        count: result.count,
+        rows: result.rows,
+        command: result.command,
       };
     } else {
-      // Fallback
-      outputValue = {
-        count: 1,
-        rows: [result],
-        command: "UNKNOWN",
-      };
+      logger.error(`[PostgresInstrumentation] Invalid result format: ${JSON.stringify(result)}`);
+      return;
     }
 
     SpanUtils.addSpanAttributes(spanInfo.span, {

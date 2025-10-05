@@ -2,13 +2,18 @@ import path from "path";
 import { satisfies } from "semver";
 import { TdInstrumentationAbstract, TdInstrumentationConfig } from "./TdInstrumentationAbstract";
 import { TdInstrumentationNodeModule } from "./TdInstrumentationNodeModule";
-import { Hook, HookOptions } from "require-in-the-middle";
+import { Hook as HookRequire, HookOptions } from "require-in-the-middle";
+import { Hook as HookImport } from "import-in-the-middle";
+import type { HookFn } from "import-in-the-middle";
 import { sendVersionMismatchAlert } from "../../../core/analytics";
 import { logger } from "../../../core/utils/logger";
 
 export abstract class TdInstrumentationBase extends TdInstrumentationAbstract {
   protected _modules: TdInstrumentationNodeModule[] = [];
+  protected _hooks: (HookRequire | HookImport)[] = [];
   protected _enabled = false;
+  // WeakSet to track patched modules (needed for ESM where we can't add properties to module exports)
+  private static _patchedModules = new WeakSet<object>();
 
   constructor(instrumentationName: string, config: TdInstrumentationConfig = {}) {
     super(instrumentationName, config);
@@ -72,20 +77,72 @@ export abstract class TdInstrumentationBase extends TdInstrumentationAbstract {
     }
     this._enabled = true;
 
-    // Set up require-in-the-middle hooks for each module
+    // Set up hooks for each module (both CJS and ESM)
     for (const module of this._modules) {
-      // Also set up hook for future requires
+      // CommonJS hook callback
       const onRequire = (exports: any, name: string, baseDir?: string) => {
         return this._onRequire(module, exports, name, baseDir);
       };
 
+      // ESM hook callback
+      const hookFn: HookFn = (exports, name, baseDir) => {
+        // Handle absolute paths for ESM
+        if (!baseDir && path.isAbsolute(name)) {
+          const parsedPath = path.parse(name);
+          name = parsedPath.name;
+          baseDir = parsedPath.dir;
+        }
+        return this._onRequire(module, exports, name, baseDir || undefined);
+      };
+
+      // Register CommonJS hook (require-in-the-middle)
       const hookOptions: HookOptions = { internals: true };
-      new Hook([module.name], hookOptions, onRequire);
+      const cjsHook = new HookRequire([module.name], hookOptions, onRequire);
+      this._hooks.push(cjsHook);
+
+      // Register ESM hook (import-in-the-middle)
+      const esmHook = new HookImport([module.name], { internals: false }, hookFn);
+      this._hooks.push(esmHook);
+
+      logger.debug(
+        `Registered hooks for module ${module.name} (instrumentation: ${this.instrumentationName})`,
+      );
     }
   }
 
   isEnabled(): boolean {
     return this._enabled;
+  }
+
+  /**
+   * Mark a module as patched. Works for both CJS and ESM modules.
+   * For CJS, sets _tdPatched property. For ESM, adds to WeakSet (since ESM exports are immutable).
+   */
+  protected markModuleAsPatched(moduleExports: any): void {
+    try {
+      // Try to set property (works for CJS)
+      moduleExports._tdPatched = true;
+    } catch {
+      // If that fails (ESM), add to WeakSet
+      if (typeof moduleExports === "object" && moduleExports !== null) {
+        TdInstrumentationBase._patchedModules.add(moduleExports);
+      }
+    }
+  }
+
+  /**
+   * Check if a module has already been patched. Works for both CJS and ESM modules.
+   */
+  protected isModulePatched(moduleExports: any): boolean {
+    // Check property first (CJS)
+    if (moduleExports._tdPatched) {
+      return true;
+    }
+    // Check WeakSet (ESM)
+    if (typeof moduleExports === "object" && moduleExports !== null) {
+      return TdInstrumentationBase._patchedModules.has(moduleExports);
+    }
+    return false;
   }
 
   private _onRequire(

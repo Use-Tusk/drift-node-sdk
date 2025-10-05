@@ -9,7 +9,8 @@
   },
   "type": "module",
   "files": [
-    "dist/**"
+    "dist/**",
+    "hook.mjs"
   ],
   "publishConfig": {
     "access": "public",
@@ -75,6 +76,7 @@
     "@use-tusk/drift-schemas": "^0.1.10",
     "express": "^5.1.0",
     "google-protobuf": "^4.0.0",
+    "import-in-the-middle": "^1.8.1",
     "install": "^0.13.0",
     "js-yaml": "^4.1.0",
     "jsonpath": "^1.1.1",

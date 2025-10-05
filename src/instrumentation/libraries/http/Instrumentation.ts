@@ -84,7 +84,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     const protocolUpper = protocol.toUpperCase();
     logger.debug(`[HttpInstrumentation] Patching ${protocolUpper} module in ${this.mode} mode`);
 
-    if (httpModule._tdPatched) {
+    if (this.isModulePatched(httpModule)) {
       logger.debug(`[HttpInstrumentation] ${protocolUpper} module already patched, skipping`);
       return httpModule;
     }
@@ -98,7 +98,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
       logger.debug(`[HttpInstrumentation] Wrapped Server.prototype.emit for ${protocolUpper}`);
     }
 
-    httpModule._tdPatched = true;
+    this.markModuleAsPatched(httpModule);
     logger.debug(`[HttpInstrumentation] ${protocolUpper} module patching complete`);
 
     return httpModule;
