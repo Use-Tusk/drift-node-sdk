@@ -1,7 +1,7 @@
 import { SpanInfo } from "../../../core/tracing/SpanUtils";
 import { TuskDrift } from "../../../core/TuskDrift";
 import { TdMockClientRequest, TdMockClientRequestOptions } from "./mocks/TdMockClientRequest";
-import { RequestOptions } from "http";
+import type { RequestOptions } from "http";
 import { logger } from "../../../core/utils/logger";
 
 /**

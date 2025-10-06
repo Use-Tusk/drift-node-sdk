@@ -1,282 +1,278 @@
+import test from 'ava';
 import * as zlib from 'zlib';
 import { httpBodyEncoder, getDecodedType, HttpBodyType } from './httpBodyEncoder';
 import { DecodedType } from '../../../../core/tracing/JsonSchemaHelper';
 
-describe('httpBodyEncoder', () => {
-  describe('httpBodyEncoder function', () => {
-    it('should base64 encode a simple buffer', async () => {
-      const testData = 'Hello, World!';
-      const buffer = Buffer.from(testData, 'utf8');
+// httpBodyEncoder function
+test('should base64 encode a simple buffer', async (t) => {
+  const testData = 'Hello, World!';
+  const buffer = Buffer.from(testData, 'utf8');
 
-      const result = await httpBodyEncoder({ bodyBuffer: buffer });
+  const result = await httpBodyEncoder({ bodyBuffer: buffer });
 
-      expect(result).toBe(buffer.toString('base64'));
-    });
+  t.is(result, buffer.toString('base64'));
+});
 
-    it('should handle empty buffer', async () => {
-      const buffer = Buffer.alloc(0);
+test('should handle empty buffer', async (t) => {
+  const buffer = Buffer.alloc(0);
 
-      const result = await httpBodyEncoder({ bodyBuffer: buffer });
+  const result = await httpBodyEncoder({ bodyBuffer: buffer });
 
-      expect(result).toBe('');
-    });
+  t.is(result, '');
+});
 
-    it('should handle binary data', async () => {
-      const binaryData = Buffer.from([0xFF, 0xFE, 0x00, 0x01, 0x80, 0x90]);
+test('should handle binary data', async (t) => {
+  const binaryData = Buffer.from([0xFF, 0xFE, 0x00, 0x01, 0x80, 0x90]);
 
-      const result = await httpBodyEncoder({ bodyBuffer: binaryData });
+  const result = await httpBodyEncoder({ bodyBuffer: binaryData });
 
-      expect(result).toBe(binaryData.toString('base64'));
-    });
+  t.is(result, binaryData.toString('base64'));
+});
 
-    it('should decompress gzip before encoding', async () => {
-      const originalData = 'This is test data that will be compressed with gzip';
-      const originalBuffer = Buffer.from(originalData, 'utf8');
-      const compressedBuffer = zlib.gzipSync(originalBuffer);
+test('should decompress gzip before encoding', async (t) => {
+  const originalData = 'This is test data that will be compressed with gzip';
+  const originalBuffer = Buffer.from(originalData, 'utf8');
+  const compressedBuffer = zlib.gzipSync(originalBuffer);
 
-      const result = await httpBodyEncoder({
-        bodyBuffer: compressedBuffer,
-        contentEncoding: 'gzip'
-      });
-
-      expect(result).toBe(originalBuffer.toString('base64'));
-    });
-
-    it('should decompress deflate before encoding', async () => {
-      const originalData = 'This is test data that will be compressed with deflate';
-      const originalBuffer = Buffer.from(originalData, 'utf8');
-      const compressedBuffer = zlib.deflateSync(originalBuffer);
-
-      const result = await httpBodyEncoder({
-        bodyBuffer: compressedBuffer,
-        contentEncoding: 'deflate'
-      });
-
-      expect(result).toBe(originalBuffer.toString('base64'));
-    });
-
-    it('should decompress brotli before encoding', async () => {
-      const originalData = 'This is test data that will be compressed with brotli';
-      const originalBuffer = Buffer.from(originalData, 'utf8');
-      const compressedBuffer = zlib.brotliCompressSync(originalBuffer);
-
-      const result = await httpBodyEncoder({
-        bodyBuffer: compressedBuffer,
-        contentEncoding: 'br'
-      });
-
-      expect(result).toBe(originalBuffer.toString('base64'));
-    });
-
-    it('should handle unsupported content encoding gracefully', async () => {
-      const testData = 'Test data with unsupported encoding';
-      const buffer = Buffer.from(testData, 'utf8');
-
-      const result = await httpBodyEncoder({
-        bodyBuffer: buffer,
-        contentEncoding: 'unsupported'
-      });
-
-      expect(result).toBe(buffer.toString('base64'));
-    });
-
-    it('should handle invalid compressed data gracefully', async () => {
-      const invalidCompressed = Buffer.from('This is not actually compressed data');
-
-      const result = await httpBodyEncoder({
-        bodyBuffer: invalidCompressed,
-        contentEncoding: 'gzip'
-      });
-
-      // Should fall back to encoding the original buffer
-      expect(result).toBe(invalidCompressed.toString('base64'));
-    });
-
-    it('should handle case-insensitive content encoding', async () => {
-      const originalData = 'Test data for case insensitive encoding';
-      const originalBuffer = Buffer.from(originalData, 'utf8');
-      const compressedBuffer = zlib.gzipSync(originalBuffer);
-
-      const results = await Promise.all([
-        httpBodyEncoder({ bodyBuffer: compressedBuffer, contentEncoding: 'GZIP' }),
-        httpBodyEncoder({ bodyBuffer: compressedBuffer, contentEncoding: 'Gzip' }),
-        httpBodyEncoder({ bodyBuffer: compressedBuffer, contentEncoding: 'gzip' }),
-      ]);
-
-      results.forEach(result => {
-        expect(result).toBe(originalBuffer.toString('base64'));
-      });
-    });
-
-    it('should handle Unicode data correctly', async () => {
-      const unicodeData = 'Hello 🌟 World 💯 Café ñoño 中文 Привет';
-      const buffer = Buffer.from(unicodeData, 'utf8');
-
-      const result = await httpBodyEncoder({ bodyBuffer: buffer });
-
-      expect(result).toBe(buffer.toString('base64'));
-
-      // Verify round trip
-      const decoded = Buffer.from(result, 'base64').toString('utf8');
-      expect(decoded).toBe(unicodeData);
-    });
-
-    it('should handle large buffers efficiently', async () => {
-      const largeData = 'x'.repeat(100000);
-      const buffer = Buffer.from(largeData, 'utf8');
-
-      const result = await httpBodyEncoder({ bodyBuffer: buffer });
-
-      expect(result).toBe(buffer.toString('base64'));
-      expect(typeof result).toBe('string');
-    });
+  const result = await httpBodyEncoder({
+    bodyBuffer: compressedBuffer,
+    contentEncoding: 'gzip'
   });
 
-  describe('getDecodedType function', () => {
-    it('should return correct decoded type for JSON content types', () => {
-      expect(getDecodedType('application/json')).toBe(DecodedType.JSON);
-      expect(getDecodedType('application/json; charset=utf-8')).toBe(DecodedType.JSON);
-    });
+  t.is(result, originalBuffer.toString('base64'));
+});
 
-    it('should return correct decoded type for text content types', () => {
-      expect(getDecodedType('text/html')).toBe(DecodedType.HTML);
-      expect(getDecodedType('text/css')).toBe(DecodedType.CSS);
-      expect(getDecodedType('text/plain')).toBe(DecodedType.PLAIN_TEXT);
-      expect(getDecodedType('text/markdown')).toBe(DecodedType.MARKDOWN);
-      expect(getDecodedType('text/csv')).toBe(DecodedType.CSV);
-    });
+test('should decompress deflate before encoding', async (t) => {
+  const originalData = 'This is test data that will be compressed with deflate';
+  const originalBuffer = Buffer.from(originalData, 'utf8');
+  const compressedBuffer = zlib.deflateSync(originalBuffer);
 
-    it('should return correct decoded type for JavaScript content types', () => {
-      expect(getDecodedType('text/javascript')).toBe(DecodedType.JAVASCRIPT);
-      expect(getDecodedType('application/javascript')).toBe(DecodedType.JAVASCRIPT);
-      expect(getDecodedType('application/x-javascript')).toBe(DecodedType.JAVASCRIPT);
-    });
-
-    it('should return correct decoded type for XML content types', () => {
-      expect(getDecodedType('text/xml')).toBe(DecodedType.XML);
-      expect(getDecodedType('application/xml')).toBe(DecodedType.XML);
-      expect(getDecodedType('image/svg+xml')).toBe(DecodedType.SVG);
-    });
-
-    it('should return correct decoded type for YAML content types', () => {
-      expect(getDecodedType('application/yaml')).toBe(DecodedType.YAML);
-      expect(getDecodedType('application/x-yaml')).toBe(DecodedType.YAML);
-      expect(getDecodedType('text/yaml')).toBe(DecodedType.YAML);
-      expect(getDecodedType('text/x-yaml')).toBe(DecodedType.YAML);
-    });
-
-    it('should return correct decoded type for form data content types', () => {
-      expect(getDecodedType('application/x-www-form-urlencoded')).toBe(DecodedType.FORM_DATA);
-      expect(getDecodedType('multipart/form-data')).toBe(DecodedType.MULTIPART_FORM);
-      expect(getDecodedType('multipart/form-data; boundary=something')).toBe(DecodedType.MULTIPART_FORM);
-    });
-
-    it('should return correct decoded type for image content types', () => {
-      expect(getDecodedType('image/jpeg')).toBe(DecodedType.JPEG);
-      expect(getDecodedType('image/jpg')).toBe(DecodedType.JPEG);
-      expect(getDecodedType('image/png')).toBe(DecodedType.PNG);
-      expect(getDecodedType('image/gif')).toBe(DecodedType.GIF);
-      expect(getDecodedType('image/webp')).toBe(DecodedType.WEBP);
-      expect(getDecodedType('image/bmp')).toBe(DecodedType.JPEG);
-      expect(getDecodedType('image/tiff')).toBe(DecodedType.JPEG);
-      expect(getDecodedType('image/ico')).toBe(DecodedType.PNG);
-    });
-
-    it('should return correct decoded type for audio content types', () => {
-      expect(getDecodedType('audio/mpeg')).toBe(DecodedType.AUDIO);
-      expect(getDecodedType('audio/mp3')).toBe(DecodedType.AUDIO);
-      expect(getDecodedType('audio/wav')).toBe(DecodedType.AUDIO);
-      expect(getDecodedType('audio/ogg')).toBe(DecodedType.AUDIO);
-      expect(getDecodedType('audio/webm')).toBe(DecodedType.AUDIO);
-    });
-
-    it('should return correct decoded type for video content types', () => {
-      expect(getDecodedType('video/mp4')).toBe(DecodedType.VIDEO);
-      expect(getDecodedType('video/webm')).toBe(DecodedType.VIDEO);
-      expect(getDecodedType('video/ogg')).toBe(DecodedType.VIDEO);
-      expect(getDecodedType('video/avi')).toBe(DecodedType.VIDEO);
-      expect(getDecodedType('video/mov')).toBe(DecodedType.VIDEO);
-    });
-
-    it('should return correct decoded type for archive content types', () => {
-      expect(getDecodedType('application/zip')).toBe(DecodedType.ZIP);
-      expect(getDecodedType('application/gzip')).toBe(DecodedType.GZIP);
-      expect(getDecodedType('application/x-gzip')).toBe(DecodedType.GZIP);
-    });
-
-    it('should return correct decoded type for binary content types', () => {
-      expect(getDecodedType('application/octet-stream')).toBe(DecodedType.BINARY);
-      expect(getDecodedType('application/tar')).toBe(DecodedType.BINARY);
-      expect(getDecodedType('application/rar')).toBe(DecodedType.BINARY);
-      expect(getDecodedType('application/7z')).toBe(DecodedType.BINARY);
-    });
-
-    it('should return correct decoded type for document content types', () => {
-      expect(getDecodedType('application/pdf')).toBe(DecodedType.PDF);
-      expect(getDecodedType('application/sql')).toBe(DecodedType.SQL);
-      expect(getDecodedType('text/sql')).toBe(DecodedType.SQL);
-      expect(getDecodedType('application/graphql')).toBe(DecodedType.GRAPHQL);
-    });
-
-    it('should handle content type with parameters', () => {
-      const contentTypesWithParams = [
-        'application/json; charset=utf-8',
-        'text/html; charset=iso-8859-1',
-        'multipart/form-data; boundary=----WebKitFormBoundary',
-        'application/x-www-form-urlencoded; charset=UTF-8',
-      ];
-
-      expect(getDecodedType(contentTypesWithParams[0])).toBe(DecodedType.JSON);
-      expect(getDecodedType(contentTypesWithParams[1])).toBe(DecodedType.HTML);
-      expect(getDecodedType(contentTypesWithParams[2])).toBe(DecodedType.MULTIPART_FORM);
-      expect(getDecodedType(contentTypesWithParams[3])).toBe(DecodedType.FORM_DATA);
-    });
-
-    it('should handle array of content types', () => {
-      expect(getDecodedType(['application/json', 'text/plain'])).toBe(DecodedType.JSON);
-      expect(getDecodedType(['text/html'])).toBe(DecodedType.HTML);
-    });
-
-    it('should handle case insensitive content types', () => {
-      expect(getDecodedType('APPLICATION/JSON')).toBe(DecodedType.JSON);
-      expect(getDecodedType('Text/HTML')).toBe(DecodedType.HTML);
-      expect(getDecodedType('IMAGE/PNG')).toBe(DecodedType.PNG);
-    });
-
-    it('should return undefined for unknown content types', () => {
-      expect(getDecodedType('unknown/type')).toBeUndefined();
-      expect(getDecodedType('custom/format')).toBeUndefined();
-      expect(getDecodedType('application/custom')).toBeUndefined();
-    });
-
-    it('should return undefined for invalid input', () => {
-      expect(getDecodedType(undefined)).toBeUndefined();
-      expect(getDecodedType(null as any)).toBeUndefined();
-      expect(getDecodedType('')).toBeUndefined();
-      expect(getDecodedType([])).toBeUndefined();
-      expect(getDecodedType(123 as any)).toBeUndefined();
-    });
-
-    it('should handle content types with extra whitespace', () => {
-      expect(getDecodedType(' application/json ')).toBe(DecodedType.JSON);
-      expect(getDecodedType('  text/html; charset=utf-8  ')).toBe(DecodedType.HTML);
-    });
-
-    it('should handle content types with complex parameters', () => {
-      const complexContentType = 'multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW; charset=utf-8';
-      expect(getDecodedType(complexContentType)).toBe(DecodedType.MULTIPART_FORM);
-    });
+  const result = await httpBodyEncoder({
+    bodyBuffer: compressedBuffer,
+    contentEncoding: 'deflate'
   });
 
-  describe('HttpBodyType enum', () => {
-    it('should have correct enum values', () => {
-      expect(HttpBodyType.NONE).toBe('NONE');
-      expect(HttpBodyType.JSON).toBe('JSON');
-      expect(HttpBodyType.TEXT).toBe('TEXT');
-      expect(HttpBodyType.RAW).toBe('RAW');
-      expect(HttpBodyType.X_WWW_URL_FORM_URLENCODED).toBe('X_WWW_URL_FORM_URLENCODED');
-      expect(HttpBodyType.MULTIPART).toBe('MULTIPART');
-      expect(HttpBodyType.UNSPECIFIED).toBe('UNSPECIFIED');
-    });
+  t.is(result, originalBuffer.toString('base64'));
+});
+
+test('should decompress brotli before encoding', async (t) => {
+  const originalData = 'This is test data that will be compressed with brotli';
+  const originalBuffer = Buffer.from(originalData, 'utf8');
+  const compressedBuffer = zlib.brotliCompressSync(originalBuffer);
+
+  const result = await httpBodyEncoder({
+    bodyBuffer: compressedBuffer,
+    contentEncoding: 'br'
   });
+
+  t.is(result, originalBuffer.toString('base64'));
+});
+
+test('should handle unsupported content encoding gracefully', async (t) => {
+  const testData = 'Test data with unsupported encoding';
+  const buffer = Buffer.from(testData, 'utf8');
+
+  const result = await httpBodyEncoder({
+    bodyBuffer: buffer,
+    contentEncoding: 'unsupported'
+  });
+
+  t.is(result, buffer.toString('base64'));
+});
+
+test('should handle invalid compressed data gracefully', async (t) => {
+  const invalidCompressed = Buffer.from('This is not actually compressed data');
+
+  const result = await httpBodyEncoder({
+    bodyBuffer: invalidCompressed,
+    contentEncoding: 'gzip'
+  });
+
+  // Should fall back to encoding the original buffer
+  t.is(result, invalidCompressed.toString('base64'));
+});
+
+test('should handle case-insensitive content encoding', async (t) => {
+  const originalData = 'Test data for case insensitive encoding';
+  const originalBuffer = Buffer.from(originalData, 'utf8');
+  const compressedBuffer = zlib.gzipSync(originalBuffer);
+
+  const results = await Promise.all([
+    httpBodyEncoder({ bodyBuffer: compressedBuffer, contentEncoding: 'GZIP' }),
+    httpBodyEncoder({ bodyBuffer: compressedBuffer, contentEncoding: 'Gzip' }),
+    httpBodyEncoder({ bodyBuffer: compressedBuffer, contentEncoding: 'gzip' }),
+  ]);
+
+  results.forEach(result => {
+    t.is(result, originalBuffer.toString('base64'));
+  });
+});
+
+test('should handle Unicode data correctly', async (t) => {
+  const unicodeData = 'Hello 🌟 World 💯 Café ñoño 中文 Привет';
+  const buffer = Buffer.from(unicodeData, 'utf8');
+
+  const result = await httpBodyEncoder({ bodyBuffer: buffer });
+
+  t.is(result, buffer.toString('base64'));
+
+  // Verify round trip
+  const decoded = Buffer.from(result, 'base64').toString('utf8');
+  t.is(decoded, unicodeData);
+});
+
+test('should handle large buffers efficiently', async (t) => {
+  const largeData = 'x'.repeat(100000);
+  const buffer = Buffer.from(largeData, 'utf8');
+
+  const result = await httpBodyEncoder({ bodyBuffer: buffer });
+
+  t.is(result, buffer.toString('base64'));
+  t.is(typeof result, 'string');
+});
+
+// getDecodedType function
+test('should return correct decoded type for JSON content types', (t) => {
+  t.is(getDecodedType('application/json'), DecodedType.JSON);
+  t.is(getDecodedType('application/json; charset=utf-8'), DecodedType.JSON);
+});
+
+test('should return correct decoded type for text content types', (t) => {
+  t.is(getDecodedType('text/html'), DecodedType.HTML);
+  t.is(getDecodedType('text/css'), DecodedType.CSS);
+  t.is(getDecodedType('text/plain'), DecodedType.PLAIN_TEXT);
+  t.is(getDecodedType('text/markdown'), DecodedType.MARKDOWN);
+  t.is(getDecodedType('text/csv'), DecodedType.CSV);
+});
+
+test('should return correct decoded type for JavaScript content types', (t) => {
+  t.is(getDecodedType('text/javascript'), DecodedType.JAVASCRIPT);
+  t.is(getDecodedType('application/javascript'), DecodedType.JAVASCRIPT);
+  t.is(getDecodedType('application/x-javascript'), DecodedType.JAVASCRIPT);
+});
+
+test('should return correct decoded type for XML content types', (t) => {
+  t.is(getDecodedType('text/xml'), DecodedType.XML);
+  t.is(getDecodedType('application/xml'), DecodedType.XML);
+  t.is(getDecodedType('image/svg+xml'), DecodedType.SVG);
+});
+
+test('should return correct decoded type for YAML content types', (t) => {
+  t.is(getDecodedType('application/yaml'), DecodedType.YAML);
+  t.is(getDecodedType('application/x-yaml'), DecodedType.YAML);
+  t.is(getDecodedType('text/yaml'), DecodedType.YAML);
+  t.is(getDecodedType('text/x-yaml'), DecodedType.YAML);
+});
+
+test('should return correct decoded type for form data content types', (t) => {
+  t.is(getDecodedType('application/x-www-form-urlencoded'), DecodedType.FORM_DATA);
+  t.is(getDecodedType('multipart/form-data'), DecodedType.MULTIPART_FORM);
+  t.is(getDecodedType('multipart/form-data; boundary=something'), DecodedType.MULTIPART_FORM);
+});
+
+test('should return correct decoded type for image content types', (t) => {
+  t.is(getDecodedType('image/jpeg'), DecodedType.JPEG);
+  t.is(getDecodedType('image/jpg'), DecodedType.JPEG);
+  t.is(getDecodedType('image/png'), DecodedType.PNG);
+  t.is(getDecodedType('image/gif'), DecodedType.GIF);
+  t.is(getDecodedType('image/webp'), DecodedType.WEBP);
+  t.is(getDecodedType('image/bmp'), DecodedType.JPEG);
+  t.is(getDecodedType('image/tiff'), DecodedType.JPEG);
+  t.is(getDecodedType('image/ico'), DecodedType.PNG);
+});
+
+test('should return correct decoded type for audio content types', (t) => {
+  t.is(getDecodedType('audio/mpeg'), DecodedType.AUDIO);
+  t.is(getDecodedType('audio/mp3'), DecodedType.AUDIO);
+  t.is(getDecodedType('audio/wav'), DecodedType.AUDIO);
+  t.is(getDecodedType('audio/ogg'), DecodedType.AUDIO);
+  t.is(getDecodedType('audio/webm'), DecodedType.AUDIO);
+});
+
+test('should return correct decoded type for video content types', (t) => {
+  t.is(getDecodedType('video/mp4'), DecodedType.VIDEO);
+  t.is(getDecodedType('video/webm'), DecodedType.VIDEO);
+  t.is(getDecodedType('video/ogg'), DecodedType.VIDEO);
+  t.is(getDecodedType('video/avi'), DecodedType.VIDEO);
+  t.is(getDecodedType('video/mov'), DecodedType.VIDEO);
+});
+
+test('should return correct decoded type for archive content types', (t) => {
+  t.is(getDecodedType('application/zip'), DecodedType.ZIP);
+  t.is(getDecodedType('application/gzip'), DecodedType.GZIP);
+  t.is(getDecodedType('application/x-gzip'), DecodedType.GZIP);
+});
+
+test('should return correct decoded type for binary content types', (t) => {
+  t.is(getDecodedType('application/octet-stream'), DecodedType.BINARY);
+  t.is(getDecodedType('application/tar'), DecodedType.BINARY);
+  t.is(getDecodedType('application/rar'), DecodedType.BINARY);
+  t.is(getDecodedType('application/7z'), DecodedType.BINARY);
+});
+
+test('should return correct decoded type for document content types', (t) => {
+  t.is(getDecodedType('application/pdf'), DecodedType.PDF);
+  t.is(getDecodedType('application/sql'), DecodedType.SQL);
+  t.is(getDecodedType('text/sql'), DecodedType.SQL);
+  t.is(getDecodedType('application/graphql'), DecodedType.GRAPHQL);
+});
+
+test('should handle content type with parameters', (t) => {
+  const contentTypesWithParams = [
+    'application/json; charset=utf-8',
+    'text/html; charset=iso-8859-1',
+    'multipart/form-data; boundary=----WebKitFormBoundary',
+    'application/x-www-form-urlencoded; charset=UTF-8',
+  ];
+
+  t.is(getDecodedType(contentTypesWithParams[0]), DecodedType.JSON);
+  t.is(getDecodedType(contentTypesWithParams[1]), DecodedType.HTML);
+  t.is(getDecodedType(contentTypesWithParams[2]), DecodedType.MULTIPART_FORM);
+  t.is(getDecodedType(contentTypesWithParams[3]), DecodedType.FORM_DATA);
+});
+
+test('should handle array of content types', (t) => {
+  t.is(getDecodedType(['application/json', 'text/plain']), DecodedType.JSON);
+  t.is(getDecodedType(['text/html']), DecodedType.HTML);
+});
+
+test('should handle case insensitive content types', (t) => {
+  t.is(getDecodedType('APPLICATION/JSON'), DecodedType.JSON);
+  t.is(getDecodedType('Text/HTML'), DecodedType.HTML);
+  t.is(getDecodedType('IMAGE/PNG'), DecodedType.PNG);
+});
+
+test('should return undefined for unknown content types', (t) => {
+  t.is(getDecodedType('unknown/type'), undefined);
+  t.is(getDecodedType('custom/format'), undefined);
+  t.is(getDecodedType('application/custom'), undefined);
+});
+
+test('should return undefined for invalid input', (t) => {
+  t.is(getDecodedType(undefined), undefined);
+  t.is(getDecodedType(null as any), undefined);
+  t.is(getDecodedType(''), undefined);
+  t.is(getDecodedType([]), undefined);
+  t.is(getDecodedType(123 as any), undefined);
+});
+
+test('should handle content types with extra whitespace', (t) => {
+  t.is(getDecodedType(' application/json '), DecodedType.JSON);
+  t.is(getDecodedType('  text/html; charset=utf-8  '), DecodedType.HTML);
+});
+
+test('should handle content types with complex parameters', (t) => {
+  const complexContentType = 'multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW; charset=utf-8';
+  t.is(getDecodedType(complexContentType), DecodedType.MULTIPART_FORM);
+});
+
+// HttpBodyType enum
+test('should have correct enum values', (t) => {
+  t.is(HttpBodyType.NONE, 'NONE');
+  t.is(HttpBodyType.JSON, 'JSON');
+  t.is(HttpBodyType.TEXT, 'TEXT');
+  t.is(HttpBodyType.RAW, 'RAW');
+  t.is(HttpBodyType.X_WWW_URL_FORM_URLENCODED, 'X_WWW_URL_FORM_URLENCODED');
+  t.is(HttpBodyType.MULTIPART, 'MULTIPART');
+  t.is(HttpBodyType.UNSPECIFIED, 'UNSPECIFIED');
 });

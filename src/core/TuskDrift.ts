@@ -65,6 +65,7 @@ export class TuskDriftCore {
   private cliConnectionPromise: Promise<void> | null;
   // Add a flag to track connection status
   private isConnectedWithCLI = false;
+  spanExporter?: TdSpanExporter;
 
   constructor() {
     this.mode = this.detectMode();
@@ -152,22 +153,13 @@ export class TuskDriftCore {
     }
   }
 
-  private initializeMemoryStore({ baseDirectory }: { baseDirectory: string }): void {
-    if (this.isRunningIntegrationTest()) {
-      logger.debug(`Initializing memory store with base directory: ${baseDirectory}`);
-      this.memoryStore.initialize(baseDirectory);
-    } else {
-      logger.debug("Not running integration test, skipping memory store initialization");
-    }
-  }
-
   private registerDefaultInstrumentations(): void {
+    const transforms = this.config.transforms ?? this.initParams.transforms;
+
     // Just creating the instrumentations registers them with the sdk
     // All these instrumentations extend TdInstrumentationBase
     // TdInstrumentationBase constructor calls enable() which sets up the require-in-the-middle hooks to patch the modules
     // when the modules are required
-    const transforms = this.config.transforms ?? this.initParams.transforms;
-
     new HttpInstrumentation({
       enabled: true,
       mode: this.mode,
@@ -225,7 +217,7 @@ export class TuskDriftCore {
 
     logger.debug(`Initializing OpenTelemetry tracing for service: ${serviceName}`);
 
-    const traceExporter = new TdSpanExporter({
+    this.spanExporter = new TdSpanExporter({
       baseDirectory,
       mode: this.mode,
       useRemoteExport: this.config.recording?.export_spans || false,
@@ -240,7 +232,7 @@ export class TuskDriftCore {
     // Create NodeSDK with custom trace exporter, handled by opentelemetry
     this.sdk = new NodeSDK({
       serviceName,
-      spanProcessor: new BatchSpanProcessor(traceExporter, {
+      spanProcessor: new BatchSpanProcessor(this.spanExporter, {
         // Maximum queue size before spans are dropped, default 2048
         maxQueueSize: 2048,
         // Maximum batch size per export, default 512
@@ -373,15 +365,10 @@ export class TuskDriftCore {
     logger.debug(`Config: ${JSON.stringify(this.config)}`);
     logger.debug(`Base directory: ${baseDirectory}`);
 
-    const transforms = this.config.transforms ?? this.initParams.transforms;
-
     // Initialize OpenTelemetry tracing (runs in parallel with connection)
     this.initializeTracing({ baseDirectory });
 
-    // Only initialized for integration tests
-    this.initializeMemoryStore({ baseDirectory });
-
-    // Register instrumentations
+    // Register instrumentations (runs in parallel with connection)
     this.registerDefaultInstrumentations();
 
     this.initialized = true;
@@ -428,7 +415,7 @@ export class TuskDriftCore {
    */
   private createMockRequestCore(
     mockRequest: MockRequestInput,
-  ): { found: boolean; response?: any; error?: string } | null {
+  ): { found: boolean; response?: unknown; error?: string } | null {
     if (this.isRunningIntegrationTest()) {
       // Don't have the CLI running, so we need to find the best match from the memory store
       const mock = MockMatcher.findBestMatch({
@@ -464,7 +451,7 @@ export class TuskDriftCore {
 
   async requestMockAsync(
     mockRequest: MockRequestInput,
-  ): Promise<{ found: boolean; response?: any; error?: string }> {
+  ): Promise<{ found: boolean; response?: unknown; error?: string }> {
     if (this.cliConnectionPromise && !this.isConnectedWithCLI) {
       logger.debug("Waiting for CLI connection to be established");
       await this.cliConnectionPromise;
@@ -479,7 +466,7 @@ export class TuskDriftCore {
 
   private async requestMockFromCLIAsync(
     mockRequest: MockRequestInput,
-  ): Promise<{ found: boolean; response?: any; error?: string }> {
+  ): Promise<{ found: boolean; response?: unknown; error?: string }> {
     if (!this.communicator || this.mode !== TuskDriftMode.REPLAY) {
       logger.error("Cannot request mock: not in replay mode or no CLI connection");
       return { found: false, error: "Not in replay mode or no CLI connection" };
@@ -508,7 +495,7 @@ export class TuskDriftCore {
   // When we do need to use it, we need to add a check for isConnectedWithCLI similar to requestMockAsync
   requestMockSync(mockRequest: MockRequestInput): {
     found: boolean;
-    response?: any;
+    response?: unknown;
     error?: string;
   } {
     const mockRequestCore = this.createMockRequestCore(mockRequest);
@@ -520,7 +507,7 @@ export class TuskDriftCore {
 
   private requestMockFromCLISync(mockRequest: MockRequestInput): {
     found: boolean;
-    response?: any;
+    response?: unknown;
     error?: string;
   } {
     if (!this.communicator || this.mode !== TuskDriftMode.REPLAY) {
@@ -638,6 +625,11 @@ interface TuskDriftPublicAPI {
    * @returns void
    */
   markAppAsReady(): void;
+
+  /**
+   * Check if the application is ready
+   */
+  isAppReady(): boolean;
 }
 
 class TuskDriftSDK implements TuskDriftPublicAPI {
@@ -649,6 +641,10 @@ class TuskDriftSDK implements TuskDriftPublicAPI {
 
   markAppAsReady(): void {
     return this.tuskDrift.markAppAsReady();
+  }
+
+  isAppReady(): boolean {
+    return this.tuskDrift.isAppReady();
   }
 }
 

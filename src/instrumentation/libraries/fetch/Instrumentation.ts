@@ -74,10 +74,10 @@ export class FetchInstrumentation extends TdInstrumentationBase {
     const headers = init?.headers || {};
 
     let normalizedHeaders = {};
-    let encodedBody = init?.body;
+    let encodedBody: any = init?.body;
     try {
       normalizedHeaders = this._normalizeHeaders(headers);
-      encodedBody = init?.body ? await this._encodeRequestBody(init?.body) : init?.body;
+      encodedBody = init?.body ? (await this._encodeRequestBody(init?.body) as any) : init?.body;
     } catch (error) {
       logger.error(`FetchInstrumentation error normalizing headers:`, error);
     }
@@ -296,7 +296,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
     return {};
   }
 
-  private async _encodeRequestBody(body: BodyInit): Promise<string | undefined> {
+  private async _encodeRequestBody(body: any): Promise<string | undefined> {
     try {
       let bodyBuffer: Buffer;
 

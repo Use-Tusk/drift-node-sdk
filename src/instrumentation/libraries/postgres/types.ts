@@ -5,6 +5,7 @@ export interface PostgresClientInputValue {
   query: string;
   parameters: any[];
   options?: Record<string, any>;
+  [key: string]: unknown;
 }
 
 export interface PostgresTransactionInputValue {

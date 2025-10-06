@@ -1,4 +1,4 @@
-import {
+import type {
   Agent,
   ClientRequest,
   IncomingMessage,
@@ -14,15 +14,16 @@ export type HttpProtocol = "http" | "https";
 export interface HttpClientInputValue {
   method: string;
   path?: string;
-  headers: Record<string, any>;
+  headers: Record<string, unknown>;
   protocol: HttpProtocol;
   hostname?: string;
   port?: number;
   timeout?: number;
-  body?: any;
+  body?: unknown;
   bodySize?: number;
   bodyType?: HttpBodyType;
   hasBodyParsingError?: boolean;
+  [key: string]: unknown;
 }
 
 export interface HttpClientOutputValue {
@@ -37,6 +38,7 @@ export interface HttpClientOutputValue {
   body?: string;
   bodySize?: number;
   bodyProcessingError?: string;
+  [key: string]: unknown;
 }
 
 export interface HttpServerInputValue {
@@ -49,6 +51,7 @@ export interface HttpServerInputValue {
   httpVersion: string;
   remoteAddress?: string;
   remotePort?: number;
+  [key: string]: unknown;
 }
 
 export interface HttpServerOutputValue {
@@ -58,6 +61,7 @@ export interface HttpServerOutputValue {
   body?: string;
   bodySize?: number;
   bodyProcessingError?: string;
+  [key: string]: unknown;
 }
 
 export interface HttpModuleExports {

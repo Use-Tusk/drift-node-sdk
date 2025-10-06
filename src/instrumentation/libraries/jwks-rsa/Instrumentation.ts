@@ -43,7 +43,7 @@ export class JwksRsaInstrumentation extends TdInstrumentationBase {
       const originalExpressJwtSecret = jwksModule.expressJwtSecret;
       jwksModule.expressJwtSecret = function (options: any) {
         logger.debug(`[JwksRsaInstrumentation] expressJwtSecret called with options:`, options);
-        let modifiedOptions = { ...options };
+        const modifiedOptions = { ...options };
         // Only disable rate limiting in replay mode
         if (self.tuskDrift.getMode() === TuskDriftMode.REPLAY) {
           logger.debug(

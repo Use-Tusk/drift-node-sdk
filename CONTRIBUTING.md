@@ -142,11 +142,32 @@ Each instrumentation typically:
 
 #### Testing
 
-- **Unit Tests**: Add comprehensive unit tests for new instrumentations
-  - _TODO: Expand unit testing guidelines once we establish better practices_
+We have unit tests and integration tests with [ava](https://github.com/avajs/ava).
+Some integration tests (pg, mongo, etc.) require external dependencies.
+A docker compose is provided for you to get these dependencies up easily:
+```
+docker compose -f docker-compose.test.yml up -d --wait
+```
 
-- **Integration Tests**: Add integration tests for new instrumentations
-  - _TODO: Expand integration testing guidelines once we establish better practices_
+After it's done setting up you can run `npm test` as usual.
+You can leave it up, and tests should clean up after themselves so that we can
+leave these services up during development without restarting all the time.
+To bring them down, run
+```
+docker compose -f docker-compose.test.yml down
+```
+
+Some important notes during testing, especially integration tests:
+- The tusk sdk needs to be initialized before importing anything that is going
+  to be patched.
+- Since the TuskDrift object is a singleton, each integration test (or at least
+  those that have different TuskDrift configs) needs to be in its own file.
+- Since we use `require-in-the-middle` for patching, not all advanced test
+  framework features are available. Notably, anything replacing `require` will
+  certainly not work.
+- Know the diff between `devDependency` and `dependency` -- most libraries that
+  you need for testing (axios, express) should go in `devDependency`.
+
 
 #### Code Quality
 

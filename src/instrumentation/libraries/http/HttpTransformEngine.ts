@@ -345,7 +345,33 @@ export class HttpTransformEngine {
       }
 
       try {
-        const nodes = jp.apply((target as any).body, jsonPath, actionFunction);
+        const body = (target as any).body;
+        if (!body) {
+          return false;
+        }
+
+        // Body is base64-encoded, decode and parse it
+        let bodyObj;
+        if (typeof body === "string") {
+          try {
+            const decoded = Buffer.from(body, "base64").toString("utf8");
+            bodyObj = JSON.parse(decoded);
+          } catch (e) {
+            // If decoding/parsing fails, body might not be JSON
+            return false;
+          }
+        } else {
+          bodyObj = body;
+        }
+
+        const nodes = jp.apply(bodyObj, jsonPath, actionFunction);
+
+        // Re-encode the modified body as base64
+        if (typeof body === "string" && nodes.length > 0) {
+          const reencoded = Buffer.from(JSON.stringify(bodyObj)).toString("base64");
+          (target as any).body = reencoded;
+        }
+
         return nodes.length > 0;
       } catch (error) {
         return false;
@@ -359,10 +385,12 @@ export class HttpTransformEngine {
     direction: HttpTransformMatcher["direction"],
   ): (span: HttpSpanData) => boolean {
     const lowerHeader = headerName.toLowerCase();
-    const selector = direction === "inbound" ? "inputValue" : "outputValue";
 
     return (span) => {
-      const target = span[selector] as any;
+      // For inbound: transform request headers (SERVER span inputValue)
+      // For outbound: transform request headers (CLIENT span inputValue)
+      // Note: We always transform the request headers, which is inputValue for both directions
+      const target = span.inputValue as any;
       if (!target?.headers) {
         return false;
       }
@@ -404,9 +432,26 @@ export class HttpTransformEngine {
         return false;
       }
 
-      target.body = actionFunction(
-        typeof target.body === "string" ? target.body : JSON.stringify(target.body),
-      );
+      if (direction === "outbound") {
+        // Output bodies are base64-encoded strings - decode, transform, re-encode
+        if (typeof target.body === "string") {
+          try {
+            const decoded = Buffer.from(target.body, "base64").toString("utf8");
+            const transformed = actionFunction(decoded);
+            target.body = Buffer.from(transformed).toString("base64");
+          } catch (error) {
+            // If not valid base64, treat as plain string
+            target.body = Buffer.from(actionFunction(target.body)).toString("base64");
+          }
+        } else {
+          target.body = Buffer.from(actionFunction(JSON.stringify(target.body))).toString("base64");
+        }
+      } else {
+        // Input bodies can be objects or strings - keep as is
+        target.body = actionFunction(
+          typeof target.body === "string" ? target.body : JSON.stringify(target.body),
+        );
+      }
       return true;
     };
   }

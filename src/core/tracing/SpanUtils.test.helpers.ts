@@ -1,4 +1,9 @@
-import { SpanUtils } from "../core/tracing/SpanUtils";
+import { SpanUtils } from "./SpanUtils";
+import { logger } from "../utils/logger";
+import type { LogLevel } from "../utils/logger";
+
+// This file contains a bunch of SpanUtils mocking and general utility method
+// for testing.
 
 /**
  * Types of errors to simulate in SpanUtils methods
@@ -42,6 +47,25 @@ interface SpanUtilsMocks {
  */
 export class SpanUtilsErrorTesting {
   private static mocks: SpanUtilsMocks = {};
+  private static originalLogLevel: LogLevel | null = null;
+  private static loggerSilenced = false;
+
+  private static ensureLoggerSilenced(): void {
+    if (!SpanUtilsErrorTesting.loggerSilenced) {
+      SpanUtilsErrorTesting.originalLogLevel = logger.getLogLevel();
+      logger.setLogLevel("silent");
+      SpanUtilsErrorTesting.loggerSilenced = true;
+    }
+  }
+
+  private static restoreLogger(): void {
+    if (SpanUtilsErrorTesting.loggerSilenced) {
+      const previousLevel = SpanUtilsErrorTesting.originalLogLevel || "warn";
+      logger.setLogLevel(previousLevel);
+      SpanUtilsErrorTesting.originalLogLevel = null;
+      SpanUtilsErrorTesting.loggerSilenced = false;
+    }
+  }
 
   /**
    * Creates an error based on the specified type
@@ -81,6 +105,7 @@ export class SpanUtilsErrorTesting {
    * Sets up error simulation for SpanUtils.createSpan
    */
   static mockCreateSpanWithError(config: ErrorTestConfig): void {
+    SpanUtilsErrorTesting.ensureLoggerSilenced();
     const original = SpanUtils.createSpan;
 
     (SpanUtils as any).createSpan = () => {
@@ -101,11 +126,11 @@ export class SpanUtilsErrorTesting {
 
     SpanUtilsErrorTesting.mocks.createSpan = { original };
   }
-
   /**
    * Sets up error simulation for SpanUtils.addSpanAttributes
    */
   static mockAddSpanAttributesWithError(config: ErrorTestConfig): void {
+    SpanUtilsErrorTesting.ensureLoggerSilenced();
     const original = SpanUtils.addSpanAttributes;
 
     (SpanUtils as any).addSpanAttributes = () => {
@@ -119,6 +144,7 @@ export class SpanUtilsErrorTesting {
    * Sets up error simulation for SpanUtils.setStatus
    */
   static mockSetStatusWithError(config: ErrorTestConfig): void {
+    SpanUtilsErrorTesting.ensureLoggerSilenced();
     const original = SpanUtils.setStatus;
 
     (SpanUtils as any).setStatus = () => {
@@ -132,6 +158,7 @@ export class SpanUtilsErrorTesting {
    * Sets up error simulation for SpanUtils.endSpan
    */
   static mockEndSpanWithError(config: ErrorTestConfig): void {
+    SpanUtilsErrorTesting.ensureLoggerSilenced();
     const original = SpanUtils.endSpan;
 
     (SpanUtils as any).endSpan = () => {
@@ -145,6 +172,7 @@ export class SpanUtilsErrorTesting {
    * Sets up error simulation for SpanUtils.getCurrentSpanInfo
    */
   static mockGetCurrentSpanInfoWithError(config: ErrorTestConfig): void {
+    SpanUtilsErrorTesting.ensureLoggerSilenced();
     const original = SpanUtils.getCurrentSpanInfo;
 
     (SpanUtils as any).getCurrentSpanInfo = () => {
@@ -161,6 +189,7 @@ export class SpanUtilsErrorTesting {
    * Sets up error simulation for SpanUtils.getCurrentTraceId
    */
   static mockGetCurrentTraceIdWithError(config: ErrorTestConfig): void {
+    SpanUtilsErrorTesting.ensureLoggerSilenced();
     const original = SpanUtils.getCurrentTraceId;
 
     (SpanUtils as any).getCurrentTraceId = () => {
@@ -177,6 +206,7 @@ export class SpanUtilsErrorTesting {
    * Sets up error simulation for SpanUtils.setCurrentReplayTraceId
    */
   static mockSetCurrentReplayTraceIdWithError(config: ErrorTestConfig): void {
+    SpanUtilsErrorTesting.ensureLoggerSilenced();
     const original = SpanUtils.setCurrentReplayTraceId;
 
     (SpanUtils as any).setCurrentReplayTraceId = () => {
@@ -214,6 +244,7 @@ export class SpanUtilsErrorTesting {
     }
 
     SpanUtilsErrorTesting.mocks = {};
+    SpanUtilsErrorTesting.restoreLogger();
   }
 
   /**

@@ -3,7 +3,7 @@ import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrument
 import { TdInstrumentationConfig } from "../../core/baseClasses/TdInstrumentationAbstract";
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode, context } from "@opentelemetry/api";
-import {
+import type {
   ClientRequest,
   IncomingHttpHeaders,
   IncomingMessage,
@@ -783,7 +783,9 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                   ...schemaMerges,
                   body: {
                     encoding: EncodingType.BASE64,
-                    decodedType: getDecodedType(inputValue.headers["content-type"] || ""),
+                    decodedType: getDecodedType(
+                      (inputValue.headers["content-type"] as string | string[]) || "",
+                    ),
                   },
                 },
               });

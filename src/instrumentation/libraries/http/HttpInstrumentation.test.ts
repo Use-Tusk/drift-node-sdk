@@ -1,3 +1,4 @@
+import test from "ava";
 import * as http from "http";
 import { AddressInfo } from "net";
 import { SpanUtilsErrorTesting, ErrorType } from "../../../test-utils/spanUtilsErrorTesting";
@@ -92,213 +93,210 @@ async function createServerAndMakeRequest(
   });
 }
 
-describe("HTTP Instrumentation Error Resilience", () => {
-  let httpInstrumentation: HttpInstrumentation;
+let httpInstrumentation: HttpInstrumentation;
 
-  beforeEach(() => {
-    httpInstrumentation = new HttpInstrumentation({
-      mode: TuskDriftMode.RECORD,
-    });
-
-    const modules = httpInstrumentation.init();
-
-    const http = require("http");
-    const https = require("https");
-
-    modules.forEach((module) => {
-      if (module.name === "http" && module.patch) {
-        module.patch(http);
-      } else if (module.name === "https" && module.patch) {
-        module.patch(https);
-      }
-    });
+test.beforeEach(() => {
+  httpInstrumentation = new HttpInstrumentation({
+    mode: TuskDriftMode.RECORD,
   });
 
-  afterEach(() => {
-    SpanUtilsErrorTesting.teardownErrorResilienceTest();
+  const modules = httpInstrumentation.init();
+
+  const http = require("http");
+  const https = require("https");
+
+  modules.forEach((module) => {
+    if (module.name === "http" && module.patch) {
+      module.patch(http);
+    } else if (module.name === "https" && module.patch) {
+      module.patch(https);
+    }
+  });
+});
+
+test.afterEach(() => {
+  SpanUtilsErrorTesting.teardownErrorResilienceTest();
+});
+
+// Client Request Error Resilience
+test("should complete HTTP requests when SpanUtils.createSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockCreateSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span create span network error",
   });
 
-  describe("Client Request Error Resilience", () => {
-    it("should complete HTTP requests when SpanUtils.createSpan throws", async () => {
-      SpanUtilsErrorTesting.mockCreateSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span create span network error",
-      });
+  const { responseData, statusCode } = await createServerAndMakeRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
 
-      const { responseData, statusCode } = await createServerAndMakeRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
 
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete HTTP requests when SpanUtils.addSpanAttributes throws", async () => {
-      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span attributes network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete HTTP requests when SpanUtils.setStatus throws", async () => {
-      SpanUtilsErrorTesting.mockSetStatusWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span set status network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete HTTP requests when SpanUtils.endSpan throws", async () => {
-      SpanUtilsErrorTesting.mockEndSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span end span network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete HTTP requests when SpanUtils.getCurrentSpanInfo throws", async () => {
-      SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span get current span info network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete HTTP requests when SpanUtils.getCurrentTraceId throws", async () => {
-      SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span get current trace id network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
-
-    it("should complete HTTP requests when SpanUtils.setCurrentReplayTraceId throws", async () => {
-      SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span set current replay trace id network error",
-      });
-
-      const { responseData, statusCode } = await createServerAndMakeRequest(
-        {
-          contentType: "application/json",
-          responseBody: { status: "success" },
-        },
-        {
-          path: "/api/test",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: { test: "data" },
-        },
-      );
-
-      expect(statusCode).toBe(200);
-      const parsedData = JSON.parse(responseData);
-      expect(parsedData.status).toBe("success");
-    });
+test("should complete HTTP requests when SpanUtils.addSpanAttributes throws", async (t) => {
+  SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span attributes network error",
   });
+
+  const { responseData, statusCode } = await createServerAndMakeRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
+
+test("should complete HTTP requests when SpanUtils.setStatus throws", async (t) => {
+  SpanUtilsErrorTesting.mockSetStatusWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span set status network error",
+  });
+
+  const { responseData, statusCode } = await createServerAndMakeRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
+
+test("should complete HTTP requests when SpanUtils.endSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockEndSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span end span network error",
+  });
+
+  const { responseData, statusCode } = await createServerAndMakeRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
+
+test("should complete HTTP requests when SpanUtils.getCurrentSpanInfo throws", async (t) => {
+  SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span get current span info network error",
+  });
+
+  const { responseData, statusCode } = await createServerAndMakeRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
+
+test("should complete HTTP requests when SpanUtils.getCurrentTraceId throws", async (t) => {
+  SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span get current trace id network error",
+  });
+
+  const { responseData, statusCode } = await createServerAndMakeRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
+});
+
+test("should complete HTTP requests when SpanUtils.setCurrentReplayTraceId throws", async (t) => {
+  SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span set current replay trace id network error",
+  });
+
+  const { responseData, statusCode } = await createServerAndMakeRequest(
+    {
+      contentType: "application/json",
+      responseBody: { status: "success" },
+    },
+    {
+      path: "/api/test",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: { test: "data" },
+    },
+  );
+
+  t.is(statusCode, 200);
+  const parsedData = JSON.parse(responseData);
+  t.is(parsedData.status, "success");
 });

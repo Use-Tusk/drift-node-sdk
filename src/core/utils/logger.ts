@@ -33,25 +33,25 @@ class Logger {
     return `${timestamp} ${prefix}${message}`;
   }
 
-  error(message: string, ...args: any[]): void {
+  error(message: string, ...args: unknown[]): void {
     if (this.shouldLog("error")) {
       console.error(this.formatMessage("error", message), ...args);
     }
   }
 
-  warn(message: string, ...args: any[]): void {
+  warn(message: string, ...args: unknown[]): void {
     if (this.shouldLog("warn")) {
       console.warn(this.formatMessage("warn", message), ...args);
     }
   }
 
-  info(message: string, ...args: any[]): void {
+  info(message: string, ...args: unknown[]): void {
     if (this.shouldLog("info")) {
       console.log(this.formatMessage("info", message), ...args);
     }
   }
 
-  debug(message: string, ...args: any[]): void {
+  debug(message: string, ...args: unknown[]): void {
     if (this.shouldLog("debug")) {
       console.log(this.formatMessage("debug", message), ...args);
     }
@@ -98,10 +98,10 @@ export function getLogger(): Logger {
  *   - Logs debug, info, warnings, and errors
  */
 export const logger = {
-  error: (message: string, ...args: any[]) => getLogger().error(message, ...args),
-  warn: (message: string, ...args: any[]) => getLogger().warn(message, ...args),
-  info: (message: string, ...args: any[]) => getLogger().info(message, ...args),
-  debug: (message: string, ...args: any[]) => getLogger().debug(message, ...args),
+  error: (message: string, ...args: unknown[]) => getLogger().error(message, ...args),
+  warn: (message: string, ...args: unknown[]) => getLogger().warn(message, ...args),
+  info: (message: string, ...args: unknown[]) => getLogger().info(message, ...args),
+  debug: (message: string, ...args: unknown[]) => getLogger().debug(message, ...args),
   setLogLevel: (level: LogLevel) => getLogger().setLogLevel(level),
   getLogLevel: () => getLogger().getLogLevel(),
 };
