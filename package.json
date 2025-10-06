@@ -24,6 +24,7 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./hook.mjs": "./hook.mjs",
     "./package.json": "./package.json"
   },
   "scripts": {
