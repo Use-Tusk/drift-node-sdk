@@ -8,7 +8,6 @@ export interface JsonwebtokenModuleExports {
   JsonWebTokenError: any;
   TokenExpiredError: any;
   NotBeforeError: any;
-  _tdPatched?: boolean;
 }
 
 export interface JsonwebtokenInstrumentationConfig extends TdInstrumentationConfig {

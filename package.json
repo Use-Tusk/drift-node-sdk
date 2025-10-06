@@ -1,10 +1,21 @@
 {
   "name": "@use-tusk/drift-node-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Node.js SDK for Tusk Drift instrumentation and replay",
+  "homepage": "https://github.com/Use-Tusk/drift-node-sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Use-Tusk/drift-node-sdk.git"
+  },
+  "type": "module",
   "files": [
-    "dist/**"
+    "dist/**",
+    "hook.mjs"
   ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.cts",
@@ -73,6 +84,7 @@
     "@use-tusk/drift-schemas": "^0.1.10",
     "express": "^5.1.0",
     "google-protobuf": "^4.0.0",
+    "import-in-the-middle": "^1.14.4",
     "install": "^0.13.0",
     "js-yaml": "^4.1.0",
     "jsonpath": "^1.1.1",

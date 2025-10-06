@@ -51,7 +51,6 @@ const mockJsonwebtokenModule = {
       this.date = date;
     }
   },
-  _tdPatched: false,
 };
 
 // Test payload and secrets

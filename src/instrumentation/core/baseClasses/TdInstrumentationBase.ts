@@ -2,13 +2,18 @@ import path from "path";
 import { satisfies } from "semver";
 import { TdInstrumentationAbstract, TdInstrumentationConfig } from "./TdInstrumentationAbstract";
 import { TdInstrumentationNodeModule } from "./TdInstrumentationNodeModule";
-import { Hook, HookOptions } from "require-in-the-middle";
+import { Hook as HookRequire, HookOptions } from "require-in-the-middle";
+import { Hook as HookImport } from "import-in-the-middle";
+import type { HookFn } from "import-in-the-middle";
 import { sendVersionMismatchAlert } from "../../../core/analytics";
 import { logger } from "../../../core/utils/logger";
 
 export abstract class TdInstrumentationBase extends TdInstrumentationAbstract {
   protected _modules: TdInstrumentationNodeModule[] = [];
+  protected _hooks: (HookRequire | HookImport)[] = [];
   protected _enabled = false;
+  // WeakSet to track patched modules (needed for ESM where we can't add properties to module exports)
+  private static _patchedModules = new WeakSet<object>();
 
   constructor(instrumentationName: string, config: TdInstrumentationConfig = {}) {
     super(instrumentationName, config);
@@ -72,18 +77,51 @@ export abstract class TdInstrumentationBase extends TdInstrumentationAbstract {
     }
     this._enabled = true;
 
-    // Set up require-in-the-middle hooks for each module
+    // Set up hooks for each module (both CJS and ESM)
     for (const module of this._modules) {
-      const hookOptions: HookOptions = { internals: true };
-      new Hook([module.name], hookOptions, (exports: unknown, name: string, baseDir?: string) => {
-        console.log("hi", module);
+      // CommonJS hook callback
+      const onRequire = (exports: any, name: string, baseDir?: string) => {
         return this._onRequire(module, exports, name, baseDir);
-      });
+      };
+
+      // ESM hook callback
+      const hookFn: HookFn = (exports, name, baseDir) => {
+        // Handle absolute paths for ESM
+        if (!baseDir && path.isAbsolute(name)) {
+          const parsedPath = path.parse(name);
+          name = parsedPath.name;
+          baseDir = parsedPath.dir;
+        }
+        return this._onRequire(module, exports, name, baseDir || undefined);
+      };
+
+      // Register CommonJS hook (require-in-the-middle)
+      const hookOptions: HookOptions = { internals: true };
+      const cjsHook = new HookRequire([module.name], hookOptions, onRequire);
+      this._hooks.push(cjsHook);
+
+      // Register ESM hook (import-in-the-middle)
+      const esmHook = new HookImport([module.name], { internals: false }, hookFn);
+      this._hooks.push(esmHook);
     }
   }
 
   isEnabled(): boolean {
     return this._enabled;
+  }
+
+  /**
+   * Mark a module as patched.
+   */
+  protected markModuleAsPatched(moduleExports: any): void {
+    TdInstrumentationBase._patchedModules.add(moduleExports);
+  }
+
+  /**
+   * Check if a module has already been patched.
+   */
+  protected isModulePatched(moduleExports: any): boolean {
+    return TdInstrumentationBase._patchedModules.has(moduleExports);
   }
 
   private _onRequire(

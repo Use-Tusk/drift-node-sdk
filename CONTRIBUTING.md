@@ -59,6 +59,64 @@ All instrumentations follow a consistent structure and extend base classes:
   - `mockResponseUtils`: For generating mock responses during replay
   - Additional utilities in `src/instrumentation/core/utils/` and `src/core/utils/`
 
+### Module Interception: CommonJS vs ESM
+
+The SDK supports both CommonJS and ESM module systems, using different interception mechanisms for each:
+
+#### CommonJS Module Interception
+
+- **Package**: `require-in-the-middle`
+- **How it works**: Hooks into `Module.prototype.require` globally
+- **When it activates**: When `require()` is called
+- **Setup**: Automatic - no special flags needed
+- **Use case**: Works for all CommonJS modules
+
+#### ESM Module Interception
+
+- **Package**: `import-in-the-middle`, created by [Datadog](https://opensource.datadoghq.com/projects/node/#the-import-in-the-middle-library)
+- **How it works**: Uses Node.js loader hooks to intercept imports before they're cached
+- **When it activates**: During module resolution/loading phase
+- **Setup**: Requires `--import` flag or `module.register()` call
+- **Use case**: Required for ESM modules
+- **Loader file**: `hook.mjs` - re-exports loader hooks from `import-in-the-middle`
+
+**Key difference**: CommonJS's `require()` is synchronous and sequential, so you can control order. ESM's `import` is hoisted and parallel, requiring loader hooks to intercept before evaluation.
+
+### When Does an Instrumentation Need Special ESM Handling?
+
+Most instrumentations work the same for both CommonJS and ESM, but some need special handling:
+
+#### ✅ Needs Special ESM Handling
+
+An instrumentation needs custom ESM support if it:
+
+1. **Wraps a default function export** (e.g., `postgres` package)
+2. **Wraps the module itself as a function** (not a method on an object)
+
+**Why**: In ESM, default exports are in the `.default` property of the namespace object, not directly accessible.
+
+**Example** (postgres):
+- **CommonJS**: `const postgres = require('postgres')` → `postgres` IS the function
+- **ESM**: `import postgres from 'postgres'` → `postgres.default` IS the function
+
+**Detection**:
+```typescript
+const isESM = (moduleExports as any)[Symbol.toStringTag] === 'Module';
+```
+
+**Solution**:
+```typescript
+if (isESM) {
+  // Wrap the .default property
+  this._wrap(moduleExports, 'default', wrapper);
+} else {
+  // Create wrapped function and return it
+  const wrappedFn = function(...args) { /* ... */ };
+  // Copy all properties...
+  return wrappedFn;
+}
+```
+
 ### Implementation Pattern
 
 Each instrumentation typically:

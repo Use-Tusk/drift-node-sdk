@@ -51,7 +51,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
   private _patchPgModule(pgModule: PgModuleExports): PgModuleExports {
     logger.debug(`[PgInstrumentation] Patching PG module in ${this.mode} mode`);
 
-    if (pgModule._tdPatched) {
+    if (this.isModulePatched(pgModule)) {
       logger.debug(`[PgInstrumentation] PG module already patched, skipping`);
       return pgModule;
     }
@@ -68,7 +68,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
       logger.debug(`[PgInstrumentation] Wrapped Client.prototype.connect`);
     }
 
-    pgModule._tdPatched = true;
+    this.markModuleAsPatched(pgModule);
     logger.debug(`[PgInstrumentation] PG module patching complete`);
 
     return pgModule;
@@ -572,7 +572,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
   }
 
   private _patchPgPoolModule(pgPoolModule: PgPoolModuleExports): PgPoolModuleExports {
-    if (pgPoolModule._tdPatched) {
+    if (this.isModulePatched(pgPoolModule)) {
       logger.debug(`[PgInstrumentation] PG Pool module already patched, skipping`);
       return pgPoolModule;
     }
@@ -589,7 +589,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
       logger.debug(`[PgInstrumentation] Wrapped Pool.prototype.connect`);
     }
 
-    pgPoolModule._tdPatched = true;
+    this.markModuleAsPatched(pgPoolModule);
     logger.debug(`[PgInstrumentation] PG Pool module patching complete`);
 
     return pgPoolModule;

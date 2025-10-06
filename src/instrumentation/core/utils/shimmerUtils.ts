@@ -19,7 +19,7 @@ export function wrap<T = any>(
   target: any,
   propertyName: string,
   wrapper: (original: T) => T,
-): void {
+): T | void {
   if (typeof target[propertyName] !== "function") {
     logger.warn(`Cannot wrap non-function property: ${propertyName}`);
     return;
@@ -44,4 +44,5 @@ export function wrap<T = any>(
   (wrapped as any)._propertyName = propertyName;
 
   target[propertyName] = wrapped;
+  return wrapped;
 }

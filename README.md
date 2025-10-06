@@ -3,8 +3,9 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@use-tusk/drift-node-sdk"><img src="https://img.shields.io/npm/v/@use-tusk/drift-node-sdk" alt="npm version"></a>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
-  <a href="https://github.com/Use-Tusk/tusk-drift-sdk/commits/main"><img src="https://img.shields.io/github/last-commit/Use-Tusk/tusk-drift-sdk" alt="GitHub last commit"></a>
+  <a href="https://github.com/Use-Tusk/drift-node-sdk/commits/main/"><img src="https://img.shields.io/github/last-commit/Use-Tusk/drift-node-sdk" alt="GitHub last commit"></a>
 </p>
 
 The Node.js Tusk Drift SDK enables fast and deterministic API testing by capturing and replaying API calls made to/from your service. Automatically record real-world API calls, then replay them as tests using the [Tusk CLI](https://github.com/Use-Tusk/tusk-drift-cli) to find regressions. During replay, all outbound requests are intercepted with recorded data to ensure consistent behavior without side-effects.
@@ -57,6 +58,8 @@ Follow these steps in order to properly initialize the Tusk Drift SDK:
 
 Create a separate file (e.g. `tdInit.ts`) to initialize the Tusk Drift SDK. This ensures the SDK is initialized as early as possible before any other modules are loaded.
 
+#### For CommonJS Applications
+
 ```typescript
 // tdInit.ts
 import { TuskDrift } from "@use-tusk/drift-node-sdk";
@@ -70,6 +73,33 @@ TuskDrift.initialize({
 
 export { TuskDrift };
 ```
+
+#### For ESM Applications
+
+ESM applications require additional setup to properly intercept module imports:
+
+```typescript
+// tdInit.ts
+import { register } from 'node:module';
+import { pathToFileURL } from 'node:url';
+
+// Register the ESM loader
+// This enables interception of ESM module imports
+register('@use-tusk/drift-node-sdk/hook.mjs', pathToFileURL('./'));
+
+import { TuskDrift } from "@use-tusk/drift-node-sdk";
+
+// Initialize SDK immediately
+TuskDrift.initialize({
+  apiKey: process.env.TUSK_DRIFT_API_KEY,
+  env: process.env.ENV,
+  logLevel: process.env.TUSK_DRIFT_LOG_LEVEL,
+});
+
+export { TuskDrift };
+```
+
+**Why the ESM loader is needed**: ESM imports are statically analyzed and hoisted, meaning all imports are resolved before any code runs. The `register()` call sets up Node.js loader hooks that intercept module imports, allowing the SDK to instrument packages like `postgres`, `http`, etc. Without this, the SDK cannot patch ESM modules.
 
 #### Configuration Options
 
@@ -106,7 +136,9 @@ export { TuskDrift };
 
 ### 2. Import SDK at Application Entry Point
 
-In your main server file (e.g., `server.ts`, `index.ts`, `app.ts`), import the initialized SDK **at the very top**, before any other imports:
+#### For CommonJS Applications
+
+In your main server file (e.g., `server.ts`, `index.ts`, `app.ts`), require the initialized SDK **at the very top**, before any other requires:
 
 ```typescript
 // server.ts
@@ -117,7 +149,24 @@ import { TuskDrift } from "./tdInit"; // MUST be the first import
 // Your application setup...
 ```
 
-> **IMPORTANT**: Ensure NO require/import calls are made before importing the SDK initialization file. This guarantees proper instrumentation of all dependencies.
+> **IMPORTANT**: Ensure NO require calls are made before requiring the SDK initialization file. This guarantees proper instrumentation of all dependencies.
+
+#### For ESM Applications
+
+For ESM applications, you **cannot** control import order within your application code because all imports are hoisted. Instead, use the `--import` flag:
+
+**Update your package.json scripts**:
+
+```json
+{
+  "scripts": {
+    "dev": "node --import ./dist/tdInit.js dist/server.js"
+    "dev:record": "TUSK_DRIFT_MODE=RECORD node --import ./dist/tdInit.js dist/server.js"
+  }
+}
+```
+
+**Why `--import` is required for ESM**: In ESM, all `import` statements are hoisted and evaluated before any code runs, making it impossible to control import order within a file. The `--import` flag ensures the SDK initialization (including loader registration) happens in a separate phase before your application code loads, guaranteeing proper module interception.
 
 ### 3. Update Configuration File
 

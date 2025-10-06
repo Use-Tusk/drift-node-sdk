@@ -32,7 +32,7 @@ export class JwksRsaInstrumentation extends TdInstrumentationBase {
       `[JwksRsaInstrumentation] Patching jwks-rsa module, current mode: ${this.tuskDrift.getMode()}`,
     );
 
-    if (jwksModule._tdPatched) {
+    if (this.isModulePatched(jwksModule)) {
       logger.debug(`[JwksRsaInstrumentation] jwks-rsa module already patched, skipping`);
       return jwksModule;
     }
@@ -58,7 +58,7 @@ export class JwksRsaInstrumentation extends TdInstrumentationBase {
       logger.debug(`[JwksRsaInstrumentation] Patched expressJwtSecret method`);
     }
 
-    jwksModule._tdPatched = true;
+    this.markModuleAsPatched(jwksModule);
 
     logger.debug(`[JwksRsaInstrumentation] jwks-rsa module patching complete`);
     return jwksModule;

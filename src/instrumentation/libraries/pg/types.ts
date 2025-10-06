@@ -33,13 +33,11 @@ export interface PgModuleExports {
   escapeIdentifier: typeof escapeIdentifier;
   escapeLiteral: typeof escapeLiteral;
   Result: typeof Result;
-  _tdPatched?: boolean;
 }
 
 // pg-pool exports a constructor function, so we type it as a constructor that returns Pool
 export interface PgPoolModuleExports {
   prototype: Pool;
-  _tdPatched?: boolean;
 }
 
 export interface PgInstrumentationConfig extends TdInstrumentationConfig {
