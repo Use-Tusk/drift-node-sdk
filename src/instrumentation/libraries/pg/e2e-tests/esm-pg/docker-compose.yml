@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:13
+    platform: linux/arm64
+    environment:
+      - POSTGRES_DB=testdb
+      - POSTGRES_USER=testuser
+      - POSTGRES_PASSWORD=testpass
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    platform: linux/arm64
+    build:
+      context: ../../../../../..
+      dockerfile: src/instrumentation/libraries/pg/e2e-tests/esm-pg/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=testdb
+      - POSTGRES_USER=testuser
+      - POSTGRES_PASSWORD=testpass
+    volumes:
+      # Mount SDK source for hot reload (this is what package.json expects)
+      - ../../../../../..:/sdk:ro
+      # Mount .tusk folder to persist traces
+      - ./.tusk:/app/.tusk
+      # Mount app source for development
+      - ./src:/app/src
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Keep container running without starting the app
+    # The CLI will control starting/stopping the app
+    command: tail -f /dev/null

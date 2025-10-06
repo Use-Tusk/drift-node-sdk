@@ -14,7 +14,7 @@ const server = http.createServer(async (req, res) => {
     // Test raw http.get
     if (url === '/test-http-get' && method === 'GET') {
       const result = await new Promise<string>((resolve, reject) => {
-        http.get('http://httpbin.org/get', (response) => {
+        http.get('https://jsonplaceholder.typicode.com/posts/1', (response) => {
           let data = '';
           response.on('data', (chunk) => {
             data += chunk;
@@ -37,16 +37,16 @@ const server = http.createServer(async (req, res) => {
     if (url === '/test-http-request' && method === 'POST') {
       const result = await new Promise<string>((resolve, reject) => {
         const options = {
-          hostname: 'httpbin.org',
-          port: 80,
-          path: '/post',
+          hostname: 'jsonplaceholder.typicode.com',
+          port: 443,
+          path: '/posts',
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
         };
 
-        const request = http.request(options, (response) => {
+        const request = https.request(options, (response) => {
           let data = '';
           response.on('data', (chunk) => {
             data += chunk;
@@ -72,7 +72,7 @@ const server = http.createServer(async (req, res) => {
     // Test https.get
     if (url === '/test-https-get' && method === 'GET') {
       const result = await new Promise<string>((resolve, reject) => {
-        https.get('https://httpbin.org/get', (response) => {
+        https.get('https://jsonplaceholder.typicode.com/posts/1', (response) => {
           let data = '';
           response.on('data', (chunk) => {
             data += chunk;
@@ -93,7 +93,7 @@ const server = http.createServer(async (req, res) => {
 
     // Test axios GET
     if (url === '/test-axios-get' && method === 'GET') {
-      const response = await axios.get('https://httpbin.org/get');
+      const response = await axios.get('https://jsonplaceholder.typicode.com/posts/1');
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
@@ -105,7 +105,7 @@ const server = http.createServer(async (req, res) => {
 
     // Test axios POST
     if (url === '/test-axios-post' && method === 'POST') {
-      const response = await axios.post('https://httpbin.org/post', {
+      const response = await axios.post('https://jsonplaceholder.typicode.com/posts', {
         test: 'data from axios',
       });
 
