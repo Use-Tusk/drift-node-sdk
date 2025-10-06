@@ -53,6 +53,8 @@ export class HttpInstrumentation extends TdInstrumentationBase {
   private replayHooks: HttpReplayHooks;
   private tuskDrift: TuskDriftCore;
   private transformEngine: HttpTransformEngine;
+  // Store complete inputValue (with body) for each request
+  private requestInputValueMap = new WeakMap<ClientRequest, HttpClientInputValue>();
 
   constructor(config: HttpInstrumentationConfig) {
     super("http", config);
@@ -706,6 +708,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     inputValue: HttpClientInputValue,
     schemaMerges: SchemaMerges | undefined,
   ): void {
+    const self = this; // Capture class instance for use in non-arrow functions
     const requestBodyChunks: (string | Buffer)[] = [];
     let requestBodyCaptured = false;
 
@@ -752,6 +755,10 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                 bodySize: bodyBuffer.length,
               };
 
+              // Store complete inputValue in WeakMap for use by response handler
+              // This is necessary because the response handler has a closure-captured reference to the original `inputValue` (without body)
+              self.requestInputValueMap.set(req, updatedInputValue);
+              
               // Update the span with the complete request body information
               SpanUtils.addSpanAttributes(spanInfo.span, {
                 inputValue: updatedInputValue,
@@ -846,6 +853,9 @@ export class HttpInstrumentation extends TdInstrumentationBase {
               outputValue.body = encodedBody;
               outputValue.bodySize = responseBuffer.length;
 
+              // Get complete inputValue (with body) from WeakMap, fallback to original
+              const completeInputValue = this.requestInputValueMap.get(req) || inputValue;
+
               this._addOutputAttributesToSpan({
                 spanInfo,
                 outputValue,
@@ -859,7 +869,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                     matchImportance: 0,
                   },
                 },
-                inputValue,
+                inputValue: completeInputValue,
               });
             } catch (error) {
               logger.error(`[HttpInstrumentation] Error processing response body:`, error);
@@ -868,6 +878,9 @@ export class HttpInstrumentation extends TdInstrumentationBase {
         });
       } else {
         try {
+          // Get complete inputValue (with body) from WeakMap, fallback to original
+          const completeInputValue = this.requestInputValueMap.get(req) || inputValue;
+
           this._addOutputAttributesToSpan({
             spanInfo,
             outputValue,
@@ -881,7 +894,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                 matchImportance: 0,
               },
             },
-            inputValue,
+            inputValue: completeInputValue,
           });
         } catch (error) {
           logger.error(`[HttpInstrumentation] Error adding output attributes to span:`, error);
