@@ -67,7 +67,7 @@ sleep 2
 
 # Step 5: Run tests using tusk CLI
 echo "Step 5: Running tests using tusk CLI..."
-TEST_RESULTS=$(docker-compose exec -T app tusk run --print --output-format "json")
+TEST_RESULTS=$(docker-compose exec -T app tusk run --print --output-format "json" --enable-service-logs)
 
 # Step 6: Log test results
 echo ""
@@ -94,6 +94,22 @@ if [ "$ALL_PASSED" = "true" ]; then
 else
   echo -e "${RED}Some tests failed!${NC}"
   EXIT_CODE=1
+fi
+
+# Step 6.5: Check for TCP instrumentation warning in logs
+echo ""
+echo "Checking for TCP instrumentation warnings..."
+FIRST_LOG_FILE=$(docker-compose exec -T app ls -1 .tusk/logs 2>/dev/null | head -n 1)
+if [ -n "$FIRST_LOG_FILE" ]; then
+  if docker-compose exec -T app grep -q "\[TcpInstrumentation\] TCP called from inbound request context, likely unpatched dependency" .tusk/logs/"$FIRST_LOG_FILE" 2>/dev/null; then
+    echo -e "${RED}✗ WARNING: Found TCP instrumentation warning in logs!${NC}"
+    echo -e "${RED}  This indicates an unpatched dependency is making TCP calls.${NC}"
+    EXIT_CODE=1
+  else
+    echo -e "${GREEN}✓ No TCP instrumentation warnings found.${NC}"
+  fi
+else
+  echo -e "${YELLOW}⚠ No log files found, skipping TCP warning check.${NC}"
 fi
 
 # Step 7: Clean up

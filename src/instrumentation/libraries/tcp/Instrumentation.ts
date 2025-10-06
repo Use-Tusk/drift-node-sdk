@@ -86,11 +86,11 @@ export class TcpInstrumentation extends TdInstrumentationBase {
       Error.stackTraceLimit = Infinity;
 
       logger.warn(
-        `[TcpInstrumentation] TCP ${methodName} called from inbound request context, likely unpatched dependency`,
+        `[TcpInstrumentation] TCP called from inbound request context, likely unpatched dependency`,
         {
+          tcpMethod: methodName,
           spanId: currentSpanInfo.spanId,
           traceId: currentSpanInfo.traceId,
-          method: methodName,
           socketContext,
         },
       );

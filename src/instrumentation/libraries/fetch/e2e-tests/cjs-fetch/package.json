@@ -1,7 +1,7 @@
 {
-  "name": "cjs-postgres-e2e-test",
+  "name": "cjs-fetch-e2e-test",
   "version": "1.0.0",
-  "description": "E2E tests for Postgres instrumentation with Drizzle (CommonJS)",
+  "description": "E2E tests for Fetch instrumentation (CommonJS)",
   "main": "dist/index.js",
   "type": "commonjs",
   "scripts": {
@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "@use-tusk/drift-node-sdk": "file:/sdk",
-    "drizzle-orm": "^0.42.0",
-    "postgres": "^3.4.0",
     "express": "^4.18.2"
   },
   "devDependencies": {

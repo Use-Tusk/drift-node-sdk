@@ -9,7 +9,7 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo "Starting PostgreSQL E2E test run..."
+echo "Starting Postgres (Drizzle + postgres) ESM E2E test run..."
 
 # Step 0: Clean up traces and logs
 echo "Step 0: Cleaning up traces and logs..."
@@ -39,40 +39,40 @@ docker-compose exec -d -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm
 
 # Wait for server to start
 echo "Waiting for server to start..."
-sleep 8
+sleep 10
 
 # Step 3: Hit all endpoints
-echo "Step 3: Hitting all PostgreSQL endpoints..."
+echo "Step 3: Hitting all Postgres + Drizzle endpoints..."
 
 echo "  - GET /health"
 docker-compose exec app curl -s http://localhost:3000/health > /dev/null
 
-echo "  - GET /test/basic-query"
-docker-compose exec app curl -s http://localhost:3000/test/basic-query > /dev/null
+echo "  - GET /cache/all"
+docker-compose exec app curl -s http://localhost:3000/cache/all > /dev/null
 
-echo "  - POST /test/parameterized-query"
-docker-compose exec app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/parameterized-query > /dev/null
+echo "  - GET /cache/sample"
+docker-compose exec app curl -s http://localhost:3000/cache/sample > /dev/null
 
-echo "  - GET /test/client-query"
-docker-compose exec app curl -s http://localhost:3000/test/client-query > /dev/null
+echo "  - GET /cache/raw"
+docker-compose exec app curl -s http://localhost:3000/cache/raw > /dev/null
 
-echo "  - GET /test/client-connect"
-docker-compose exec app curl -s http://localhost:3000/test/client-connect > /dev/null
+echo "  - POST /cache/execute-raw"
+docker-compose exec app curl -s -X POST http://localhost:3000/cache/execute-raw > /dev/null
 
-echo "  - GET /test/client-close"
-docker-compose exec app curl -s http://localhost:3000/test/client-close > /dev/null
+echo "  - POST /cache/insert"
+docker-compose exec app curl -s -X POST -H "Content-Type: application/json" -d '{"key":"test_insert","value":"test_value"}' http://localhost:3000/cache/insert > /dev/null
 
-echo "  - GET /test/pool-query"
-docker-compose exec app curl -s http://localhost:3000/test/pool-query > /dev/null
+echo "  - PUT /cache/update"
+docker-compose exec app curl -s -X PUT -H "Content-Type: application/json" -d '{"key":"test_key_1","value":"updated_value"}' http://localhost:3000/cache/update > /dev/null
 
-echo "  - POST /test/pool-parameterized"
-docker-compose exec app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/pool-parameterized > /dev/null
+echo "  - DELETE /cache/delete"
+docker-compose exec app curl -s -X DELETE -H "Content-Type: application/json" -d '{"key":"test_insert"}' http://localhost:3000/cache/delete > /dev/null
 
-echo "  - GET /test/pool-connect"
-docker-compose exec app curl -s http://localhost:3000/test/pool-connect > /dev/null
+echo "  - GET /users/by-email"
+docker-compose exec app curl -s "http://localhost:3000/users/by-email?email=alice@example.com" > /dev/null
 
-echo "  - GET /test/pool-transaction"
-docker-compose exec app curl -s http://localhost:3000/test/pool-transaction > /dev/null
+echo "  - POST /users/insert"
+docker-compose exec app curl -s -X POST -H "Content-Type: application/json" -d '{"name":"Test User","email":"testuser@example.com"}' http://localhost:3000/users/insert > /dev/null
 
 echo "All endpoints hit successfully."
 
@@ -143,6 +143,6 @@ rm -rf .tusk/traces/*
 rm -rf .tusk/logs/*
 echo "Cleanup complete."
 
-echo "PostgreSQL E2E test run complete."
+echo "Postgres (Drizzle + postgres) ESM E2E test run complete."
 
 exit $EXIT_CODE
