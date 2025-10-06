@@ -61,6 +61,7 @@ export interface HttpServerOutputValue {
 }
 
 export interface HttpModuleExports {
+  default?: any;
   _connectionListener: Function;
   METHODS: string[];
   STATUS_CODES: { [code: number]: string };
@@ -79,10 +80,10 @@ export interface HttpModuleExports {
   maxHeaderSize: number;
   globalAgent: Agent;
   // Custom property added by our instrumentation
-  _tdPatched?: boolean;
 }
 
 export interface HttpsModuleExports {
+  default?: any;
   Agent: typeof Agent;
   globalAgent: Agent;
   Server: typeof Server;
@@ -90,5 +91,4 @@ export interface HttpsModuleExports {
   get: Function;
   request: Function;
   // Custom property added by our instrumentation
-  _tdPatched?: boolean;
 }

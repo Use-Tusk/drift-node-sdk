@@ -84,21 +84,39 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     const protocolUpper = protocol.toUpperCase();
     logger.debug(`[HttpInstrumentation] Patching ${protocolUpper} module in ${this.mode} mode`);
 
-    if (httpModule._tdPatched) {
+    if (this.isModulePatched(httpModule)) {
       logger.debug(`[HttpInstrumentation] ${protocolUpper} module already patched, skipping`);
       return httpModule;
     }
 
-    this._wrap(httpModule, "request", this._getRequestPatchFn(protocol));
-    this._wrap(httpModule, "get", this._getGetPatchFn(protocol));
+    // ESM Support: Detect if this is an ESM module
+    const isESM = (httpModule as any)[Symbol.toStringTag] === 'Module';
 
+    if (isESM) {
+      // ESM Case: Also set wrapped methods on the default export
+      // In ESM: import http from 'http' gives { default: <http module>, request: ..., get: ... }
+      // Users may access http.request (namespace) OR http.default.request (default export)
+      // We need to ensure both are wrapped
+      if (httpModule.default) {
+        // Should always be true in ESM mode, but just in case
+        this._wrap(httpModule.default, "request", this._getRequestPatchFn(protocol));
+        this._wrap(httpModule.default, "get", this._getGetPatchFn(protocol));
+      }
+    } else {
+      // Wrap methods on the http/https module namespace
+      this._wrap(httpModule, "request", this._getRequestPatchFn(protocol));
+      this._wrap(httpModule, "get", this._getGetPatchFn(protocol));
+    }
+
+    // Wrap Server.prototype.emit (works the same for both CommonJS and ESM)
+    // This is a prototype method, so no special ESM handling needed
     const HttpServer = httpModule.Server;
     if (HttpServer && HttpServer.prototype) {
       this._wrap(HttpServer.prototype, "emit", this._getServerEmitPatchFn(protocol));
       logger.debug(`[HttpInstrumentation] Wrapped Server.prototype.emit for ${protocolUpper}`);
     }
 
-    httpModule._tdPatched = true;
+    this.markModuleAsPatched(httpModule);
     logger.debug(`[HttpInstrumentation] ${protocolUpper} module patching complete`);
 
     return httpModule;
@@ -1283,7 +1301,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     target: HttpModuleExports | HttpsModuleExports | Server,
     propertyName: string,
     wrapper: (original: Function) => Function,
-  ): void {
-    wrap(target, propertyName, wrapper);
+  ): Function | void {
+    return wrap(target, propertyName, wrapper);
   }
 }

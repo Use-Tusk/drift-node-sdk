@@ -3,7 +3,6 @@ import { TdInstrumentationConfig } from "../../core/baseClasses/TdInstrumentatio
 
 export interface JwksRsaModuleExports {
   (options: JwksClientOptions): JwksClient;
-  _tdPatched?: boolean;
 }
 
 export interface JwksRsaInstrumentationConfig extends TdInstrumentationConfig {

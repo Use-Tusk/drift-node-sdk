@@ -23,7 +23,6 @@ export interface PostgresConnectionInputValue {
 export interface PostgresModuleExports {
   sql?: Function;
   default?: Function;
-  _tdPatched?: boolean;
   [key: string]: any;
 }
 
@@ -36,10 +35,10 @@ export interface PostgresInstrumentationConfig extends TdInstrumentationConfig {
 /**
  * postgres.js result format with metadata
  */
-export interface PostgresResult<T = any> {
-  rows?: T[];
-  command: string;
-  count: number;
+export interface PostgresResult {
+  rows?: PostgresRow[];
+  command?: string;
+  count?: number;
 }
 
 /**
@@ -54,10 +53,26 @@ export type PostgresRow = Record<string, any>;
  * - null/undefined
  */
 export type PostgresConvertedResult =
-  | PostgresResult<PostgresRow>
-  | PostgresRow[]
-  | null
-  | undefined;
+  | PostgresResult
+  | PostgresRow[];
+
+export type PostgresOutputValueType = {
+  rows?: PostgresRow[];
+  command?: string;
+  count?: number;
+  _tdOriginalFormat: PostgresReturnType;
+}
+
+// Add this as a private method in your class
+export function isPostgresOutputValueType(value: any): value is PostgresOutputValueType {
+  return (
+    value !== null &&
+    value !== undefined &&
+    typeof value === "object" &&
+    "_tdOriginalFormat" in value &&
+    Object.values(PostgresReturnType).includes(value._tdOriginalFormat)
+  );
+}
 
 /**
  * Transaction result
@@ -66,4 +81,9 @@ export interface PostgresTransactionResult {
   status: "committed" | "rolled_back";
   result?: any;
   error?: string;
+}
+
+export enum PostgresReturnType {
+  ARRAY = "array",
+  OBJECT = "object",
 }
