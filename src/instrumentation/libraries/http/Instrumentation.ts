@@ -97,8 +97,11 @@ export class HttpInstrumentation extends TdInstrumentationBase {
       // In ESM: import http from 'http' gives { default: <http module>, request: ..., get: ... }
       // Users may access http.request (namespace) OR http.default.request (default export)
       // We need to ensure both are wrapped
-      this._wrap(httpModule.default, "request", this._getRequestPatchFn(protocol));
-      this._wrap(httpModule.default, "get", this._getGetPatchFn(protocol));
+      if (httpModule.default) {
+        // Should always be true in ESM mode, but just in case
+        this._wrap(httpModule.default, "request", this._getRequestPatchFn(protocol));
+        this._wrap(httpModule.default, "get", this._getGetPatchFn(protocol));
+      }
     } else {
       // Wrap methods on the http/https module namespace
       this._wrap(httpModule, "request", this._getRequestPatchFn(protocol));
