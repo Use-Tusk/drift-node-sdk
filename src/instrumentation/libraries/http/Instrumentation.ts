@@ -53,8 +53,6 @@ export class HttpInstrumentation extends TdInstrumentationBase {
   private replayHooks: HttpReplayHooks;
   private tuskDrift: TuskDriftCore;
   private transformEngine: HttpTransformEngine;
-  // Store complete inputValue (with body) for each request
-  private requestInputValueMap = new WeakMap<ClientRequest, HttpClientInputValue>();
 
   constructor(config: HttpInstrumentationConfig) {
     super("http", config);
@@ -707,8 +705,8 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     spanInfo: SpanInfo,
     inputValue: HttpClientInputValue,
     schemaMerges: SchemaMerges | undefined,
+    onBodyCaptured?: (updatedInputValue: HttpClientInputValue) => void,
   ): void {
-    const self = this; // Capture class instance for use in non-arrow functions
     const requestBodyChunks: (string | Buffer)[] = [];
     let requestBodyCaptured = false;
 
@@ -755,10 +753,11 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                 bodySize: bodyBuffer.length,
               };
 
-              // Store complete inputValue in WeakMap for use by response handler
-              // This is necessary because the response handler has a closure-captured reference to the original `inputValue` (without body)
-              self.requestInputValueMap.set(req, updatedInputValue);
-              
+              // Call callback to update closure variable in response handler
+              if (onBodyCaptured) {
+                onBodyCaptured(updatedInputValue);
+              }
+
               // Update the span with the complete request body information
               SpanUtils.addSpanAttributes(spanInfo.span, {
                 inputValue: updatedInputValue,
@@ -798,11 +797,16 @@ export class HttpInstrumentation extends TdInstrumentationBase {
   ) {
     const req = originalRequest.apply(this, args);
 
+    // Track the complete input value (will be updated when body is captured)
+    let completeInputValue = inputValue;
+
     // NOTE: This is a patch to capture the request body
     // This is necessary because ClientRequest doesn't have a .body property - we need to capture it from the stream
     // This patches req.write() and listens for 'data'/'end' events to collect body chunks as they arrive
     // Handles both write() consumption and pipe/stream consumption patterns used by different frameworks
-    this._captureClientRequestBody(req, spanInfo, inputValue, schemaMerges);
+    this._captureClientRequestBody(req, spanInfo, inputValue, schemaMerges, (updatedInputValue) => {
+      completeInputValue = updatedInputValue;
+    });
 
     // Add event listeners to track request/response within span context
     req.on("response", (res: IncomingMessage) => {
@@ -853,9 +857,6 @@ export class HttpInstrumentation extends TdInstrumentationBase {
               outputValue.body = encodedBody;
               outputValue.bodySize = responseBuffer.length;
 
-              // Get complete inputValue (with body) from WeakMap, fallback to original
-              const completeInputValue = this.requestInputValueMap.get(req) || inputValue;
-
               this._addOutputAttributesToSpan({
                 spanInfo,
                 outputValue,
@@ -878,9 +879,6 @@ export class HttpInstrumentation extends TdInstrumentationBase {
         });
       } else {
         try {
-          // Get complete inputValue (with body) from WeakMap, fallback to original
-          const completeInputValue = this.requestInputValueMap.get(req) || inputValue;
-
           this._addOutputAttributesToSpan({
             spanInfo,
             outputValue,
