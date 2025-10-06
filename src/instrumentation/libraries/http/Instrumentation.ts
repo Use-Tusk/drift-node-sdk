@@ -705,6 +705,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     spanInfo: SpanInfo,
     inputValue: HttpClientInputValue,
     schemaMerges: SchemaMerges | undefined,
+    onBodyCaptured?: (updatedInputValue: HttpClientInputValue) => void,
   ): void {
     const requestBodyChunks: (string | Buffer)[] = [];
     let requestBodyCaptured = false;
@@ -752,6 +753,11 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                 bodySize: bodyBuffer.length,
               };
 
+              // Call callback to update closure variable in response handler
+              if (onBodyCaptured) {
+                onBodyCaptured(updatedInputValue);
+              }
+
               // Update the span with the complete request body information
               SpanUtils.addSpanAttributes(spanInfo.span, {
                 inputValue: updatedInputValue,
@@ -791,11 +797,16 @@ export class HttpInstrumentation extends TdInstrumentationBase {
   ) {
     const req = originalRequest.apply(this, args);
 
+    // Track the complete input value (will be updated when body is captured)
+    let completeInputValue = inputValue;
+
     // NOTE: This is a patch to capture the request body
     // This is necessary because ClientRequest doesn't have a .body property - we need to capture it from the stream
     // This patches req.write() and listens for 'data'/'end' events to collect body chunks as they arrive
     // Handles both write() consumption and pipe/stream consumption patterns used by different frameworks
-    this._captureClientRequestBody(req, spanInfo, inputValue, schemaMerges);
+    this._captureClientRequestBody(req, spanInfo, inputValue, schemaMerges, (updatedInputValue) => {
+      completeInputValue = updatedInputValue;
+    });
 
     // Add event listeners to track request/response within span context
     req.on("response", (res: IncomingMessage) => {
@@ -859,7 +870,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                     matchImportance: 0,
                   },
                 },
-                inputValue,
+                inputValue: completeInputValue,
               });
             } catch (error) {
               logger.error(`[HttpInstrumentation] Error processing response body:`, error);
@@ -881,7 +892,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                 matchImportance: 0,
               },
             },
-            inputValue,
+            inputValue: completeInputValue,
           });
         } catch (error) {
           logger.error(`[HttpInstrumentation] Error adding output attributes to span:`, error);
