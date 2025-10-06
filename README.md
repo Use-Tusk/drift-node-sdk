@@ -50,25 +50,26 @@ npm install @use-tusk/drift-node-sdk
 Before setting up the SDK, ensure you have:
 
 - Completed the [CLI wizard](https://github.com/Use-Tusk/tusk-drift-cli?tab=readme-ov-file#quick-start)
-- Obtained an API key from the [Tusk Drift dashboard](https://usetusk.ai/app/settings/api-keysgoogle.com)
+- Obtained an API key from the [Tusk Drift dashboard](https://usetusk.ai/app/settings/api-keys) (only required if using Tusk Cloud)
 
 Follow these steps in order to properly initialize the Tusk Drift SDK:
 
 ### 1. Create SDK Initialization File
 
-Create a separate file (e.g. `tdInit.ts`) to initialize the Tusk Drift SDK. This ensures the SDK is initialized as early as possible before any other modules are loaded.
+Create a separate file (e.g. `tuskDriftInit.ts`) to initialize the Tusk Drift SDK. This ensures the SDK is initialized as early as possible before any other modules are loaded.
+
+**IMPORTANT**: Ensure that `TuskDrift` is initialized before any other telemetry providers (e.g. OpenTelemetry, Sentry, etc.). If not, your existing telemetry may not work properly.
 
 #### For CommonJS Applications
 
 ```typescript
-// tdInit.ts
+// tuskDriftInit.ts
 import { TuskDrift } from "@use-tusk/drift-node-sdk";
 
 // Initialize SDK immediately
 TuskDrift.initialize({
   apiKey: process.env.TUSK_DRIFT_API_KEY,
-  env: process.env.ENV,
-  logLevel: process.env.TUSK_DRIFT_LOG_LEVEL,
+  env: process.env.NODE_ENV,
 });
 
 export { TuskDrift };
@@ -79,7 +80,7 @@ export { TuskDrift };
 ESM applications require additional setup to properly intercept module imports:
 
 ```typescript
-// tdInit.ts
+// tuskDriftInit.ts
 import { register } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
@@ -92,8 +93,7 @@ import { TuskDrift } from "@use-tusk/drift-node-sdk";
 // Initialize SDK immediately
 TuskDrift.initialize({
   apiKey: process.env.TUSK_DRIFT_API_KEY,
-  env: process.env.ENV,
-  logLevel: process.env.TUSK_DRIFT_LOG_LEVEL,
+  env: process.env.NODE_ENV,
 });
 
 export { TuskDrift };
@@ -116,13 +116,13 @@ export { TuskDrift };
     <tr>
       <td><code>apiKey</code></td>
       <td><code>string</code></td>
-      <td><b>Required.</b></td>
+      <td><b>Required if using Tusk Cloud</b></td>
       <td>Your Tusk Drift API key.</td>
     </tr>
     <tr>
       <td><code>env</code></td>
       <td><code>string</code></td>
-      <td><b>Required.</b></td>
+      <td><code>process.env.NODE_ENV</code></td>
       <td>The environment name.</td>
     </tr>
     <tr>
@@ -142,7 +142,7 @@ In your main server file (e.g., `server.ts`, `index.ts`, `app.ts`), require the 
 
 ```typescript
 // server.ts
-import { TuskDrift } from "./tdInit"; // MUST be the first import
+import { TuskDrift } from "./tuskDriftInit"; // MUST be the first import
 
 // ... other imports ...
 
@@ -160,8 +160,8 @@ For ESM applications, you **cannot** control import order within your applicatio
 ```json
 {
   "scripts": {
-    "dev": "node --import ./dist/tdInit.js dist/server.js"
-    "dev:record": "TUSK_DRIFT_MODE=RECORD node --import ./dist/tdInit.js dist/server.js"
+    "dev": "node --import ./dist/tuskDriftInit.js dist/server.js",
+    "dev:record": "TUSK_DRIFT_MODE=RECORD node --import ./dist/tuskDriftInit.js dist/server.js"
   }
 }
 ```
@@ -214,13 +214,13 @@ recording:
   </tbody>
 </table>
 
-### 3. Mark App as Ready
+### 4. Mark App as Ready
 
 Once your application has completed initialization (database connections, middleware setup, etc.), mark it as ready:
 
 ```typescript
 // server.ts
-import { TuskDrift } from "./tdInit";
+import { TuskDrift } from "./tuskDriftInit";
 
 // ... other imports ...
 
@@ -308,7 +308,11 @@ You should see output similar to:
 
 1. **Check sampling rate**: Ensure `sampling_rate` in `.tusk/config.yaml` is 1.0
 2. **Verify app readiness**: Make sure you're calling `TuskDrift.markAppAsReady()`
-3. **Check endpoint paths**: Ensure your endpoint isn't in `exclude_paths`
+3. **Use debug mode in SDK**: Add `logLevel: 'debug'` to the initialization parameters
+
+#### Existing telemetry not working
+
+Ensure that `TuskDrift.initialize()` is called before any other telemetry providers (e.g. OpenTelemetry, Sentry, etc.).
 
 #### Replay failures
 

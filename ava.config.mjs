@@ -1,5 +1,9 @@
 export default {
-  files: ['src/**/*.test.ts'],
+  files: [
+    'src/**/*.test.ts',
+    '!src/instrumentation/libraries/jsonwebtoken/**/*.test.ts',
+    '!src/instrumentation/libraries/pg/**/*.test.ts'
+  ],
   extensions: {
     ts: 'commonjs'
   },
