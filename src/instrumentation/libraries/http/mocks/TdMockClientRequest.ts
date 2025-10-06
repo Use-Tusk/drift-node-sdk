@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import type { IncomingMessage } from "http";
+import { IncomingMessage } from "http";
 import { TdHttpMockSocket, TdHttpMockSocketOptions } from "./TdHttpMockSocket";
 import { SpanInfo } from "../../../../core/tracing/SpanUtils";
 import { getDecodedType, httpBodyEncoder, normalizeHeaders } from "../utils";

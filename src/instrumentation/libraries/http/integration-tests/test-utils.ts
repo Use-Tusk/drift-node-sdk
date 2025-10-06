@@ -25,7 +25,8 @@ export async function setupTestServers(): Promise<TestServers> {
   const serviceAApp = express();
   serviceAApp.use(express.json());
 
-  serviceAApp.post("/api/sensitive", (req, res) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  serviceAApp.post("/api/sensitive", (req: any, res: any) => {
     res.json({
       status: "success",
       sensitiveData: "TOP_SECRET_123",
@@ -33,7 +34,8 @@ export async function setupTestServers(): Promise<TestServers> {
     });
   });
 
-  serviceAApp.get("/api/data", (req, res) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  serviceAApp.get("/api/data", (req: any, res: any) => {
     res.json({ data: "public data from service A" });
   });
 
@@ -48,7 +50,8 @@ export async function setupTestServers(): Promise<TestServers> {
   const serviceBApp = express();
   serviceBApp.use(express.json());
 
-  serviceBApp.get("/api/public", (req, res) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  serviceBApp.get("/api/public", (req: any, res: any) => {
     res.json({ message: "Hello from service B" });
   });
 
@@ -64,7 +67,8 @@ export async function setupTestServers(): Promise<TestServers> {
   mainApp.use(express.json());
 
   // Endpoint that calls service A's sensitive endpoint using native http
-  mainApp.post("/call-service-a-sensitive", async (req, res) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mainApp.post("/call-service-a-sensitive", async (req: any, res: any) => {
     const postData = JSON.stringify({ userId: req.body.userId });
     const options = {
       hostname: "127.0.0.1",
@@ -77,14 +81,17 @@ export async function setupTestServers(): Promise<TestServers> {
       },
     };
 
-    const httpReq = http.request(options, (httpRes) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const httpReq = http.request(options, (httpRes: any) => {
       let data = "";
-      httpRes.on("data", (chunk) => (data += chunk));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      httpRes.on("data", (chunk: any) => (data += chunk));
       httpRes.on("end", () => {
         res.json({ upstream: JSON.parse(data) });
       });
     });
-    httpReq.on("error", (error) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    httpReq.on("error", (error: any) => {
       res.status(500).json({ error: error.message });
     });
     httpReq.write(postData);
@@ -92,7 +99,8 @@ export async function setupTestServers(): Promise<TestServers> {
   });
 
   // Endpoint that calls service A's public endpoint using native http
-  mainApp.get("/call-service-a-public", async (req, res) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mainApp.get("/call-service-a-public", async (req: any, res: any) => {
     const options = {
       hostname: "127.0.0.1",
       port: serviceAPort,
@@ -100,21 +108,25 @@ export async function setupTestServers(): Promise<TestServers> {
       method: "GET",
     };
 
-    const httpReq = http.request(options, (httpRes) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const httpReq = http.request(options, (httpRes: any) => {
       let data = "";
-      httpRes.on("data", (chunk) => (data += chunk));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      httpRes.on("data", (chunk: any) => (data += chunk));
       httpRes.on("end", () => {
         res.json({ upstream: JSON.parse(data) });
       });
     });
-    httpReq.on("error", (error) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    httpReq.on("error", (error: any) => {
       res.status(500).json({ error: error.message });
     });
     httpReq.end();
   });
 
   // Endpoint that calls service B using native http
-  mainApp.get("/call-service-b", async (req, res) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mainApp.get("/call-service-b", async (req: any, res: any) => {
     const options = {
       hostname: "127.0.0.1",
       port: serviceBPort,
@@ -123,26 +135,31 @@ export async function setupTestServers(): Promise<TestServers> {
       headers: { "X-API-Key": "super-secret-api-key-12345" },
     };
 
-    const httpReq = http.request(options, (httpRes) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const httpReq = http.request(options, (httpRes: any) => {
       let data = "";
-      httpRes.on("data", (chunk) => (data += chunk));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      httpRes.on("data", (chunk: any) => (data += chunk));
       httpRes.on("end", () => {
         res.json({ upstream: JSON.parse(data) });
       });
     });
-    httpReq.on("error", (error) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    httpReq.on("error", (error: any) => {
       res.status(500).json({ error: error.message });
     });
     httpReq.end();
   });
 
   // Admin endpoint (should be dropped on inbound)
-  mainApp.get("/admin/users", (req, res) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mainApp.get("/admin/users", (req: any, res: any) => {
     res.json({ users: [{ id: 1, name: "Admin" }] });
   });
 
   // Login endpoint with password (should redact password)
-  mainApp.post("/auth/login", (req, res) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mainApp.post("/auth/login", (req: any, res: any) => {
     res.json({ success: true, token: "jwt-token" });
   });
 
