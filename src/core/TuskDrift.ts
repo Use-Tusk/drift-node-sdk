@@ -36,7 +36,7 @@ import { TransformConfigs } from "../instrumentation/libraries/http/HttpTransfor
 
 export interface InitParams {
   apiKey?: string;
-  env: string;
+  env?: string;
   logLevel?: LogLevel;
   transforms?: TransformConfigs;
 }
@@ -224,7 +224,7 @@ export class TuskDriftCore {
       observableServiceId: this.config.service?.id,
       apiKey: this.initParams.apiKey,
       tuskBackendBaseUrl: this.config.tusk_api?.url || "https://api.usetusk.ai",
-      environment: this.initParams.env,
+      environment: this.initParams.env || "unknown",
       sdkVersion: SDK_VERSION,
       sdkInstanceId: this.generateSdkInstanceId(),
     });
@@ -259,6 +259,14 @@ export class TuskDriftCore {
     this.samplingRate = this.config.recording?.sampling_rate ?? 1;
     this.initParams = initParams;
 
+    if (!this.initParams.env) {
+      const nodeEnv = OriginalGlobalUtils.getOriginalProcessEnvVar("NODE_ENV") || "unknown";
+      logger.warn(
+        `Environment not provided in initialization parameters. Using '${nodeEnv}' as the environment.`,
+      );
+      this.initParams.env = nodeEnv;
+    }
+
     // Initialize logging with provided level or default to 'warn'
     initializeGlobalLogger({
       logLevel: initParams.logLevel || "info",
@@ -277,13 +285,6 @@ export class TuskDriftCore {
     ) {
       logger.error(
         "In record mode and export_spans is true, but API key not provided. API key is required to export spans to Tusk backend. Please provide an API key in the initialization parameters.",
-      );
-      return;
-    }
-
-    if (!this.initParams.env) {
-      logger.error(
-        "Environment not provided. Please provide an environment in the initialization parameters.",
       );
       return;
     }
