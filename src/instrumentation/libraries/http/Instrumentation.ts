@@ -92,18 +92,17 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     // ESM Support: Detect if this is an ESM module
     const isESM = (httpModule as any)[Symbol.toStringTag] === 'Module';
 
-    // Wrap methods on the http/https module namespace
-    // This works for both CommonJS and ESM because we're wrapping properties on an object
-    const wrappedRequest = this._wrap(httpModule, "request", this._getRequestPatchFn(protocol));
-    const wrappedGet = this._wrap(httpModule, "get", this._getGetPatchFn(protocol));
-
     if (isESM) {
       // ESM Case: Also set wrapped methods on the default export
       // In ESM: import http from 'http' gives { default: <http module>, request: ..., get: ... }
       // Users may access http.request (namespace) OR http.default.request (default export)
       // We need to ensure both are wrapped
-      (httpModule as any).default.request = wrappedRequest;
-      (httpModule as any).default.get = wrappedGet;
+      this._wrap(httpModule.default, "request", this._getRequestPatchFn(protocol));
+      this._wrap(httpModule.default, "get", this._getGetPatchFn(protocol));
+    } else {
+      // Wrap methods on the http/https module namespace
+      this._wrap(httpModule, "request", this._getRequestPatchFn(protocol));
+      this._wrap(httpModule, "get", this._getGetPatchFn(protocol));
     }
 
     // Wrap Server.prototype.emit (works the same for both CommonJS and ESM)
@@ -1288,7 +1287,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     target: HttpModuleExports | HttpsModuleExports | Server,
     propertyName: string,
     wrapper: (original: Function) => Function,
-  ): void {
-    wrap(target, propertyName, wrapper);
+  ): Function | void {
+    return wrap(target, propertyName, wrapper);
   }
 }
