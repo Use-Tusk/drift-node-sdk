@@ -45,7 +45,7 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
   private _patchJsonwebtokenModule(
     jwtModule: JsonwebtokenModuleExports,
   ): JsonwebtokenModuleExports {
-    if (jwtModule._tdPatched) {
+    if (this.isModulePatched(jwtModule)) {
       logger.debug(`[JsonwebtokenInstrumentation] jsonwebtoken module already patched, skipping`);
       return jwtModule;
     }
@@ -67,7 +67,7 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
       logger.debug(`[JsonwebtokenInstrumentation] Wrapped jwt.sign`);
     }
 
-    jwtModule._tdPatched = true;
+    this.markModuleAsPatched(jwtModule);
     logger.debug(`[JsonwebtokenInstrumentation] jsonwebtoken module patching complete`);
 
     return jwtModule;

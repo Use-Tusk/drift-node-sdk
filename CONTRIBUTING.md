@@ -59,6 +59,64 @@ All instrumentations follow a consistent structure and extend base classes:
   - `mockResponseUtils`: For generating mock responses during replay
   - Additional utilities in `src/instrumentation/core/utils/` and `src/core/utils/`
 
+### Module Interception: CommonJS vs ESM
+
+The SDK supports both CommonJS and ESM module systems, using different interception mechanisms for each:
+
+#### CommonJS Module Interception
+
+- **Package**: `require-in-the-middle`
+- **How it works**: Hooks into `Module.prototype.require` globally
+- **When it activates**: When `require()` is called
+- **Setup**: Automatic - no special flags needed
+- **Use case**: Works for all CommonJS modules
+
+#### ESM Module Interception
+
+- **Package**: `import-in-the-middle`, created by [Datadog](https://opensource.datadoghq.com/projects/node/#the-import-in-the-middle-library)
+- **How it works**: Uses Node.js loader hooks to intercept imports before they're cached
+- **When it activates**: During module resolution/loading phase
+- **Setup**: Requires `--import` flag or `module.register()` call
+- **Use case**: Required for ESM modules
+- **Loader file**: `hook.mjs` - re-exports loader hooks from `import-in-the-middle`
+
+**Key difference**: CommonJS's `require()` is synchronous and sequential, so you can control order. ESM's `import` is hoisted and parallel, requiring loader hooks to intercept before evaluation.
+
+### When Does an Instrumentation Need Special ESM Handling?
+
+Most instrumentations work the same for both CommonJS and ESM, but some need special handling:
+
+#### ✅ Needs Special ESM Handling
+
+An instrumentation needs custom ESM support if it:
+
+1. **Wraps a default function export** (e.g., `postgres` package)
+2. **Wraps the module itself as a function** (not a method on an object)
+
+**Why**: In ESM, default exports are in the `.default` property of the namespace object, not directly accessible.
+
+**Example** (postgres):
+- **CommonJS**: `const postgres = require('postgres')` → `postgres` IS the function
+- **ESM**: `import postgres from 'postgres'` → `postgres.default` IS the function
+
+**Detection**:
+```typescript
+const isESM = (moduleExports as any)[Symbol.toStringTag] === 'Module';
+```
+
+**Solution**:
+```typescript
+if (isESM) {
+  // Wrap the .default property
+  this._wrap(moduleExports, 'default', wrapper);
+} else {
+  // Create wrapped function and return it
+  const wrappedFn = function(...args) { /* ... */ };
+  // Copy all properties...
+  return wrappedFn;
+}
+```
+
 ### Implementation Pattern
 
 Each instrumentation typically:
@@ -84,11 +142,32 @@ Each instrumentation typically:
 
 #### Testing
 
-- **Unit Tests**: Add comprehensive unit tests for new instrumentations
-  - _TODO: Expand unit testing guidelines once we establish better practices_
+We have unit tests and integration tests with [ava](https://github.com/avajs/ava).
+Some integration tests (pg, mongo, etc.) require external dependencies.
+A docker compose is provided for you to get these dependencies up easily:
+```
+docker compose -f docker-compose.test.yml up -d --wait
+```
 
-- **Integration Tests**: Add integration tests for new instrumentations
-  - _TODO: Expand integration testing guidelines once we establish better practices_
+After it's done setting up you can run `npm test` as usual.
+You can leave it up, and tests should clean up after themselves so that we can
+leave these services up during development without restarting all the time.
+To bring them down, run
+```
+docker compose -f docker-compose.test.yml down
+```
+
+Some important notes during testing, especially integration tests:
+- The tusk sdk needs to be initialized before importing anything that is going
+  to be patched.
+- Since the TuskDrift object is a singleton, each integration test (or at least
+  those that have different TuskDrift configs) needs to be in its own file.
+- Since we use `require-in-the-middle` for patching, not all advanced test
+  framework features are available. Notably, anything replacing `require` will
+  certainly not work.
+- Know the diff between `devDependency` and `dependency` -- most libraries that
+  you need for testing (axios, express) should go in `devDependency`.
+
 
 #### Code Quality
 

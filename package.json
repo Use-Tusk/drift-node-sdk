@@ -1,6 +1,6 @@
 {
   "name": "@use-tusk/drift-node-sdk",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Node.js SDK for Tusk Drift instrumentation and replay",
   "homepage": "https://github.com/Use-Tusk/drift-node-sdk",
   "repository": {
@@ -9,7 +9,8 @@
   },
   "type": "module",
   "files": [
-    "dist/**"
+    "dist/**",
+    "hook.mjs"
   ],
   "publishConfig": {
     "access": "public",
@@ -31,8 +32,9 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "prepare": "npm run build",
-    "lint": "eslint src/**/*.ts",
-    "test": "jest"
+    "lint": "eslint 'src/**/*.ts'",
+    "lint:fix": "eslint 'src/**/*.ts' --fix",
+    "test": "ava"
   },
   "keywords": [
     "instrumentation",
@@ -45,21 +47,28 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@bufbuild/buf": "^1.57.0",
+    "@types/express": "^4.17.21",
     "@types/google-protobuf": "^3.15.12",
-    "@types/jest": "^30.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/jsonpath": "^0.2.4",
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.19.19",
     "@types/pg": "^8.15.5",
+    "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
-    "eslint": "^8.0.0",
-    "jest": "^29.0.0",
+    "ava": "^6.4.1",
+    "axios": "^1.6.0",
+    "eslint": "^8.57.1",
+    "graphql": "^16.9.0",
+    "graphql-http": "^1.22.0",
+    "graphql-request": "^6.1.0",
+    "mongodb": "^6.0.0",
     "prettier": "^3.2.4",
-    "ts-jest": "^29.4.2",
+    "supertest": "^7.0.0",
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.16",
     "tsdown": "^0.15.0",
+    "tsx": "^4.20.6",
     "typescript": "^5.0.0"
   },
   "dependencies": {
@@ -75,6 +84,7 @@
     "@use-tusk/drift-schemas": "^0.1.10",
     "express": "^5.1.0",
     "google-protobuf": "^4.0.0",
+    "import-in-the-middle": "^1.14.4",
     "install": "^0.13.0",
     "js-yaml": "^4.1.0",
     "jsonpath": "^1.1.1",

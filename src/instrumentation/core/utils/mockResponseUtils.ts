@@ -109,14 +109,14 @@ export async function findMockResponseAsync({
       return null;
     }
 
-    const responseBody = mockResponse.response?.response?.body;
+    const responseBody = (mockResponse.response as any)?.response?.body;
     logger.debug(`Found ${outboundSpan.traceId} mock response:`, responseBody, {
-      timestamp: mockResponse.response?.timestamp,
+      timestamp: (mockResponse.response as any)?.timestamp,
     });
 
     // Track the latest timestamp for this trace
-    if (mockResponse.response?.timestamp) {
-      DateTracker.updateLatestTimestamp(replayTraceId || "", mockResponse.response.timestamp);
+    if ((mockResponse.response as any)?.timestamp) {
+      DateTracker.updateLatestTimestamp(replayTraceId || "", (mockResponse.response as any).timestamp);
     }
 
     return {
@@ -163,14 +163,14 @@ export function findMockResponseSync({
       return null;
     }
 
-    const responseBody = mockResponse.response?.response?.body;
+    const responseBody = (mockResponse.response as any)?.response?.body;
     logger.debug(`Found ${outboundSpan.traceId} mock response and timestamp:`, responseBody, {
-      timestamp: mockResponse.response?.timestamp,
+      timestamp: (mockResponse.response as any)?.timestamp,
     });
 
     // Track the latest timestamp for this trace
-    if (mockResponse.response?.timestamp) {
-      DateTracker.updateLatestTimestamp(replayTraceId || "", mockResponse.response.timestamp);
+    if ((mockResponse.response as any)?.timestamp) {
+      DateTracker.updateLatestTimestamp(replayTraceId || "", (mockResponse.response as any).timestamp);
     }
 
     return {

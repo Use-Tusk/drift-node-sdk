@@ -1,4 +1,4 @@
-import {
+import type {
   Agent,
   ClientRequest,
   IncomingMessage,
@@ -14,15 +14,16 @@ export type HttpProtocol = "http" | "https";
 export interface HttpClientInputValue {
   method: string;
   path?: string;
-  headers: Record<string, any>;
+  headers: Record<string, unknown>;
   protocol: HttpProtocol;
   hostname?: string;
   port?: number;
   timeout?: number;
-  body?: any;
+  body?: unknown;
   bodySize?: number;
   bodyType?: HttpBodyType;
   hasBodyParsingError?: boolean;
+  [key: string]: unknown;
 }
 
 export interface HttpClientOutputValue {
@@ -37,6 +38,7 @@ export interface HttpClientOutputValue {
   body?: string;
   bodySize?: number;
   bodyProcessingError?: string;
+  [key: string]: unknown;
 }
 
 export interface HttpServerInputValue {
@@ -49,6 +51,7 @@ export interface HttpServerInputValue {
   httpVersion: string;
   remoteAddress?: string;
   remotePort?: number;
+  [key: string]: unknown;
 }
 
 export interface HttpServerOutputValue {
@@ -58,9 +61,11 @@ export interface HttpServerOutputValue {
   body?: string;
   bodySize?: number;
   bodyProcessingError?: string;
+  [key: string]: unknown;
 }
 
 export interface HttpModuleExports {
+  default?: any;
   _connectionListener: Function;
   METHODS: string[];
   STATUS_CODES: { [code: number]: string };
@@ -79,10 +84,10 @@ export interface HttpModuleExports {
   maxHeaderSize: number;
   globalAgent: Agent;
   // Custom property added by our instrumentation
-  _tdPatched?: boolean;
 }
 
 export interface HttpsModuleExports {
+  default?: any;
   Agent: typeof Agent;
   globalAgent: Agent;
   Server: typeof Server;
@@ -90,5 +95,4 @@ export interface HttpsModuleExports {
   get: Function;
   request: Function;
   // Custom property added by our instrumentation
-  _tdPatched?: boolean;
 }

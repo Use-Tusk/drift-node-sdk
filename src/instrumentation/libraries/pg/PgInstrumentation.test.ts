@@ -1,8 +1,8 @@
-import { SpanUtilsErrorTesting, ErrorType } from "../../../test-utils/spanUtilsErrorTesting";
+import test from "ava";
+import { SpanUtilsErrorTesting, ErrorType } from "../../../core/tracing/SpanUtils.test.helpers";
 import { PgInstrumentation } from "./Instrumentation";
 import { TuskDriftMode } from "../../../core/TuskDrift";
 
-// Mock implementations for pg and pg-pool
 class MockPgClient {
   _queries: any[] = [];
   _connections: any[] = [];
@@ -132,7 +132,6 @@ class MockPgPool {
   }
 }
 
-// Mock pg module exports
 const mockPgModule = {
   Client: MockPgClient,
   Query: function () {},
@@ -146,7 +145,6 @@ const mockPgModule = {
   Result: function () {},
 };
 
-// Mock pg-pool module exports (constructor function)
 const mockPgPoolModule = function () {
   return new MockPgPool();
 };
@@ -212,307 +210,301 @@ async function executePgOperation(
   }
 }
 
-describe("PG Instrumentation Error Resilience", () => {
-  let pgInstrumentation: PgInstrumentation;
+let pgInstrumentation: PgInstrumentation;
 
-  beforeEach(() => {
-    pgInstrumentation = new PgInstrumentation({
-      mode: TuskDriftMode.RECORD,
-    });
-
-    // Initialize instrumentation which patches the modules
-    const modules = pgInstrumentation.init();
-
-    // Apply patches to our mock modules
-    modules.forEach((module) => {
-      if (module.name === "pg" && module.patch) {
-        module.patch(mockPgModule);
-      } else if (module.name === "pg-pool" && module.patch) {
-        module.patch(mockPgPoolModule);
-      }
-    });
+test.beforeEach(() => {
+  pgInstrumentation = new PgInstrumentation({
+    mode: TuskDriftMode.RECORD,
   });
 
-  afterEach(() => {
-    SpanUtilsErrorTesting.teardownErrorResilienceTest();
+  // Initialize instrumentation which patches the modules
+  const modules = pgInstrumentation.init();
+
+  // Apply patches to our mock modules
+  modules.forEach((module) => {
+    if (module.name === "pg" && module.patch) {
+      module.patch(mockPgModule);
+    } else if (module.name === "pg-pool" && module.patch) {
+      module.patch(mockPgPoolModule);
+    }
+  });
+});
+
+test.afterEach(() => {
+  SpanUtilsErrorTesting.teardownErrorResilienceTest();
+});
+
+// PG Client Query Error Resilience
+test("should complete PG query when SpanUtils.createSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockCreateSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span create span network error",
   });
 
-  describe("PG Client Query Error Resilience", () => {
-    it("should complete PG query when SpanUtils.createSpan throws", async () => {
-      SpanUtilsErrorTesting.mockCreateSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span create span network error",
-      });
+  const result = await executePgOperation("query", "pg", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
 
-      const result = await executePgOperation("query", "pg", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG query (callback) when SpanUtils.createSpan throws", async () => {
-      SpanUtilsErrorTesting.mockCreateSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span create span network error",
-      });
-
-      const result = await executePgOperation("query", "pg", true);
-      expect(result.err).toBeNull();
-      expect(result.result.command).toBe("SELECT");
-    });
-
-    it("should complete PG query when SpanUtils.addSpanAttributes throws", async () => {
-      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span attributes network error",
-      });
-
-      const result = await executePgOperation("query", "pg", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG query (callback) when SpanUtils.addSpanAttributes throws", async () => {
-      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span attributes network error",
-      });
-
-      const result = await executePgOperation("query", "pg", true);
-      expect(result.err).toBeNull();
-      expect(result.result.command).toBe("SELECT");
-    });
-
-    it("should complete PG query when SpanUtils.setStatus throws", async () => {
-      SpanUtilsErrorTesting.mockSetStatusWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span set status network error",
-      });
-
-      const result = await executePgOperation("query", "pg", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG query when SpanUtils.endSpan throws", async () => {
-      SpanUtilsErrorTesting.mockEndSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span end span network error",
-      });
-
-      const result = await executePgOperation("query", "pg", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG query when SpanUtils.getCurrentSpanInfo throws", async () => {
-      SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span get current span info network error",
-        shouldReturnNull: true,
-      });
-
-      const result = await executePgOperation("query", "pg", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG query when SpanUtils.getCurrentTraceId throws", async () => {
-      SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span get current trace id network error",
-      });
-
-      const result = await executePgOperation("query", "pg", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG query when SpanUtils.setCurrentReplayTraceId throws", async () => {
-      SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span set current replay trace id network error",
-      });
-
-      const result = await executePgOperation("query", "pg", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
+test("should complete PG query (callback) when SpanUtils.createSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockCreateSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span create span network error",
   });
 
-  describe("PG Client Connect Error Resilience", () => {
-    it("should complete PG connect when SpanUtils.createSpan throws", async () => {
-      SpanUtilsErrorTesting.mockCreateSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span create span network error",
-      });
+  const result = await executePgOperation("query", "pg", true);
+  t.is(result.err, null);
+  t.is(result.result.command, "SELECT");
+});
 
-      const result = await executePgOperation("connect", "pg", false);
-      expect(result).toBeUndefined(); // connect resolves with undefined
-    });
-
-    it("should complete PG connect (callback) when SpanUtils.createSpan throws", async () => {
-      SpanUtilsErrorTesting.mockCreateSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span create span network error",
-      });
-
-      const result = await executePgOperation("connect", "pg", true);
-      expect(result.err).toBeNull();
-    });
-
-    it("should complete PG connect when SpanUtils.addSpanAttributes throws", async () => {
-      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span attributes network error",
-      });
-
-      const result = await executePgOperation("connect", "pg", false);
-      expect(result).toBeUndefined();
-    });
-
-    it("should complete PG connect when SpanUtils.endSpan throws", async () => {
-      SpanUtilsErrorTesting.mockEndSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span end span network error",
-      });
-
-      const result = await executePgOperation("connect", "pg", false);
-      expect(result).toBeUndefined();
-    });
+test("should complete PG query when SpanUtils.addSpanAttributes throws", async (t) => {
+  SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span attributes network error",
   });
 
-  describe("PG Pool Query Error Resilience", () => {
-    it("should complete PG Pool query when SpanUtils.createSpan throws", async () => {
-      SpanUtilsErrorTesting.mockCreateSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span create span network error",
-      });
+  const result = await executePgOperation("query", "pg", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
 
-      const result = await executePgOperation("query", "pg-pool", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG Pool query (callback) when SpanUtils.createSpan throws", async () => {
-      SpanUtilsErrorTesting.mockCreateSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span create span network error",
-      });
-
-      const result = await executePgOperation("query", "pg-pool", true);
-      expect(result.err).toBeNull();
-      expect(result.result.command).toBe("SELECT");
-    });
-
-    it("should complete PG Pool query when SpanUtils.addSpanAttributes throws", async () => {
-      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span attributes network error",
-      });
-
-      const result = await executePgOperation("query", "pg-pool", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG Pool query when SpanUtils.setStatus throws", async () => {
-      SpanUtilsErrorTesting.mockSetStatusWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span set status network error",
-      });
-
-      const result = await executePgOperation("query", "pg-pool", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG Pool query when SpanUtils.endSpan throws", async () => {
-      SpanUtilsErrorTesting.mockEndSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span end span network error",
-      });
-
-      const result = await executePgOperation("query", "pg-pool", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG Pool query when SpanUtils.getCurrentSpanInfo throws", async () => {
-      SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span get current span info network error",
-        shouldReturnNull: true,
-      });
-
-      const result = await executePgOperation("query", "pg-pool", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG Pool query when SpanUtils.getCurrentTraceId throws", async () => {
-      SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span get current trace id network error",
-      });
-
-      const result = await executePgOperation("query", "pg-pool", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
-
-    it("should complete PG Pool query when SpanUtils.setCurrentReplayTraceId throws", async () => {
-      SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span set current replay trace id network error",
-      });
-
-      const result = await executePgOperation("query", "pg-pool", false);
-      expect(result.command).toBe("SELECT");
-      expect(result.rowCount).toBe(1);
-    });
+test("should complete PG query (callback) when SpanUtils.addSpanAttributes throws", async (t) => {
+  SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span attributes network error",
   });
 
-  describe("PG Pool Connect Error Resilience", () => {
-    it("should complete PG Pool connect when SpanUtils.createSpan throws", async () => {
-      SpanUtilsErrorTesting.mockCreateSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span create span network error",
-      });
+  const result = await executePgOperation("query", "pg", true);
+  t.is(result.err, null);
+  t.is(result.result.command, "SELECT");
+});
 
-      const result = await executePgOperation("connect", "pg-pool", false);
-      expect(result).toBeInstanceOf(MockPgClient);
-    });
-
-    it("should complete PG Pool connect (callback) when SpanUtils.createSpan throws", async () => {
-      SpanUtilsErrorTesting.mockCreateSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span create span network error",
-      });
-
-      const result = await executePgOperation("connect", "pg-pool", true);
-      expect(result.err).toBeNull();
-      expect(result.client).toBeInstanceOf(MockPgClient);
-      expect(typeof result.done).toBe("function");
-    });
-
-    it("should complete PG Pool connect when SpanUtils.addSpanAttributes throws", async () => {
-      SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span attributes network error",
-      });
-
-      const result = await executePgOperation("connect", "pg-pool", false);
-      expect(result).toBeInstanceOf(MockPgClient);
-    });
-
-    it("should complete PG Pool connect when SpanUtils.endSpan throws", async () => {
-      SpanUtilsErrorTesting.mockEndSpanWithError({
-        errorType: ErrorType.NETWORK_ERROR,
-        errorMessage: "Span end span network error",
-      });
-
-      const result = await executePgOperation("connect", "pg-pool", false);
-      expect(result).toBeInstanceOf(MockPgClient);
-    });
+test("should complete PG query when SpanUtils.setStatus throws", async (t) => {
+  SpanUtilsErrorTesting.mockSetStatusWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span set status network error",
   });
+
+  const result = await executePgOperation("query", "pg", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+test("should complete PG query when SpanUtils.endSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockEndSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span end span network error",
+  });
+
+  const result = await executePgOperation("query", "pg", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+test("should complete PG query when SpanUtils.getCurrentSpanInfo throws", async (t) => {
+  SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span get current span info network error",
+    shouldReturnNull: true,
+  });
+
+  const result = await executePgOperation("query", "pg", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+test("should complete PG query when SpanUtils.getCurrentTraceId throws", async (t) => {
+  SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span get current trace id network error",
+  });
+
+  const result = await executePgOperation("query", "pg", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+test("should complete PG query when SpanUtils.setCurrentReplayTraceId throws", async (t) => {
+  SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span set current replay trace id network error",
+  });
+
+  const result = await executePgOperation("query", "pg", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+// PG Client Connect Error Resilience
+test("should complete PG connect when SpanUtils.createSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockCreateSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span create span network error",
+  });
+
+  const result = await executePgOperation("connect", "pg", false);
+  t.is(result, undefined); // connect resolves with undefined
+});
+
+test("should complete PG connect (callback) when SpanUtils.createSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockCreateSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span create span network error",
+  });
+
+  const result = await executePgOperation("connect", "pg", true);
+  t.is(result.err, null);
+});
+
+test("should complete PG connect when SpanUtils.addSpanAttributes throws", async (t) => {
+  SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span attributes network error",
+  });
+
+  const result = await executePgOperation("connect", "pg", false);
+  t.is(result, undefined);
+});
+
+test("should complete PG connect when SpanUtils.endSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockEndSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span end span network error",
+  });
+
+  const result = await executePgOperation("connect", "pg", false);
+  t.is(result, undefined);
+});
+
+// PG Pool Query Error Resilience
+test("should complete PG Pool query when SpanUtils.createSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockCreateSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span create span network error",
+  });
+
+  const result = await executePgOperation("query", "pg-pool", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+test("should complete PG Pool query (callback) when SpanUtils.createSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockCreateSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span create span network error",
+  });
+
+  const result = await executePgOperation("query", "pg-pool", true);
+  t.is(result.err, null);
+  t.is(result.result.command, "SELECT");
+});
+
+test("should complete PG Pool query when SpanUtils.addSpanAttributes throws", async (t) => {
+  SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span attributes network error",
+  });
+
+  const result = await executePgOperation("query", "pg-pool", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+test("should complete PG Pool query when SpanUtils.setStatus throws", async (t) => {
+  SpanUtilsErrorTesting.mockSetStatusWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span set status network error",
+  });
+
+  const result = await executePgOperation("query", "pg-pool", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+test("should complete PG Pool query when SpanUtils.endSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockEndSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span end span network error",
+  });
+
+  const result = await executePgOperation("query", "pg-pool", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+test("should complete PG Pool query when SpanUtils.getCurrentSpanInfo throws", async (t) => {
+  SpanUtilsErrorTesting.mockGetCurrentSpanInfoWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span get current span info network error",
+    shouldReturnNull: true,
+  });
+
+  const result = await executePgOperation("query", "pg-pool", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+test("should complete PG Pool query when SpanUtils.getCurrentTraceId throws", async (t) => {
+  SpanUtilsErrorTesting.mockGetCurrentTraceIdWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span get current trace id network error",
+  });
+
+  const result = await executePgOperation("query", "pg-pool", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+test("should complete PG Pool query when SpanUtils.setCurrentReplayTraceId throws", async (t) => {
+  SpanUtilsErrorTesting.mockSetCurrentReplayTraceIdWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span set current replay trace id network error",
+  });
+
+  const result = await executePgOperation("query", "pg-pool", false);
+  t.is(result.command, "SELECT");
+  t.is(result.rowCount, 1);
+});
+
+// PG Pool Connect Error Resilience
+test("should complete PG Pool connect when SpanUtils.createSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockCreateSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span create span network error",
+  });
+
+  const result = await executePgOperation("connect", "pg-pool", false);
+  t.true(result instanceof MockPgClient);
+});
+
+test("should complete PG Pool connect (callback) when SpanUtils.createSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockCreateSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span create span network error",
+  });
+
+  const result = await executePgOperation("connect", "pg-pool", true);
+  t.is(result.err, null);
+  t.true(result.client instanceof MockPgClient);
+  t.is(typeof result.done, "function");
+});
+
+test("should complete PG Pool connect when SpanUtils.addSpanAttributes throws", async (t) => {
+  SpanUtilsErrorTesting.mockAddSpanAttributesWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span attributes network error",
+  });
+
+  const result = await executePgOperation("connect", "pg-pool", false);
+  t.true(result instanceof MockPgClient);
+});
+
+test("should complete PG Pool connect when SpanUtils.endSpan throws", async (t) => {
+  SpanUtilsErrorTesting.mockEndSpanWithError({
+    errorType: ErrorType.NETWORK_ERROR,
+    errorMessage: "Span end span network error",
+  });
+
+  const result = await executePgOperation("connect", "pg-pool", false);
+  t.true(result instanceof MockPgClient);
 });

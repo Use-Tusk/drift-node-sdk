@@ -1,3 +1,4 @@
+import test from "ava";
 import { SpanKind } from "@opentelemetry/api";
 import { HttpTransformEngine, TransformConfigs, HttpSpanData } from "./HttpTransformEngine";
 import {
@@ -88,10 +89,10 @@ const exampleServerSpanData: HttpSpanData = {
     headers: {
       "content-type": "application/json",
     },
-    body: {
+    body: Buffer.from(JSON.stringify({
       success: true,
       token: "jwt-token-here",
-    },
+    })).toString("base64"),
     bodySize: 50,
   } as HttpServerOutputValue,
 };
@@ -129,11 +130,11 @@ const stripeClientSpanData: HttpSpanData = {
     headers: {
       "content-type": "application/json",
     },
-    body: {
+    body: Buffer.from(JSON.stringify({
       id: "ch_123456",
       amount: 1000,
       currency: "usd",
-    },
+    })).toString("base64"),
     bodySize: 80,
   } as HttpClientOutputValue,
 };
@@ -192,694 +193,672 @@ const multiConfig: TransformConfigs = {
 const cloneSpan = (span: HttpSpanData): HttpSpanData =>
   JSON.parse(JSON.stringify(span)) as HttpSpanData;
 
-describe("HttpTransformEngine", () => {
-  it("redacts sensitive fields on inbound login spans", () => {
-    const engine = new HttpTransformEngine(redactMaskReplaceConfig);
-    const transformed = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+test("redacts sensitive fields on inbound login spans", (t) => {
+  const engine = new HttpTransformEngine(redactMaskReplaceConfig);
+  const transformed = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-    expect(transformed).not.toBeNull();
-    const span = transformed as HttpSpanData;
+  t.truthy(transformed);
+  const span = transformed as HttpSpanData;
 
-    expect((span.inputValue as HttpServerInputValue).body.password).toMatch(/^PWD_[0-9a-f]{12}\.\.\.$/);
-    expect(span.transformMetadata?.actions).toEqual([
-      expect.objectContaining({
-        type: "redact",
-        field: "jsonPath:$.password",
-        reason: "transforms",
-      }),
-    ]);
-  });
+  t.regex((span.inputValue as HttpServerInputValue).body.password, /^PWD_[0-9a-f]{12}\.\.\.$/);
+  t.is(span.transformMetadata?.actions.length, 1);
+  t.is(span.transformMetadata?.actions[0].type, "redact");
+  t.is(span.transformMetadata?.actions[0].field, "jsonPath:$.password");
+  t.is(span.transformMetadata?.actions[0].reason, "transforms");
+});
 
-  it("drops outbound spans that match the Stripe policy", () => {
-    const engine = new HttpTransformEngine(dropConfig);
-    const transformed = engine.applyTransforms(cloneSpan(stripeClientSpanData));
+test("drops outbound spans that match the Stripe policy", (t) => {
+  const engine = new HttpTransformEngine(dropConfig);
+  const transformed = engine.applyTransforms(cloneSpan(stripeClientSpanData));
 
-    expect(transformed).not.toBeNull();
-    const span = transformed as HttpSpanData;
+  t.truthy(transformed);
+  const span = transformed as HttpSpanData;
 
-    expect(span.inputValue).toEqual({});
-    expect(span.outputValue).toEqual({});
-    expect(span.transformMetadata?.actions).toEqual([
-      expect.objectContaining({ type: "drop", field: "entire_span" }),
-    ]);
-  });
+  t.deepEqual(span.inputValue, {});
+  t.deepEqual(span.outputValue, {});
+  t.is(span.transformMetadata?.actions.length, 1);
+  t.is(span.transformMetadata?.actions[0].type, "drop");
+  t.is(span.transformMetadata?.actions[0].field, "entire_span");
+});
 
-  it("applies multiple transforms to a single span", () => {
-    const engine = new HttpTransformEngine(multiConfig);
-    const transformed = engine.applyTransforms(cloneSpan(multiTransformServerSpan));
+test("applies multiple transforms to a single span", (t) => {
+  const engine = new HttpTransformEngine(multiConfig);
+  const transformed = engine.applyTransforms(cloneSpan(multiTransformServerSpan));
 
-    expect(transformed).not.toBeNull();
-    const span = transformed as HttpSpanData;
+  t.truthy(transformed);
+  const span = transformed as HttpSpanData;
 
-    const inputValue = span.inputValue as HttpServerInputValue;
-    expect(inputValue.url).toBe("http://localhost:3000/api/user/lookup?ssn=XXXXXXXXXXX&email=user%40example.com");
-    expect(inputValue.target).toBe("/api/user/lookup?ssn=XXXXXXXXXXX&email=user%40example.com");
-    expect(inputValue.body.user.password).toBe("HIDDEN");
-    expect(span.transformMetadata?.actions).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: "mask", field: "queryParam:ssn" }),
-        expect.objectContaining({ type: "replace", field: "jsonPath:$.user.password" }),
-      ]),
-    );
-  });
+  const inputValue = span.inputValue as HttpServerInputValue;
+  t.is(inputValue.url, "http://localhost:3000/api/user/lookup?ssn=XXXXXXXXXXX&email=user%40example.com");
+  t.is(inputValue.target, "/api/user/lookup?ssn=XXXXXXXXXXX&email=user%40example.com");
+  t.is(inputValue.body.user.password, "HIDDEN");
+  t.is(span.transformMetadata?.actions.length, 2);
+  const actionTypes = span.transformMetadata!.actions.map((a) => ({ type: a.type, field: a.field }));
+  t.true(actionTypes.some((a) => a.type === "mask" && a.field === "queryParam:ssn"));
+  t.true(actionTypes.some((a) => a.type === "replace" && a.field === "jsonPath:$.user.password"));
+});
 
-  it("identifies inbound requests that should be dropped", () => {
-    const inboundDropConfig: TransformConfigs = {
+test("identifies inbound requests that should be dropped", (t) => {
+  const inboundDropConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          method: ["POST"],
+          pathPattern: "/api/auth/login",
+          fullBody: "",
+        },
+        action: { type: "drop" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(inboundDropConfig);
+
+  t.true(
+    engine.shouldDropInboundRequest("POST", "http://localhost:3000/api/auth/login", "localhost", {
+      "content-type": "application/json",
+    }),
+  );
+
+  t.false(
+    engine.shouldDropInboundRequest(
+      "POST",
+      "http://localhost:3000/api/other/endpoint",
+      "localhost",
+      { "content-type": "application/json" },
+    ),
+  );
+
+  t.false(
+    engine.shouldDropInboundRequest("GET", "http://localhost:3000/api/auth/login", "localhost", {
+      "content-type": "application/json",
+    }),
+  );
+});
+
+// direction-specific field handling
+test("correctly matches outbound spans using hostname field", (t) => {
+  const outboundHostConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "outbound",
+          host: "api\\.stripe\\.com",
+          fullBody: "",
+        },
+        action: { type: "replace", replaceWith: "[REDACTED]" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(outboundHostConfig);
+  const result = engine.applyTransforms(cloneSpan(stripeClientSpanData));
+
+  t.is((result.outputValue as HttpClientOutputValue).body, Buffer.from("[REDACTED]").toString("base64"));
+});
+
+test("correctly matches inbound spans by extracting hostname from URL", (t) => {
+  const inboundHostConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          host: "localhost",
+          fullBody: "",
+        },
+        action: { type: "replace", replaceWith: "[REDACTED]" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(inboundHostConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  t.is((result.inputValue as HttpServerInputValue).body, "[REDACTED]");
+});
+
+test("correctly matches outbound spans using path field", (t) => {
+  const outboundPathConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "outbound",
+          pathPattern: "/v1/charges",
+          fullBody: "",
+        },
+        action: { type: "replace", replaceWith: "[REDACTED]" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(outboundPathConfig);
+  const result = engine.applyTransforms(cloneSpan(stripeClientSpanData));
+
+  t.is((result.outputValue as HttpClientOutputValue).body, Buffer.from("[REDACTED]").toString("base64"));
+});
+
+test("correctly matches inbound spans using url field", (t) => {
+  const inboundPathConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          pathPattern: "/api/auth/login",
+          fullBody: "",
+        },
+        action: { type: "replace", replaceWith: "[REDACTED]" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(inboundPathConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  t.is((result.inputValue as HttpServerInputValue).body, "[REDACTED]");
+});
+
+// edge cases and error handling
+test("handles spans with missing input/output values", (t) => {
+  const engine = new HttpTransformEngine(redactMaskReplaceConfig);
+  const spanWithMissingInput = {
+    ...cloneSpan(exampleServerSpanData),
+    inputValue: undefined,
+  };
+
+  const result = engine.applyTransforms(spanWithMissingInput as any);
+  t.is(result.transformMetadata, undefined);
+});
+
+test("handles invalid JSONPath expressions gracefully", (t) => {
+  const invalidJsonPathConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          jsonPath: "$.invalid[[[path",
+        },
+        action: { type: "redact" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(invalidJsonPathConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+  t.is(result.transformMetadata, undefined);
+});
+
+test("handles spans with missing body", (t) => {
+  const engine = new HttpTransformEngine(redactMaskReplaceConfig);
+  const spanWithoutBody = cloneSpan(exampleServerSpanData);
+  spanWithoutBody.inputValue = {
+    ...(spanWithoutBody.inputValue as HttpServerInputValue),
+    body: undefined,
+  };
+
+  const result = engine.applyTransforms(spanWithoutBody as any);
+  t.is(result.transformMetadata, undefined);
+});
+
+test("handles spans with null/undefined headers", (t) => {
+  const headerConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          headerName: "Authorization",
+        },
+        action: { type: "redact" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(headerConfig);
+  const spanWithoutHeaders = cloneSpan(exampleServerSpanData);
+  spanWithoutHeaders.inputValue = {
+    ...(spanWithoutHeaders.inputValue as HttpServerInputValue),
+    headers: undefined,
+  };
+
+  const result = engine.applyTransforms(spanWithoutHeaders as any);
+  t.is(result.transformMetadata, undefined);
+});
+
+// transform action types
+test("applies mask transform with custom mask character", (t) => {
+  const maskConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          jsonPath: "$.password",
+        },
+        action: { type: "mask", maskChar: "#" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(maskConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  t.is((result.inputValue as HttpServerInputValue).body.password, "#################");
+});
+
+test("applies redact transform with custom hash prefix", (t) => {
+  const redactConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          jsonPath: "$.password",
+        },
+        action: { type: "redact", hashPrefix: "HIDDEN_" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(redactConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  t.regex((result.inputValue as HttpServerInputValue).body.password, /^HIDDEN_[0-9a-f]{12}\.\.\.$/);
+});
+
+test("applies replace transform", (t) => {
+  const replaceConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          jsonPath: "$.username",
+        },
+        action: {
+          type: "replace",
+          replaceWith: "anonymous@example.com",
+        },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(replaceConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  t.is((result.inputValue as HttpServerInputValue).body.username, "anonymous@example.com");
+});
+
+// matcher combinations
+test("matches spans by method only", (t) => {
+  const methodOnlyConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          method: ["POST"],
+          jsonPath: "$.password",
+        },
+        action: { type: "redact" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(methodOnlyConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  t.regex((result.inputValue as HttpServerInputValue).body.password, /^REDACTED_[0-9a-f]{12}\.\.\.$/);
+});
+
+test("matches multiple methods when array is provided", (t) => {
+  const multiMethodConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          method: ["POST", "PUT"],
+          jsonPath: "$.username",
+        },
+        action: { type: "replace", replaceWith: "ARRAY_MATCHED" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(multiMethodConfig);
+
+  const postResult = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+  t.is((postResult.inputValue as HttpServerInputValue).body.username, "ARRAY_MATCHED");
+
+  const putSpan = cloneSpan(exampleServerSpanData);
+  putSpan.inputValue = {
+    ...(putSpan.inputValue as HttpServerInputValue),
+    method: "PUT",
+  };
+  const putResult = engine.applyTransforms(putSpan);
+  t.is((putResult.inputValue as HttpServerInputValue).body.username, "ARRAY_MATCHED");
+
+  const getSpan = cloneSpan(exampleServerSpanData);
+  getSpan.inputValue = {
+    ...(getSpan.inputValue as HttpServerInputValue),
+    method: "GET",
+  };
+  const getResult = engine.applyTransforms(getSpan);
+  t.is((getResult.inputValue as HttpServerInputValue).body.username, "john@example.com");
+  t.is(getResult.transformMetadata, undefined);
+});
+
+test("does not match when method doesn't match", (t) => {
+  const mismatchConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          method: ["GET"],
+          jsonPath: "$.password",
+        },
+        action: { type: "redact" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(mismatchConfig);
+  const mismatchSpan = cloneSpan(exampleServerSpanData);
+  const result = engine.applyTransforms(mismatchSpan);
+
+  t.is((result.inputValue as HttpServerInputValue).body.password, "secretPassword123");
+  t.is(result.transformMetadata, undefined);
+});
+
+test("does not match when direction doesn't match", (t) => {
+  const directionMismatchConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "outbound",
+          method: ["POST"],
+          jsonPath: "$.password",
+        },
+        action: { type: "redact" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(directionMismatchConfig);
+  const outboundMismatchSpan = cloneSpan(exampleServerSpanData);
+  const result = engine.applyTransforms(outboundMismatchSpan);
+
+  t.is((result.inputValue as HttpServerInputValue).body.password, "secretPassword123");
+  t.is(result.transformMetadata, undefined);
+});
+
+// URL path transforms
+test("transforms URL path in inbound server request", (t) => {
+  const urlPathConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          urlPath: "",
+        },
+        action: {
+          type: "replace",
+          replaceWith: "/api/redacted",
+        },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(urlPathConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  const inputValue = result.inputValue as HttpServerInputValue;
+  t.is(inputValue.url, "/api/redacted");
+  t.is(inputValue.target, "/api/redacted");
+});
+
+test("transforms URL path in outbound client request", (t) => {
+  const urlPathConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "outbound",
+          urlPath: "",
+        },
+        action: {
+          type: "replace",
+          replaceWith: "/api/redacted",
+        },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(urlPathConfig);
+  const result = engine.applyTransforms(cloneSpan(stripeClientSpanData));
+
+  const inputValue = result.inputValue as HttpClientInputValue;
+  t.is(inputValue.path, "/api/redacted");
+});
+
+// query parameter transforms
+test("transforms query parameter in server URL with existing params", (t) => {
+  const queryConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          queryParam: "token",
+        },
+        action: { type: "redact" },
+      },
+    ],
+  };
+
+  const spanWithQuery = cloneSpan(exampleServerSpanData);
+  spanWithQuery.inputValue = {
+    ...(spanWithQuery.inputValue as HttpServerInputValue),
+    url: "http://localhost:3000/api/test?token=secret123&other=value",
+    target: "/api/test?token=secret123&other=value",
+  };
+
+  const engine = new HttpTransformEngine(queryConfig);
+  const result = engine.applyTransforms(spanWithQuery);
+
+  const inputValue = result.inputValue as HttpServerInputValue;
+  t.regex(inputValue.url, /http:\/\/localhost:3000\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
+  t.regex(inputValue.target, /\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
+});
+
+test("transforms query parameter in client path with existing params", (t) => {
+  const queryConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "outbound",
+          queryParam: "api_key",
+        },
+        action: { type: "redact" },
+      },
+    ],
+  };
+
+  const spanWithQuery = cloneSpan(stripeClientSpanData);
+  spanWithQuery.inputValue = {
+    ...(spanWithQuery.inputValue as HttpClientInputValue),
+    path: "/v1/charges?api_key=sk_test_123&other=value",
+  };
+
+  const engine = new HttpTransformEngine(queryConfig);
+  const result = engine.applyTransforms(spanWithQuery);
+
+  const inputValue = result.inputValue as HttpClientInputValue;
+  t.regex(inputValue.path, /\/v1\/charges\?api_key=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
+});
+
+test("handles query param that doesn't exist", (t) => {
+  const queryConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          queryParam: "nonexistent",
+        },
+        action: { type: "redact" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(queryConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  t.is(result.transformMetadata, undefined);
+});
+
+// header transforms
+test("transforms header values case-insensitively", (t) => {
+  const headerConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          headerName: "Content-Type",
+        },
+        action: { type: "replace", replaceWith: "application/redacted" },
+      },
+    ],
+  };
+
+  const engine = new HttpTransformEngine(headerConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  t.is((result.inputValue as HttpServerInputValue).headers["content-type"], "application/redacted");
+});
+
+test("transforms multiple headers with same name (case variations)", (t) => {
+  const headerConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          headerName: "x-custom",
+        },
+        action: { type: "mask" },
+      },
+    ],
+  };
+
+  const spanWithMultiHeaders = cloneSpan(exampleServerSpanData);
+  spanWithMultiHeaders.inputValue = {
+    ...(spanWithMultiHeaders.inputValue as HttpServerInputValue),
+    headers: {
+      "X-Custom": "value1",
+      "x-custom": "value2",
+      "X-CUSTOM": "value3",
+    },
+  };
+
+  const engine = new HttpTransformEngine(headerConfig);
+  const result = engine.applyTransforms(spanWithMultiHeaders);
+
+  t.is((result.inputValue as HttpServerInputValue).headers["x-custom"], "******");
+});
+
+// constructor and configuration
+test("handles empty configuration", (t) => {
+  const engine = new HttpTransformEngine();
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  t.deepEqual(result, exampleServerSpanData);
+  t.is(result.transformMetadata, undefined);
+});
+
+test("handles configuration with empty http array", (t) => {
+  const emptyConfig: TransformConfigs = { http: [] };
+  const engine = new HttpTransformEngine(emptyConfig);
+  const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+
+  t.deepEqual(result, exampleServerSpanData);
+  t.is(result.transformMetadata, undefined);
+});
+
+test("handles invalid regex patterns gracefully", (t) => {
+  t.throws(() => {
+    new HttpTransformEngine({
       http: [
         {
           matcher: {
             direction: "inbound",
-            method: ["POST"],
-            pathPattern: "/api/auth/login",
-            fullBody: "",
+            pathPattern: "[invalid[regex",
+            jsonPath: "$.test",
           },
-          action: { type: "drop" },
+          action: { type: "redact" },
         },
       ],
-    };
+    });
+  }, { message: /Invalid path pattern/ });
+});
 
-    const engine = new HttpTransformEngine(inboundDropConfig);
-
-    expect(
-      engine.shouldDropInboundRequest(
-        "POST",
-        "http://localhost:3000/api/auth/login",
-        "localhost",
-        { "content-type": "application/json" },
-      ),
-    ).toBe(true);
-
-    expect(
-      engine.shouldDropInboundRequest(
-        "POST",
-        "http://localhost:3000/api/other/endpoint",
-        "localhost",
-        { "content-type": "application/json" },
-      ),
-    ).toBe(false);
-
-    expect(
-      engine.shouldDropInboundRequest(
-        "GET",
-        "http://localhost:3000/api/auth/login",
-        "localhost",
-        { "content-type": "application/json" },
-      ),
-    ).toBe(false);
-  });
-
-  describe("direction-specific field handling", () => {
-    it("correctly matches outbound spans using hostname field", () => {
-      const outboundHostConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "outbound",
-              host: "api\\.stripe\\.com",
-              fullBody: "",
-            },
-            action: { type: "replace", replaceWith: "[REDACTED]" },
+test("handles invalid host regex patterns gracefully", (t) => {
+  t.throws(() => {
+    new HttpTransformEngine({
+      http: [
+        {
+          matcher: {
+            direction: "outbound",
+            host: "[invalid[regex",
+            jsonPath: "$.test",
           },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(outboundHostConfig);
-      const result = engine.applyTransforms(cloneSpan(stripeClientSpanData));
-
-      expect((result.outputValue as HttpClientOutputValue).body).toBe("[REDACTED]");
-    });
-
-    it("correctly matches inbound spans by extracting hostname from URL", () => {
-      const inboundHostConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              host: "localhost",
-              fullBody: "",
-            },
-            action: { type: "replace", replaceWith: "[REDACTED]" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(inboundHostConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-
-      expect((result.inputValue as HttpServerInputValue).body).toBe("[REDACTED]");
-    });
-
-    it("correctly matches outbound spans using path field", () => {
-      const outboundPathConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "outbound",
-              pathPattern: "/v1/charges",
-              fullBody: "",
-            },
-            action: { type: "replace", replaceWith: "[REDACTED]" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(outboundPathConfig);
-      const result = engine.applyTransforms(cloneSpan(stripeClientSpanData));
-
-      expect((result.outputValue as HttpClientOutputValue).body).toBe("[REDACTED]");
-    });
-
-    it("correctly matches inbound spans using url field", () => {
-      const inboundPathConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              pathPattern: "/api/auth/login",
-              fullBody: "",
-            },
-            action: { type: "replace", replaceWith: "[REDACTED]" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(inboundPathConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-
-      expect((result.inputValue as HttpServerInputValue).body).toBe("[REDACTED]");
-    });
-  });
-
-  describe("edge cases and error handling", () => {
-    it("handles spans with missing input/output values", () => {
-      const engine = new HttpTransformEngine(redactMaskReplaceConfig);
-      const spanWithMissingInput = {
-        ...cloneSpan(exampleServerSpanData),
-        inputValue: undefined,
-      };
-
-      const result = engine.applyTransforms(spanWithMissingInput as any);
-      expect(result.transformMetadata).toBeUndefined();
-    });
-
-    it("handles invalid JSONPath expressions gracefully", () => {
-      const invalidJsonPathConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              jsonPath: "$.invalid[[[path",
-            },
-            action: { type: "redact" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(invalidJsonPathConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-      expect(result.transformMetadata).toBeUndefined();
-    });
-
-    it("handles spans with missing body", () => {
-      const engine = new HttpTransformEngine(redactMaskReplaceConfig);
-      const spanWithoutBody = cloneSpan(exampleServerSpanData);
-      spanWithoutBody.inputValue = {
-        ...(spanWithoutBody.inputValue as HttpServerInputValue),
-        body: undefined,
-      };
-
-      const result = engine.applyTransforms(spanWithoutBody as any);
-      expect(result.transformMetadata).toBeUndefined();
-    });
-
-    it("handles spans with null/undefined headers", () => {
-      const headerConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              headerName: "Authorization",
-            },
-            action: { type: "redact" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(headerConfig);
-      const spanWithoutHeaders = cloneSpan(exampleServerSpanData);
-      spanWithoutHeaders.inputValue = {
-        ...(spanWithoutHeaders.inputValue as HttpServerInputValue),
-        headers: undefined,
-      };
-
-      const result = engine.applyTransforms(spanWithoutHeaders as any);
-      expect(result.transformMetadata).toBeUndefined();
-    });
-  });
-
-  describe("transform action types", () => {
-    it("applies mask transform with custom mask character", () => {
-      const maskConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              jsonPath: "$.password",
-            },
-            action: { type: "mask", maskChar: "#" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(maskConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-
-      expect((result.inputValue as HttpServerInputValue).body.password).toBe("#################");
-    });
-
-    it("applies redact transform with custom hash prefix", () => {
-      const redactConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              jsonPath: "$.password",
-            },
-            action: { type: "redact", hashPrefix: "HIDDEN_" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(redactConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-
-      expect((result.inputValue as HttpServerInputValue).body.password).toMatch(/^HIDDEN_[0-9a-f]{12}\.\.\.$/);
-    });
-
-    it("applies replace transform", () => {
-      const replaceConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              jsonPath: "$.username",
-            },
-            action: {
-              type: "replace",
-              replaceWith: "anonymous@example.com",
-            },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(replaceConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-
-      expect((result.inputValue as HttpServerInputValue).body.username).toBe("anonymous@example.com");
-    });
-  });
-
-  describe("matcher combinations", () => {
-    it("matches spans by method only", () => {
-      const methodOnlyConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              method: ["POST"],
-              jsonPath: "$.password",
-            },
-            action: { type: "redact" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(methodOnlyConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-
-      expect((result.inputValue as HttpServerInputValue).body.password).toMatch(/^REDACTED_[0-9a-f]{12}\.\.\.$/);
-    });
-
-    it("matches multiple methods when array is provided", () => {
-      const multiMethodConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              method: ["POST", "PUT"],
-              jsonPath: "$.username",
-            },
-            action: { type: "replace", replaceWith: "ARRAY_MATCHED" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(multiMethodConfig);
-
-      const postResult = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-      expect((postResult.inputValue as HttpServerInputValue).body.username).toBe("ARRAY_MATCHED");
-
-      const putSpan = cloneSpan(exampleServerSpanData);
-      putSpan.inputValue = {
-        ...(putSpan.inputValue as HttpServerInputValue),
-        method: "PUT",
-      };
-      const putResult = engine.applyTransforms(putSpan);
-      expect((putResult.inputValue as HttpServerInputValue).body.username).toBe("ARRAY_MATCHED");
-
-      const getSpan = cloneSpan(exampleServerSpanData);
-      getSpan.inputValue = {
-        ...(getSpan.inputValue as HttpServerInputValue),
-        method: "GET",
-      };
-      const getResult = engine.applyTransforms(getSpan);
-      expect((getResult.inputValue as HttpServerInputValue).body.username).toBe("john@example.com");
-      expect(getResult.transformMetadata).toBeUndefined();
-    });
-
-    it("does not match when method doesn't match", () => {
-      const mismatchConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              method: ["GET"],
-              jsonPath: "$.password",
-            },
-            action: { type: "redact" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(mismatchConfig);
-      const mismatchSpan = cloneSpan(exampleServerSpanData);
-      const result = engine.applyTransforms(mismatchSpan);
-
-      expect((result.inputValue as HttpServerInputValue).body.password).toBe("secretPassword123");
-      expect(result.transformMetadata).toBeUndefined();
-    });
-
-    it("does not match when direction doesn't match", () => {
-      const directionMismatchConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "outbound",
-              method: ["POST"],
-              jsonPath: "$.password",
-            },
-            action: { type: "redact" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(directionMismatchConfig);
-      const outboundMismatchSpan = cloneSpan(exampleServerSpanData);
-      const result = engine.applyTransforms(outboundMismatchSpan);
-
-      expect((result.inputValue as HttpServerInputValue).body.password).toBe("secretPassword123");
-      expect(result.transformMetadata).toBeUndefined();
-    });
-  });
-
-  describe("URL path transforms", () => {
-    it("transforms URL path in inbound server request", () => {
-      const urlPathConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              urlPath: "",
-            },
-            action: {
-              type: "replace",
-              replaceWith: "/api/redacted",
-            },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(urlPathConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-
-      const inputValue = result.inputValue as HttpServerInputValue;
-      expect(inputValue.url).toBe("/api/redacted");
-      expect(inputValue.target).toBe("/api/redacted");
-    });
-
-    it("transforms URL path in outbound client request", () => {
-      const urlPathConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "outbound",
-              urlPath: "",
-            },
-            action: {
-              type: "replace",
-              replaceWith: "/api/redacted",
-            },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(urlPathConfig);
-      const result = engine.applyTransforms(cloneSpan(stripeClientSpanData));
-
-      const inputValue = result.inputValue as HttpClientInputValue;
-      expect(inputValue.path).toBe("/api/redacted");
-    });
-  });
-
-  describe("query parameter transforms", () => {
-    it("transforms query parameter in server URL with existing params", () => {
-      const queryConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              queryParam: "token",
-            },
-            action: { type: "redact" },
-          },
-        ],
-      };
-
-      const spanWithQuery = cloneSpan(exampleServerSpanData);
-      spanWithQuery.inputValue = {
-        ...(spanWithQuery.inputValue as HttpServerInputValue),
-        url: "http://localhost:3000/api/test?token=secret123&other=value",
-        target: "/api/test?token=secret123&other=value",
-      };
-
-      const engine = new HttpTransformEngine(queryConfig);
-      const result = engine.applyTransforms(spanWithQuery);
-
-      const inputValue = result.inputValue as HttpServerInputValue;
-      expect(inputValue.url).toMatch(/http:\/\/localhost:3000\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
-      expect(inputValue.target).toMatch(/\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
-    });
-
-    it("transforms query parameter in client path with existing params", () => {
-      const queryConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "outbound",
-              queryParam: "api_key",
-            },
-            action: { type: "redact" },
-          },
-        ],
-      };
-
-      const spanWithQuery = cloneSpan(stripeClientSpanData);
-      spanWithQuery.inputValue = {
-        ...(spanWithQuery.inputValue as HttpClientInputValue),
-        path: "/v1/charges?api_key=sk_test_123&other=value",
-      };
-
-      const engine = new HttpTransformEngine(queryConfig);
-      const result = engine.applyTransforms(spanWithQuery);
-
-      const inputValue = result.inputValue as HttpClientInputValue;
-      expect(inputValue.path).toMatch(/\/v1\/charges\?api_key=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
-    });
-
-    it("handles query param that doesn't exist", () => {
-      const queryConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              queryParam: "nonexistent",
-            },
-            action: { type: "redact" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(queryConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-
-      expect(result.transformMetadata).toBeUndefined();
-    });
-  });
-
-  describe("header transforms", () => {
-    it("transforms header values case-insensitively", () => {
-      const headerConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              headerName: "Content-Type",
-            },
-            action: { type: "replace", replaceWith: "application/redacted" },
-          },
-        ],
-      };
-
-      const engine = new HttpTransformEngine(headerConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-
-      expect((result.inputValue as HttpServerInputValue).headers["content-type"]).toBe("application/redacted");
-    });
-
-    it("transforms multiple headers with same name (case variations)", () => {
-      const headerConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              headerName: "x-custom",
-            },
-            action: { type: "mask" },
-          },
-        ],
-      };
-
-      const spanWithMultiHeaders = cloneSpan(exampleServerSpanData);
-      spanWithMultiHeaders.inputValue = {
-        ...(spanWithMultiHeaders.inputValue as HttpServerInputValue),
-        headers: {
-          "X-Custom": "value1",
-          "x-custom": "value2",
-          "X-CUSTOM": "value3",
+          action: { type: "redact" },
         },
-      };
-
-      const engine = new HttpTransformEngine(headerConfig);
-      const result = engine.applyTransforms(spanWithMultiHeaders);
-
-      expect((result.inputValue as HttpServerInputValue).headers["x-custom"]).toBe("******");
+      ],
     });
-  });
+  }, { message: /Invalid host pattern/ });
+});
 
-  describe("constructor and configuration", () => {
-    it("handles empty configuration", () => {
-      const engine = new HttpTransformEngine();
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+// hostname extraction from URL
+test("extracts hostname from inbound server URL for host matching", (t) => {
+  const hostConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          host: "api\\.example\\.com",
+          fullBody: "",
+        },
+        action: { type: "replace", replaceWith: "[REDACTED]" },
+      },
+    ],
+  };
 
-      expect(result).toEqual(exampleServerSpanData);
-      expect(result.transformMetadata).toBeUndefined();
-    });
+  const spanWithApiHost = cloneSpan(exampleServerSpanData);
+  spanWithApiHost.inputValue = {
+    ...(spanWithApiHost.inputValue as HttpServerInputValue),
+    url: "https://api.example.com/api/auth/login",
+  };
 
-    it("handles configuration with empty http array", () => {
-      const emptyConfig: TransformConfigs = { http: [] };
-      const engine = new HttpTransformEngine(emptyConfig);
-      const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
+  const engine = new HttpTransformEngine(hostConfig);
+  const result = engine.applyTransforms(spanWithApiHost);
 
-      expect(result).toEqual(exampleServerSpanData);
-      expect(result.transformMetadata).toBeUndefined();
-    });
+  t.is((result.inputValue as HttpServerInputValue).body, "[REDACTED]");
+});
 
-    it("handles invalid regex patterns gracefully", () => {
-      expect(() => {
-        new HttpTransformEngine({
-          http: [
-            {
-              matcher: {
-                direction: "inbound",
-                pathPattern: "[invalid[regex",
-                jsonPath: "$.test",
-              },
-              action: { type: "redact" },
-            },
-          ],
-        });
-      }).toThrow(/Invalid path pattern/);
-    });
+test("handles malformed URLs gracefully in hostname extraction", (t) => {
+  const hostConfig: TransformConfigs = {
+    http: [
+      {
+        matcher: {
+          direction: "inbound",
+          host: "api\\.example\\.com",
+          fullBody: "",
+        },
+        action: { type: "replace", replaceWith: "[REDACTED]" },
+      },
+    ],
+  };
 
-    it("handles invalid host regex patterns gracefully", () => {
-      expect(() => {
-        new HttpTransformEngine({
-          http: [
-            {
-              matcher: {
-                direction: "outbound",
-                host: "[invalid[regex",
-                jsonPath: "$.test",
-              },
-              action: { type: "redact" },
-            },
-          ],
-        });
-      }).toThrow(/Invalid host pattern/);
-    });
-  });
+  const spanWithMalformedUrl = cloneSpan(exampleServerSpanData);
+  spanWithMalformedUrl.inputValue = {
+    ...(spanWithMalformedUrl.inputValue as HttpServerInputValue),
+    url: "not-a-valid-url",
+  };
 
-  describe("hostname extraction from URL", () => {
-    it("extracts hostname from inbound server URL for host matching", () => {
-      const hostConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              host: "api\\.example\\.com",
-              fullBody: "",
-            },
-            action: { type: "replace", replaceWith: "[REDACTED]" },
-          },
-        ],
-      };
+  const engine = new HttpTransformEngine(hostConfig);
+  const result = engine.applyTransforms(spanWithMalformedUrl);
 
-      const spanWithApiHost = cloneSpan(exampleServerSpanData);
-      spanWithApiHost.inputValue = {
-        ...(spanWithApiHost.inputValue as HttpServerInputValue),
-        url: "https://api.example.com/api/auth/login",
-      };
-
-      const engine = new HttpTransformEngine(hostConfig);
-      const result = engine.applyTransforms(spanWithApiHost);
-
-      expect((result.inputValue as HttpServerInputValue).body).toBe("[REDACTED]");
-    });
-
-    it("handles malformed URLs gracefully in hostname extraction", () => {
-      const hostConfig: TransformConfigs = {
-        http: [
-          {
-            matcher: {
-              direction: "inbound",
-              host: "api\\.example\\.com",
-              fullBody: "",
-            },
-            action: { type: "replace", replaceWith: "[REDACTED]" },
-          },
-        ],
-      };
-
-      const spanWithMalformedUrl = cloneSpan(exampleServerSpanData);
-      spanWithMalformedUrl.inputValue = {
-        ...(spanWithMalformedUrl.inputValue as HttpServerInputValue),
-        url: "not-a-valid-url",
-      };
-
-      const engine = new HttpTransformEngine(hostConfig);
-      const result = engine.applyTransforms(spanWithMalformedUrl);
-
-      expect(result.transformMetadata).toBeUndefined();
-    });
-  });
+  t.is(result.transformMetadata, undefined);
 });

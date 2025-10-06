@@ -153,6 +153,15 @@ Returns `PendingQuery` wrapper with additional methods:
 }
 ```
 
+### ESM-Specific Handling
+
+The postgres instrumentation requires special handling for ESM because the `postgres` package exports a default function:
+
+- **ESM**: The function is accessed via `moduleExports.default`, so we wrap that property directly
+- **CommonJS**: The function is the module itself, so we create a wrapped function and copy all properties
+
+This is automatically detected using `Symbol.toStringTag === 'Module'`. See the comments in `Instrumentation.ts` for implementation details.
+
 ### Version Support
 
 - **postgres**: Version 3.x (postgres.js driver)
