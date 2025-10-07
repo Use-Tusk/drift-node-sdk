@@ -222,6 +222,11 @@ export class TdMockClientRequest extends EventEmitter {
   }
 
   public end(chunk?: any, encoding?: any, callback?: any): this {
+    // Prevent multiple calls to end()
+    if (this.finished) {
+      return this;
+    }
+
     let cb = callback;
     if (typeof chunk === "function") {
       cb = chunk;

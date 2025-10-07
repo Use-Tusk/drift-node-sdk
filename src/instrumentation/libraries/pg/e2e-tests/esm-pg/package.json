@@ -1,0 +1,21 @@
+{
+  "name": "esm-pg-e2e-test",
+  "version": "1.0.0",
+  "description": "E2E tests for PostgreSQL instrumentation (ESM)",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --import ./dist/tdInit.js dist/index.js",
+    "dev": "node --import ./dist/tdInit.js dist/index.js"
+  },
+  "dependencies": {
+    "@use-tusk/drift-node-sdk": "file:/sdk",
+    "pg": "^8.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.0.0"
+  }
+}

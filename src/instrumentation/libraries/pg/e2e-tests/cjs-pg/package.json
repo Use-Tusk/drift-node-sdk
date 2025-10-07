@@ -1,0 +1,21 @@
+{
+  "name": "cjs-pg-e2e-test",
+  "version": "1.0.0",
+  "description": "E2E tests for PostgreSQL instrumentation (CommonJS)",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "node dist/index.js"
+  },
+  "dependencies": {
+    "@use-tusk/drift-node-sdk": "file:/sdk",
+    "pg": "^8.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.0.0"
+  }
+}

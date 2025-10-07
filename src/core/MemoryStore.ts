@@ -191,7 +191,6 @@ export class MemoryStore {
   markAllMocksAsUnused(traceId: string): void {
     const mocks = this.getRequestReplayMocks(traceId);
     if (!mocks) {
-      logger.debug(`MemoryStore no mocks available for marking as unused: ${traceId}`);
       return;
     }
 
