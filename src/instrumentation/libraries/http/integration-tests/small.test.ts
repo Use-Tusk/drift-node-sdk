@@ -1,6 +1,6 @@
 process.env.TUSK_DRIFT_MODE = "RECORD";
 
-import test from 'ava';
+import test from "ava";
 import { TuskDrift } from "../../../../core/TuskDrift";
 import { TransformConfigs } from "../HttpTransformEngine";
 import {
@@ -49,8 +49,6 @@ serviceAApp.get("/api/data", (req, res) => {
   res.json({ data: "public data from service A" });
 });
 
-TuskDrift.markAppAsReady();
-
 async function sleep(ms: number) {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
@@ -58,10 +56,17 @@ async function sleep(ms: number) {
 }
 
 const port = 8934;
-const server = serviceAApp.listen(port, "127.0.0.1");
+let server: any;
+
+test.before(() => {
+  TuskDrift.markAppAsReady();
+  server = serviceAApp.listen(port, "127.0.0.1");
+});
 
 test.after.always(() => {
-  server.close();
+  if (server) {
+    server.close();
+  }
 });
 
 test("should be able to reach the server", async (t) => {
@@ -72,7 +77,8 @@ test("should be able to reach the server", async (t) => {
       });
 
       res.on("end", async function () {
-        await sleep(3000);
+        // Wait for span processor to export spans (default batch timeout is 2000ms)
+        await sleep(2500);
         const allSpans = spanAdapter.getAllSpans();
         console.log(`Spans captured: ${allSpans.length}`);
         t.true(allSpans.length > 0, "Should have captured at least one span");
