@@ -10,6 +10,9 @@ TuskDrift.initialize({
 TuskDrift.markAppAsReady();
 
 import test from "ava";
+import { SpanKind } from "@opentelemetry/api";
+import { SpanUtils } from "../../../../core/tracing/SpanUtils";
+import { TuskDriftMode } from "../../../../core/TuskDrift";
 import {
   InMemorySpanAdapter,
   registerInMemoryAdapter,
@@ -18,8 +21,7 @@ import {
 import { CleanSpanData } from "../../../../core/types";
 import { PgClientInputValue, PgResult } from "../types";
 
-// Use require to avoid ES6 import hoisting
-const { Client } = require("pg");
+import { Client } from "pg";
 
 // Check with docker-compose.test.yml!
 // don't use 5432 because it'll probably conflict with some other db
@@ -28,6 +30,25 @@ const TEST_POSTGRES_URL = "postgresql://test_user:test_password@127.0.0.1:5001/t
 
 async function waitForSpans(timeoutMs: number = 2500): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, timeoutMs));
+}
+
+/** These tests don't have a root span because there's no server or anything.
+ * TODO: create a proper server like http */
+function withRootSpan<T>(fn: () => T): T {
+  return SpanUtils.createAndExecuteSpan(
+    TuskDriftMode.RECORD,
+    fn,
+    {
+      name: "test-root-span",
+      kind: SpanKind.SERVER,
+      packageName: "test",
+      instrumentationName: "TestInstrumentation",
+      submodule: "test",
+      inputValue: {},
+      isPreAppStart: false,
+    },
+    (_spanInfo) => fn(),
+  );
 }
 
 let spanAdapter: InMemorySpanAdapter;
@@ -44,27 +65,35 @@ test.before(async (t) => {
   await client.connect();
 
   // Set up test table
-  await client.query(`
+  await withRootSpan(() =>
+    client.query(`
     CREATE TABLE IF NOT EXISTS test_users (
       id SERIAL PRIMARY KEY,
       name VARCHAR(100),
       email VARCHAR(100),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
-  `);
+  `),
+  );
 
   // Clean and insert test data
-  await client.query("DELETE FROM test_users");
-  await client.query(`
+  await withRootSpan(() => client.query("DELETE FROM test_users"));
+  await withRootSpan(() =>
+    client.query(`
     INSERT INTO test_users (name, email) VALUES
     ('Alice Johnson', 'alice@example.com'),
     ('Bob Smith', 'bob@example.com')
-  `);
+  `),
+  );
+
+  // Clear spans from setup
+  await waitForSpans();
+  spanAdapter.clear();
 });
 
 test.after.always(async () => {
   if (client) {
-    await client.query("DROP TABLE IF EXISTS test_users");
+    await withRootSpan(() => client.query("DROP TABLE IF EXISTS test_users"));
     await client.end();
   }
   clearRegisteredInMemoryAdapters();
@@ -74,9 +103,9 @@ test.beforeEach(() => {
   spanAdapter.clear();
 });
 
-test("should capture spans for SELECT queries", async (t) => {
+test.serial("should capture spans for SELECT queries", async (t) => {
   // Execute real query
-  const result = await client.query("SELECT * FROM test_users ORDER BY id");
+  const result = await withRootSpan(() => client.query("SELECT * FROM test_users ORDER BY id"));
   t.is(result.rows.length, 2);
   t.is(result.rows[0].name, "Alice Johnson");
 
@@ -93,10 +122,10 @@ test("should capture spans for SELECT queries", async (t) => {
   t.is((span.outputValue as PgResult).rowCount, 2);
 });
 
-test("should capture spans for parameterized queries", async (t) => {
-  const result = await client.query("SELECT * FROM test_users WHERE name = $1", [
-    "Alice Johnson",
-  ]);
+test.serial("should capture spans for parameterized queries", async (t) => {
+  const result = await withRootSpan(() =>
+    client.query("SELECT * FROM test_users WHERE name = $1", ["Alice Johnson"]),
+  );
   t.is(result.rows.length, 1);
   t.is(result.rows[0].email, "alice@example.com");
 
@@ -116,10 +145,12 @@ test("should capture spans for parameterized queries", async (t) => {
   t.is((span.outputValue as PgResult).rowCount, 1);
 });
 
-test("should capture spans for INSERT operations", async (t) => {
-  const result = await client.query(
-    "INSERT INTO test_users (name, email) VALUES ($1, $2) RETURNING id",
-    ["Charlie Brown", "charlie@example.com"],
+test.serial("should capture spans for INSERT operations", async (t) => {
+  const result = await withRootSpan(() =>
+    client.query("INSERT INTO test_users (name, email) VALUES ($1, $2) RETURNING id", [
+      "Charlie Brown",
+      "charlie@example.com",
+    ]),
   );
   t.is(result.rows.length, 1);
   t.truthy(result.rows[0].id);
@@ -143,11 +174,13 @@ test("should capture spans for INSERT operations", async (t) => {
   t.is((span.outputValue as PgResult).rowCount, 1);
 });
 
-test("should capture spans for UPDATE operations", async (t) => {
-  const result = await client.query("UPDATE test_users SET email = $1 WHERE name = $2", [
-    "alice.new@example.com",
-    "Alice Johnson",
-  ]);
+test.serial("should capture spans for UPDATE operations", async (t) => {
+  const result = await withRootSpan(() =>
+    client.query("UPDATE test_users SET email = $1 WHERE name = $2", [
+      "alice.new@example.com",
+      "Alice Johnson",
+    ]),
+  );
   t.is(result.rowCount, 1);
 
   await waitForSpans();
@@ -165,53 +198,57 @@ test("should capture spans for UPDATE operations", async (t) => {
   t.is((span.outputValue as PgResult).rowCount, 1);
 });
 
-test("should capture spans for callback-style queries", async (t) => {
+test.serial("should capture spans for callback-style queries", async (t) => {
   await new Promise<void>((resolve, reject) => {
-    client.query("SELECT COUNT(*) as count FROM test_users", async (err, result) => {
-      try {
-        t.is(err, null);
-        t.true(parseInt(result.rows[0].count) >= 2);
+    withRootSpan(() => {
+      client.query("SELECT COUNT(*) as count FROM test_users", async (err, result) => {
+        try {
+          t.is(err, null);
+          t.true(parseInt(result.rows[0].count) >= 2);
 
-        await waitForSpans();
+          await waitForSpans();
 
-        const spans = spanAdapter.getAllSpans();
-        const pgSpans = spans.filter(
-          (input: CleanSpanData) =>
-            input.instrumentationName === "PgInstrumentation" &&
-            (input.inputValue as PgClientInputValue)?.text?.includes("COUNT"),
-        );
-        t.true(pgSpans.length > 0);
+          const spans = spanAdapter.getAllSpans();
+          const pgSpans = spans.filter(
+            (input: CleanSpanData) =>
+              input.instrumentationName === "PgInstrumentation" &&
+              (input.inputValue as PgClientInputValue)?.text?.includes("COUNT"),
+          );
+          t.true(pgSpans.length > 0);
 
-        resolve();
-      } catch (error) {
-        reject(error);
-      }
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
     });
   });
 });
 
-test("should handle all query() overload variations", async (t) => {
+test.serial("should handle all query() overload variations", async (t) => {
   // Test different overloads with real database
   const overloadTests = [
     {
       name: "query(text)",
-      test: () => client.query("SELECT 1 as test"),
+      test: () => withRootSpan(() => client.query("SELECT 1 as test")),
     },
     {
       name: "query(text, values)",
-      test: () => client.query("SELECT $1 as test", [42]),
+      test: () => withRootSpan(() => client.query("SELECT $1 as test", [42])),
     },
     {
       name: "query(config)",
-      test: () => client.query({ text: "SELECT 2 as test" }),
+      test: () => withRootSpan(() => client.query({ text: "SELECT 2 as test" })),
     },
     {
       name: "query(config with values)",
       test: () =>
-        client.query({
-          text: "SELECT $1 as test",
-          values: [99],
-        }),
+        withRootSpan(() =>
+          client.query({
+            text: "SELECT $1 as test",
+            values: [99],
+          }),
+        ),
     },
   ];
 
@@ -222,7 +259,7 @@ test("should handle all query() overload variations", async (t) => {
     t.truthy(result.rows);
     t.true(result.rows.length > 0);
 
-    await waitForSpans(100);
+    await waitForSpans();
 
     const spans = spanAdapter.getSpansByInstrumentation("Pg");
     t.true(spans.length > 0);
@@ -232,13 +269,10 @@ test("should handle all query() overload variations", async (t) => {
   }
 });
 
-test("should capture spans even for failed queries", async (t) => {
-  const error = await t.throwsAsync(
-    async () => {
-      await client.query("SELECT * FROM nonexistent_table");
-    },
-    undefined,
-  );
+test.serial("should capture spans even for failed queries", async (t) => {
+  const error = await t.throwsAsync(async () => {
+    await withRootSpan(() => client.query("SELECT * FROM nonexistent_table"));
+  }, undefined);
 
   t.truthy(error);
   const message = error instanceof Error ? error.message : String(error);
@@ -255,9 +289,9 @@ test("should capture spans even for failed queries", async (t) => {
   t.true(pgSpans.length > 0);
 });
 
-test("should handle concurrent queries", async (t) => {
+test.serial("should handle concurrent queries", async (t) => {
   const queries = Array.from({ length: 5 }, (_, i) =>
-    client.query(`SELECT ${i} as query_number, name FROM test_users LIMIT 1`),
+    withRootSpan(() => client.query(`SELECT ${i} as query_number, name FROM test_users LIMIT 1`)),
   );
 
   const results = await Promise.all(queries);
