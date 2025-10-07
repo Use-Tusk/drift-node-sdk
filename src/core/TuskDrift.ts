@@ -13,6 +13,7 @@ import {
   JwksRsaInstrumentation,
   EnvInstrumentation,
   PostgresInstrumentation,
+  Mysql2Instrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
 import { NodeSDK } from "@opentelemetry/sdk-node";
@@ -199,6 +200,11 @@ export class TuskDriftCore {
     });
 
     new PostgresInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
+
+    new Mysql2Instrumentation({
       enabled: true,
       mode: this.mode,
     });

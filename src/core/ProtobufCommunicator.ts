@@ -117,7 +117,9 @@ export class ProtobufCommunicator {
   }
 
   private getStackTrace(): string {
+    Error.stackTraceLimit = 100;
     const s = new Error().stack || "";
+    Error.stackTraceLimit = 10;
     return s
       .split("\n")
       .slice(2)

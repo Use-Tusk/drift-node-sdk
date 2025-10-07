@@ -17,7 +17,7 @@ import {
 } from "./types";
 // NOTE: these types are from version 8.15.5 of pg
 // Older versions of pg may have different types, but this is fine for now
-import { Connection, Query, Pool, PoolClient, Client } from "pg";
+import type { Connection, Query, Pool, PoolClient, Client } from "pg";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils/logger";
 

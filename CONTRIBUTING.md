@@ -168,6 +168,18 @@ Some important notes during testing, especially integration tests:
 - Know the diff between `devDependency` and `dependency` -- most libraries that
   you need for testing (axios, express) should go in `devDependency`.
 
+#### E2E Testing
+
+The SDK includes comprehensive end-to-end (E2E) tests that verify instrumentations work correctly in real Docker environments. These tests record actual network traffic and replay it to ensure consistent behavior.
+
+**Quick Overview:**
+- E2E tests are located in `src/instrumentation/libraries/{library}/e2e-tests/`
+- Each test runs in a Docker container with the full SDK
+- Tests record network interactions, then replay them to verify correctness
+- Use these tests when debugging instrumentation issues or adding new features
+
+**For detailed instructions on running and debugging E2E tests, see the [E2E Testing Guide](./E2E_TESTING_GUIDE.md).**
+
 
 #### Code Quality
 

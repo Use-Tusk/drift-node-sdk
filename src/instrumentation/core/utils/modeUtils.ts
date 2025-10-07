@@ -36,7 +36,6 @@ export function handleRecordMode<T>({
   }
 
   if (!isAppReady) {
-    logger.debug(`[ModeUtils] App is not ready, calling recordModeHandler with isPreAppStart=true`);
     // If app is not ready, call recordModeHandler with beforeAppStart=true
     return recordModeHandler({ isPreAppStart: true });
   }
