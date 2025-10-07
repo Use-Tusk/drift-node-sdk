@@ -15,12 +15,10 @@ import {
   PostgresInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
-import { MemoryStore, memoryStore } from "./MemoryStore";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { trace, Tracer } from "@opentelemetry/api";
 import { ProtobufCommunicator, MockRequestInput } from "./ProtobufCommunicator";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
-import { MockMatcher } from "./MockMatcher";
 import { CleanSpanData } from "./types";
 import { TuskDriftInstrumentationModuleNames } from "./TuskDriftInstrumentationModuleNames";
 import { SDK_VERSION } from "../version";
@@ -59,7 +57,6 @@ export class TuskDriftCore {
   private sdk?: NodeSDK;
   private initParams: InitParams;
   private config: TuskConfig;
-  private memoryStore: MemoryStore;
   private communicator?: ProtobufCommunicator | undefined;
   private samplingRate: number;
   private cliConnectionPromise: Promise<void> | null;
@@ -69,7 +66,6 @@ export class TuskDriftCore {
 
   constructor() {
     this.mode = this.detectMode();
-    this.memoryStore = memoryStore;
     this.config = loadTuskConfig() || {};
   }
 
@@ -130,10 +126,6 @@ export class TuskDriftCore {
       TuskDriftCore.instance = new TuskDriftCore();
     }
     return TuskDriftCore.instance;
-  }
-
-  private isRunningIntegrationTest(): boolean {
-    return OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_DRIFT_INTEGRATION_TEST") === "TRUE";
   }
 
   private detectMode(): TuskDriftMode {
@@ -312,7 +304,7 @@ export class TuskDriftCore {
     // Initialize ProtobufCommunicator early
     this.communicator = new ProtobufCommunicator();
 
-    if (this.mode === TuskDriftMode.REPLAY && !this.isRunningIntegrationTest()) {
+    if (this.mode === TuskDriftMode.REPLAY) {
       const socketPath =
         OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_SOCKET") ||
         path.join(os.tmpdir(), "tusk-connect.sock");
@@ -404,40 +396,9 @@ export class TuskDriftCore {
     }
   }
 
-  private timestampToISOString({ seconds, nanos }: { seconds: bigint; nanos: number }): string {
-    // Convert seconds (bigint) to milliseconds and add nanoseconds converted to milliseconds
-    const milliseconds = Number(seconds) * 1000 + Math.floor(nanos / 1_000_000);
-    return new Date(milliseconds).toISOString();
-  }
-
-  /**
-   * Checks if we are running an integration test
-   * If we are, use the memory store to find the best match since CLI isn't running
-   */
   private createMockRequestCore(
     mockRequest: MockRequestInput,
   ): { found: boolean; response?: unknown; error?: string } | null {
-    if (this.isRunningIntegrationTest()) {
-      // Don't have the CLI running, so we need to find the best match from the memory store
-      const mock = MockMatcher.findBestMatch({
-        outboundSpan: mockRequest.outboundSpan,
-        replayTraceId: mockRequest.testId,
-        stackTrace: new Error().stack,
-      });
-      return mock
-        ? {
-            found: true,
-            response: {
-              response: { body: mock.outputValue },
-              timestamp: this.timestampToISOString({
-                seconds: BigInt(mock.timestamp.seconds),
-                nanos: mock.timestamp.nanos,
-              }),
-            },
-          }
-        : { found: false, error: "No mock found" };
-    }
-
     if (!this.communicator || this.mode !== TuskDriftMode.REPLAY) {
       logger.error(
         "Cannot request mock: not in replay mode or no CLI connection",
@@ -565,27 +526,6 @@ export class TuskDriftCore {
 
   getTracer(): Tracer {
     return trace.getTracer("tusk-drift-sdk", "1.0.0");
-  }
-
-  /**
-   * Get the memory store instance
-   */
-  getMemoryStore(): MemoryStore {
-    return this.memoryStore;
-  }
-
-  /**
-   * Create replay mappings for a specific trace ID
-   * This should be called when an inbound request comes in with a trace ID
-   */
-  createReplayMappingsForTrace(traceId: string): void {
-    if (!this.memoryStore.isInitialized()) {
-      // Only initialized for integration tests
-      return;
-    }
-
-    logger.debug(`Creating replay mappings for trace: ${traceId}`);
-    this.memoryStore.createRequestReplayMockMap(traceId);
   }
 }
 
