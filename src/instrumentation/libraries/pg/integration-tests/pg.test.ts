@@ -21,7 +21,8 @@ import {
 import { CleanSpanData } from "../../../../core/types";
 import { PgClientInputValue, PgResult } from "../types";
 
-import { Client } from "pg";
+// TODO: import doesn't work
+const { Client } = require("pg");
 
 // Check with docker-compose.test.yml!
 // don't use 5432 because it'll probably conflict with some other db
