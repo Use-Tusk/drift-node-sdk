@@ -36,3 +36,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_DATABASE: test_db
+      MYSQL_USER: test_user
+      MYSQL_PASSWORD: test_password
+      MYSQL_ROOT_PASSWORD: root_password
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "test_user", "-ptest_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

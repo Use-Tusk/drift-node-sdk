@@ -12,6 +12,7 @@ import { QueryCallback } from "../types";
 export class TdMysql2ConnectionMock extends EventEmitter {
   private mysql2Instrumentation: Mysql2Instrumentation;
   private spanInfo: SpanInfo;
+  private clientType: "connection" | "pool" | "poolConnection"; // Add this property
 
   // MySQL2 connection properties
   public threadId: number | null = null;
@@ -22,10 +23,15 @@ export class TdMysql2ConnectionMock extends EventEmitter {
     user: "mock",
   };
 
-  constructor(mysql2Instrumentation: Mysql2Instrumentation, spanInfo: SpanInfo) {
+  constructor(
+    mysql2Instrumentation: Mysql2Instrumentation, 
+    spanInfo: SpanInfo,
+    clientType: "connection" | "pool" | "poolConnection" = "poolConnection" // Add parameter with default
+  ) {
     super();
     this.mysql2Instrumentation = mysql2Instrumentation;
     this.spanInfo = spanInfo;
+    this.clientType = clientType; // Store the clientType
     this.threadId = 1;
   }
 
@@ -50,7 +56,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
     const rawInputValue = {
       sql: queryConfig.sql,
       values: queryConfig.values || [],
-      clientType: "poolConnection" as const,
+      clientType: this.clientType, // Use the stored clientType instead of hardcoded value
     };
 
     const inputValue = createMockInputValue(rawInputValue);
@@ -79,7 +85,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
     const rawInputValue = {
       sql: queryConfig.sql,
       values: queryConfig.values || [],
-      clientType: "poolConnection" as const,
+      clientType: this.clientType, // Use the stored clientType instead of hardcoded value
     };
 
     const inputValue = createMockInputValue(rawInputValue);

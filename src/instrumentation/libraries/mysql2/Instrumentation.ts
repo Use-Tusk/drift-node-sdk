@@ -972,7 +972,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     logger.debug(`[Mysql2Instrumentation] Replaying MySQL2 Pool getConnection`);
 
     // For pool getConnection operations, simulate returning a mock connection
-    const mockConnection = new TdMysql2ConnectionMock(this, spanInfo);
+    const mockConnection = new TdMysql2ConnectionMock(this, spanInfo, "pool");
 
     if (callback) {
       process.nextTick(() => callback(null, mockConnection));
