@@ -61,7 +61,7 @@ docker-compose up -d --build --wait
 Start the application server in RECORD mode to capture network traffic:
 
 ```bash
-docker-compose exec -d -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
+docker-compose exec -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
 ```
 
 Wait a few seconds for the server to fully start (5-10 seconds recommended):
