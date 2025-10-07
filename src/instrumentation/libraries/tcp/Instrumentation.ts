@@ -85,6 +85,8 @@ export class TcpInstrumentation extends TdInstrumentationBase {
       this.loggedSpans.add(spanKey);
       Error.stackTraceLimit = Infinity;
 
+      // NOTE: this log string is used in run.sh's
+      // If updating this log string, update the log string in the run.sh's
       logger.warn(
         `[TcpInstrumentation] TCP called from inbound request context, likely unpatched dependency`,
         {
