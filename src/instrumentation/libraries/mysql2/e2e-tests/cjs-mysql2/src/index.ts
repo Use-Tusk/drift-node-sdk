@@ -403,7 +403,6 @@ server.listen(PORT, async () => {
     console.log('  GET  /test/pool-execute - Test pool execute (prepared statement)');
     console.log('  POST /test/pool-execute-params - Test pool execute with params');
     console.log('  GET  /test/pool-getConnection - Test pool getConnection');
-    console.log('  GET  /test/pool-transaction - Test pool transaction');
     console.log('  GET  /test/connection-connect - Test connection connect');
     console.log('  GET  /test/connection-ping - Test connection ping');
     console.log('  GET  /test/stream-query - Test stream query');

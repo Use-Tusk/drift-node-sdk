@@ -3,21 +3,16 @@ import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrument
 import { TdInstrumentationNodeModuleFile } from "../../core/baseClasses/TdInstrumentationNodeModuleFile";
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
-import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
+import { TuskDriftMode } from "../../../core/TuskDrift";
 import { wrap, isWrapped } from "../../core/utils/shimmerUtils";
-import { findMockResponseAsync } from "../../core/utils/mockResponseUtils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
 import {
-  Mysql2ModuleExports,
   Mysql2InputValue,
   Mysql2InstrumentationConfig,
   Mysql2QueryConfig,
-  Mysql2Result,
   Connection,
   Pool,
   PoolConnection,
-  Query,
-  QueryOptions,
   QueryError,
   FieldPacket,
   QueryCallback,
@@ -25,18 +20,19 @@ import {
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils/logger";
 import { TdMysql2ConnectionMock } from "./mocks/TdMysql2ConnectionMock";
+import { TdMysql2QueryMock } from "./mocks/TdMysql2QueryMock";
 
 const SUPPORTED_VERSIONS = [">=3.0.0 <4.0.0"];
 
 export class Mysql2Instrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "Mysql2Instrumentation";
   private mode: TuskDriftMode;
-  private tuskDrift: TuskDriftCore;
+  private queryMock: TdMysql2QueryMock;
 
   constructor(config: Mysql2InstrumentationConfig = {}) {
     super("mysql2", config);
     this.mode = config.mode || TuskDriftMode.DISABLED;
-    this.tuskDrift = TuskDriftCore.getInstance();
+    this.queryMock = new TdMysql2QueryMock();
   }
 
   init(): TdInstrumentationNodeModule[] {
@@ -889,132 +885,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     spanInfo: SpanInfo,
     submoduleName: string = "query",
   ): any {
-    logger.debug(`[Mysql2Instrumentation] Replaying MySQL2 query`);
-
-    const clientType = inputValue.clientType;
-    const spanName = `mysql2.${clientType}.${submoduleName}`;
-
-    // Create an event emitter for streaming queries (no callback)
-    if (!queryConfig.callback) {
-      const { EventEmitter } = require("events");
-      const emitter = new EventEmitter();
-
-      // Fetch mock data asynchronously and emit events
-      (async () => {
-        try {
-          const mockData = await findMockResponseAsync({
-            mockRequestData: {
-              traceId: spanInfo.traceId,
-              spanId: spanInfo.spanId,
-              name: spanName,
-              inputValue: inputValue,
-              packageName: "mysql2",
-              instrumentationName: this.INSTRUMENTATION_NAME,
-              submoduleName: submoduleName,
-              kind: SpanKind.CLIENT,
-            },
-            tuskDrift: this.tuskDrift,
-          });
-
-          if (!mockData) {
-            const sql = queryConfig.sql || inputValue.sql || "UNKNOWN_QUERY";
-            logger.warn(`[Mysql2Instrumentation] No mock data found for MySQL2 query: ${sql}`);
-            process.nextTick(() => {
-              emitter.emit("error", new Error("No mock data found"));
-            });
-            return;
-          }
-
-          // Convert mock data to proper MySQL2 format
-          const processedResult = this.convertMysql2Types(mockData.result);
-
-          // Emit events to simulate streaming query
-          process.nextTick(() => {
-            if (processedResult.fields) {
-              emitter.emit("fields", processedResult.fields);
-            }
-
-            if (Array.isArray(processedResult.rows)) {
-              for (const row of processedResult.rows) {
-                emitter.emit("result", row);
-              }
-            } else if (processedResult.rows) {
-              emitter.emit("result", processedResult.rows);
-            }
-
-            emitter.emit("end");
-          });
-        } catch (error) {
-          process.nextTick(() => {
-            emitter.emit("error", error);
-          });
-        }
-      })();
-
-      return emitter;
-    }
-
-    // For callback-based queries
-    (async () => {
-      try {
-        const mockData = await findMockResponseAsync({
-          mockRequestData: {
-            traceId: spanInfo.traceId,
-            spanId: spanInfo.spanId,
-            name: spanName,
-            inputValue: inputValue,
-            packageName: "mysql2",
-            instrumentationName: this.INSTRUMENTATION_NAME,
-            submoduleName: submoduleName,
-            kind: SpanKind.CLIENT,
-          },
-          tuskDrift: this.tuskDrift,
-        });
-
-        if (!mockData) {
-          const sql = queryConfig.sql || inputValue.sql || "UNKNOWN_QUERY";
-          logger.warn(`[Mysql2Instrumentation] No mock data found for MySQL2 query: ${sql}`);
-          process.nextTick(() =>
-            queryConfig.callback!(new Error("No mock data found") as QueryError),
-          );
-          return;
-        }
-
-        // Convert mock data to proper MySQL2 format
-        const processedResult = this.convertMysql2Types(mockData.result);
-
-        process.nextTick(() => {
-          queryConfig.callback!(null, processedResult.rows, processedResult.fields);
-        });
-      } catch (error) {
-        process.nextTick(() =>
-          queryConfig.callback!(error as QueryError),
-        );
-      }
-    })();
-  }
-
-  /**
-   * Convert stored MySQL2 values back to appropriate JavaScript types
-   */
-  private convertMysql2Types(result: any): Mysql2Result {
-    if (!result) {
-      return { rows: [], fields: [] };
-    }
-
-    // If result has rows and fields, use them
-    if (result.rows !== undefined && result.fields !== undefined) {
-      return {
-        rows: result.rows,
-        fields: result.fields,
-      };
-    }
-
-    // Otherwise, assume result is the rows
-    return {
-      rows: result,
-      fields: [],
-    };
+    return this.queryMock.handleReplayQuery(queryConfig, inputValue, spanInfo, submoduleName);
   }
 
   private _handleRecordPoolGetConnectionInSpan(

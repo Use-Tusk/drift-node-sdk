@@ -21,6 +21,7 @@ Tusk Drift currently supports the following packages and versions:
 - **HTTP/HTTPS**: All versions (Node.js built-in)
 - **PG**: `pg@8.x`, `pg-pool@2.x-3.x`
 - **Postgres**: `postgres@3.x`
+- **MySQL**: `mysql2@3.x`
 - **JSON Web Tokens**: `jsonwebtoken@5.x-9.x`
 - **JWKS RSA**: `jwks-rsa@1.x-3.x`
 - **GraphQL**: `graphql@15.x-16.x`
