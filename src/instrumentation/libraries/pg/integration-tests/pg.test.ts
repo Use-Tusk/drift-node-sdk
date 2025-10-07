@@ -1,6 +1,7 @@
 process.env.TUSK_DRIFT_MODE = "RECORD";
 
 import { TuskDrift } from "../../../../core/TuskDrift";
+
 TuskDrift.initialize({
   apiKey: "test-api-key",
   env: "test",
@@ -9,7 +10,6 @@ TuskDrift.initialize({
 TuskDrift.markAppAsReady();
 
 import test from "ava";
-import { Client } from "pg";
 import {
   InMemorySpanAdapter,
   registerInMemoryAdapter,
@@ -17,6 +17,9 @@ import {
 } from "../../../../core/tracing/adapters/InMemorySpanAdapter";
 import { CleanSpanData } from "../../../../core/types";
 import { PgClientInputValue, PgResult } from "../types";
+
+// Use require to avoid ES6 import hoisting
+const { Client } = require("pg");
 
 // Check with docker-compose.test.yml!
 // don't use 5432 because it'll probably conflict with some other db

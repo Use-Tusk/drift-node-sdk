@@ -1,6 +1,6 @@
 process.env.TUSK_DRIFT_MODE = "RECORD";
 
-import test from 'ava';
+import test from "ava";
 import { TuskDrift } from "../../../../core/TuskDrift";
 import { TransformConfigs } from "../HttpTransformEngine";
 import {
@@ -32,9 +32,8 @@ TuskDrift.markAppAsReady();
 
 const spanAdapter = new InMemorySpanAdapter();
 registerInMemoryAdapter(spanAdapter);
-
-const http = require("http");
 import { SpanKind } from "@opentelemetry/api";
+import http from "http";
 import { setupTestServers, cleanupServers, waitForSpans, TestServers } from "./test-utils";
 
 let servers: TestServers;
