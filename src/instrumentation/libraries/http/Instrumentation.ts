@@ -180,9 +180,6 @@ export class HttpInstrumentation extends TdInstrumentationBase {
             return originalHandler.call(this);
           }
 
-          // Only done if we are running integration tests
-          this.tuskDrift.createReplayMappingsForTrace(replayTraceId);
-
           // Set env vars for current trace
           const envVars = this.replayHooks.extractEnvVarsFromHeaders(req);
           if (envVars) {

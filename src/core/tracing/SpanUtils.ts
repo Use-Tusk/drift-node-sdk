@@ -15,7 +15,6 @@ import {
   SPAN_KIND_CONTEXT_KEY,
   TdSpanAttributes,
 } from "../types";
-import { memoryStore } from "../MemoryStore";
 import { TuskDriftCore, TuskDriftMode } from "../TuskDrift";
 import { createSpanInputValue } from "../utils/dataNormalizationUtils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
@@ -315,9 +314,7 @@ export class SpanUtils {
   }
 
   static setCurrentReplayTraceId(replayTraceId: string): Context | null {
-    // Reset unused mocks for this trace
     try {
-      memoryStore.markAllMocksAsUnused(replayTraceId);
       return context.active().setValue(REPLAY_TRACE_ID_CONTEXT_KEY, replayTraceId);
     } catch (error) {
       logger.error("SpanUtils error setting current replay trace id:", error);
