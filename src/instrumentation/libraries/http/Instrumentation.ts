@@ -1133,6 +1133,8 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     return (originalGet: Function) => {
       return function (this: Request, ...args: any[]) {
         // Handle both URL string and RequestOptions object
+        // log all of the args
+        logger.debug(`[HttpInstrumentation] GET called with args: ${JSON.stringify(args)}`);
         let requestOptions: RequestOptions;
         if (typeof args[0] === "string") {
           // Parse URL string into RequestOptions

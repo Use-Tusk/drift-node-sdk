@@ -14,7 +14,7 @@ const server = http.createServer(async (req, res) => {
     // Test raw http.get
     if (url === '/test-http-get' && method === 'GET') {
       const result = await new Promise<string>((resolve, reject) => {
-        http.get('https://jsonplaceholder.typicode.com/posts/1', (response) => {
+        https.get('https://jsonplaceholder.typicode.com/posts/1', (response) => {
           let data = '';
           response.on('data', (chunk) => {
             data += chunk;
