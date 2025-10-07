@@ -32,7 +32,14 @@ jobs:
             ${{ runner.os }}-npm-
 
       - name: Install dependencies
-        run: npm install --ignore-scripts
+        run: npm install
+
+      - name: Start Docker Compose services
+        run: docker compose -f docker-compose.test.yml up -d --wait
 
       - name: Run all tests
         run: npm test
+
+      - name: Stop Docker Compose services
+        if: always()
+        run: docker compose -f docker-compose.test.yml down
