@@ -21,9 +21,9 @@ import {
 import { CleanSpanData } from "../../../../core/types";
 import { Mysql2InputValue } from "../types";
 
-// Use require() instead of import to ensure ioredis is loaded AFTER TuskDrift initialization.
+// Use require() instead of import to ensure the modules under test is loaded AFTER TuskDrift initialization.
 // ESM imports are hoisted and executed before any other code, but we need the instrumentation
-// to be set up first before the ioredis module is loaded and patched.
+// to be set up first before the modules under test is loaded and patched.
 const mysql = require("mysql2");
 
 // Check with docker-compose.test.yml!
