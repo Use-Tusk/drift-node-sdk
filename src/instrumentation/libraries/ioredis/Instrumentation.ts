@@ -113,7 +113,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
   }
 
   private _patchPipelineModule(moduleExports: any): any {
-    logger.info(`[IORedisInstrumentation] *** Patching Pipeline module in ${this.mode} mode ***`);
+    logger.debug(`[IORedisInstrumentation] Patching Pipeline module in ${this.mode} mode`);
 
     if (this.isModulePatched(moduleExports)) {
       logger.debug(`[IORedisInstrumentation] Pipeline module already patched, skipping`);

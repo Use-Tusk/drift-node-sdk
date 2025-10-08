@@ -271,9 +271,9 @@ export class TuskDriftCore {
       this.initParams.env = nodeEnv;
     }
 
-    // Initialize logging with provided level or default to 'warn'
+    // Initialize logging with provided level or default to 'silent'
     initializeGlobalLogger({
-      logLevel: initParams.logLevel || "info",
+      logLevel: initParams.logLevel || "silent",
       prefix: "TuskDrift",
     });
 
