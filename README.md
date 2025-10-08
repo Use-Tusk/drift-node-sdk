@@ -22,9 +22,10 @@ Tusk Drift currently supports the following packages and versions:
 - **PG**: `pg@8.x`, `pg-pool@2.x-3.x`
 - **Postgres**: `postgres@3.x`
 - **MySQL**: `mysql2@3.x`
+- **IORedis**: `ioredis@4.x-5.x`
+- **GraphQL**: `graphql@15.x-16.x`
 - **JSON Web Tokens**: `jsonwebtoken@5.x-9.x`
 - **JWKS RSA**: `jwks-rsa@1.x-3.x`
-- **GraphQL**: `graphql@15.x-16.x`
 
 If you're using packages or versions not listed above, please create an issue with the package + version you'd like an instrumentation for.
 
