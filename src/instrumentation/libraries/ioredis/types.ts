@@ -4,6 +4,7 @@ import { TuskDriftMode } from "../../../core/TuskDrift";
 export interface IORedisInputValue {
   command: string;
   args: any[];
+  argsMetadata?: BufferMetadata[];
   connectionInfo?: {
     host?: string;
     port?: number;
