@@ -8,4 +8,5 @@ export const TuskDriftInstrumentationModuleNames = [
   "jsonwebtoken",
   "jwks-rsa",
   "mysql2",
+  "ioredis",
 ];

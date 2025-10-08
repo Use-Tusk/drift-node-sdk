@@ -14,6 +14,7 @@ import {
   EnvInstrumentation,
   PostgresInstrumentation,
   Mysql2Instrumentation,
+  IORedisInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
 import { NodeSDK } from "@opentelemetry/sdk-node";
@@ -208,6 +209,11 @@ export class TuskDriftCore {
       enabled: true,
       mode: this.mode,
     });
+
+    new IORedisInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
   }
 
   private initializeTracing({ baseDirectory }: { baseDirectory: string }): void {
@@ -265,9 +271,9 @@ export class TuskDriftCore {
       this.initParams.env = nodeEnv;
     }
 
-    // Initialize logging with provided level or default to 'warn'
+    // Initialize logging with provided level or default to 'silent'
     initializeGlobalLogger({
-      logLevel: initParams.logLevel || "info",
+      logLevel: initParams.logLevel || "silent",
       prefix: "TuskDrift",
     });
 

@@ -1,0 +1,22 @@
+{
+  "name": "cjs-ioredis-e2e-test",
+  "version": "1.0.0",
+  "description": "E2E tests for ioredis instrumentation (CommonJS)",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "node dist/index.js"
+  },
+  "dependencies": {
+    "@use-tusk/drift-node-sdk": "file:/sdk",
+    "express": "^4.18.0",
+    "ioredis": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

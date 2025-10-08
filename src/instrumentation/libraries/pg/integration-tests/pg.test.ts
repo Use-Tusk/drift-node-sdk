@@ -21,7 +21,9 @@ import {
 import { CleanSpanData } from "../../../../core/types";
 import { PgClientInputValue, PgResult } from "../types";
 
-// TODO: import doesn't work
+// Use require() instead of import to ensure the modules under test is loaded AFTER TuskDrift initialization.
+// ESM imports are hoisted and executed before any other code, but we need the instrumentation
+// to be set up first before the modules under test is loaded and patched.
 const { Client } = require("pg");
 
 // Check with docker-compose.test.yml!
