@@ -9,17 +9,17 @@ Records and replays Redis operations using the `ioredis` library to ensure deter
 ### Record Mode
 
 - Intercepts Redis connection creation and individual commands
-- Records all Redis operations (GET, SET, HGETALL, etc.)
+- Records all Redis operations (GET, SET, HGETALL, ZSCORE, etc.)
 - Records pipeline and multi (transaction) operations
 - Captures connection information (host, port)
+- Records **final transformed values** that the application code receives
 
 ### Replay Mode
 
 - Returns previously recorded command results instead of executing against Redis
 - Simulates successful connection for all `connect` operations
-- Reconstructs Redis data types from stored JSON
-- Handles Buffer-to-string conversions automatically
-- Supports hash command array-to-object transformations
+- Returns data in the exact format that was recorded (already transformed by ioredis)
+- Handles all ioredis data type transformations correctly
 
 ## Implementation Details
 
@@ -32,49 +32,24 @@ The `ioredis` library requires multi-level patching:
 - **Command-level patching**: `sendCommand()` method for individual operations
 - **Pipeline-level patching**: Dynamic instance patching for `pipeline()` and `multi()` methods
 
-### Special Handling: Data Type Conversions
+### Key Design Decision: Recording Post-Transformation Values
 
-#### Buffer-to-String Conversion
+**Critical Insight**: We intercept **AFTER** ioredis's internal transformations by wrapping the Promise returned by `sendCommand`, not the internal `cmd.resolve` callback.
 
-IORedis internally uses Buffers at the `sendCommand` level but converts them to strings before returning to users. Our instrumentation matches this behavior:
+#### Why This Matters
 
-**The Problem**:
-- Redis protocol works with raw bytes (Buffers)
-- Users expect string responses for text data
-- Recording raw Buffers would serialize incorrectly
+IORedis has multiple transformation layers:
+1. `sendCommand` returns a Promise
+2. The Promise resolves with raw data (Buffers, arrays)
+3. IORedis applies transformations (Buffer→string, array→object for HGETALL, string→number for numeric commands)
+4. The **final transformed value** is what application code receives
 
-**The Solution**:
-```javascript
-if (Buffer.isBuffer(value)) {
-  return {
-    value: value.toString("utf8"),
-  };
-}
-```
 
-This ensures recorded data matches what users see in their application code.
+**Buffer Conversion Logic**:
+- **UTF-8 Buffers**: Convert to string for JSON storage
+- **Binary Buffers**: Convert to base64 string with metadata
+- **Other types**: Store as-is
 
-#### Hash Command Array-to-Object Conversion
-
-Redis HGETALL returns a flat array `[key1, value1, key2, value2, ...]` but IORedis converts it to an object for user convenience:
-
-**The Problem**:
-- Redis wire protocol returns flat array
-- IORedis transforms to object: `{key1: value1, key2: value2, ...}`
-- Recording the raw array would not match user expectations
-
-**The Solution**:
-```javascript
-if (this._isHashCommand(commandName) && convertedArray.length > 0) {
-  const obj: Record<string, any> = {};
-  for (let i = 0; i < convertedArray.length; i += 2) {
-    obj[convertedArray[i]] = convertedArray[i + 1];
-  }
-  return { value: obj };
-}
-```
-
-This ensures hash commands return objects during replay, matching IORedis behavior.
 
 ### Version Support
 

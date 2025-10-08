@@ -47,10 +47,18 @@ export interface IORedisInterface {
   connect(): Promise<void>;
 }
 
+export enum BufferEncoding {
+  UTF8 = "UTF8",
+  BASE64 = "BASE64",
+  NONE = "NONE",
+}
+
+export interface BufferMetadata {
+  bufferMeta?: string;
+  encoding?: BufferEncoding;
+}
+
 export interface IORedisOutputValue extends Record<string, unknown> {
   value: any;
-  _tdMetadata?: {
-    isBuffer?: boolean;
-    encoding?: string;
-  };
+  metadata?: BufferMetadata;
 }

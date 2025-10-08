@@ -15,7 +15,11 @@ import {
   IORedisCommand,
   IORedisInterface,
   IORedisOutputValue,
+  BufferMetadata,
 } from "./types";
+import {
+  convertValueToJsonable,
+} from "./utils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils/logger";
 
@@ -152,8 +156,11 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
         const commandArgs = cmd.args || [];
 
         let sanitizedArgs: any[] = [];
+        let argsMetadata: BufferMetadata[] = [];
         try {
-          sanitizedArgs = self._sanitizeArgs(commandArgs);
+          const sanitized = self._sanitizeArgs(commandArgs);
+          sanitizedArgs = sanitized.values;
+          argsMetadata = sanitized.metadata;
         } catch (error) {
           logger.error(`[IORedisInstrumentation] error sanitizing args:`, error);
         }
@@ -161,6 +168,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
         const inputValue: IORedisInputValue = {
           command: commandName,
           args: sanitizedArgs,
+          argsMetadata,
           connectionInfo: {
             host: this.options?.host,
             port: this.options?.port,
@@ -399,56 +407,44 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     cmd: IORedisCommand,
     thisContext: IORedisInterface,
   ): Promise<any> {
-    // Store original resolve/reject handlers
-    const origResolve = cmd.resolve;
-    const origReject = cmd.reject;
+    // Execute the command and capture the final resolved value
+    // (after ioredis transformations)
+    const promise = originalSendCommand.apply(thisContext, [cmd]);
 
-    // Wrap resolve handler to capture output
-    if (origResolve) {
-      cmd.resolve = (result: any) => {
-        try {
-          logger.debug(
-            `[IORedisInstrumentation] IORedis command ${cmd.name} completed successfully (${SpanUtils.getTraceInfo()})`,
-          );
+    if (promise && typeof promise.then === "function") {
+      return promise
+        .then((result: any) => {
+          try {
+            logger.debug(
+              `[IORedisInstrumentation] IORedis command ${cmd.name} completed successfully (${SpanUtils.getTraceInfo()})`,
+            );
 
-          const outputValue = this._serializeOutput(result, cmd.name);
-          SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
-          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-        } catch (error) {
-          logger.error(`[IORedisInstrumentation] error processing command response:`, error);
-        }
-
-        // Call original resolve
-        if (origResolve) {
-          origResolve(result);
-        }
-      };
+            // Serialize the FINAL transformed result (what the application receives)
+            const outputValue = this._serializeOutput(result);
+            SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
+            SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+          } catch (error) {
+            logger.error(`[IORedisInstrumentation] error processing command response:`, error);
+          }
+          return result;
+        })
+        .catch((error: any) => {
+          try {
+            logger.debug(
+              `[IORedisInstrumentation] IORedis command ${cmd.name} error: ${error.message} (${SpanUtils.getTraceInfo()})`,
+            );
+            SpanUtils.endSpan(spanInfo.span, {
+              code: SpanStatusCode.ERROR,
+              message: error.message,
+            });
+          } catch (spanError) {
+            logger.error(`[IORedisInstrumentation] error ending span:`, spanError);
+          }
+          throw error;
+        });
     }
 
-    // Wrap reject handler to capture errors
-    if (origReject) {
-      cmd.reject = (error: Error) => {
-        try {
-          logger.debug(
-            `[IORedisInstrumentation] IORedis command ${cmd.name} error: ${error.message} (${SpanUtils.getTraceInfo()})`,
-          );
-          SpanUtils.endSpan(spanInfo.span, {
-            code: SpanStatusCode.ERROR,
-            message: error.message,
-          });
-        } catch (spanError) {
-          logger.error(`[IORedisInstrumentation] error ending span:`, spanError);
-        }
-
-        // Call original reject
-        if (origReject) {
-          origReject(error);
-        }
-      };
-    }
-
-    // Execute the command
-    return originalSendCommand.apply(thisContext, [cmd]);
+    return promise;
   }
 
   private async _handleReplaySendCommand(
@@ -483,7 +479,11 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
       `[IORedisInstrumentation] Found mock data for command ${cmd.name}: ${JSON.stringify(mockData)}`,
     );
 
-    const result = this._deserializeOutput(mockData.result, commandName);
+    const result = this._deserializeOutput(mockData.result);
+
+    // Add span attributes and end span
+    SpanUtils.addSpanAttributes(spanInfo.span, { outputValue: mockData.result });
+    SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
 
     // Handle callback if present
     if (cmd.callback && typeof cmd.callback === "function") {
@@ -492,12 +492,8 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
       });
     }
 
-    // Add span attributes and end span
-    SpanUtils.addSpanAttributes(spanInfo.span, { outputValue: mockData.result });
-    SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-
-    // Return resolved promise with deserialized result
-    // This bypasses the real Redis call entirely
+    // Return the already-transformed result directly
+    // We recorded the final transformed value, so no additional transformation needed
     return Promise.resolve(result);
   }
 
@@ -584,8 +580,8 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
               `[IORedisInstrumentation] Pipeline exec completed successfully (${SpanUtils.getTraceInfo()})`,
             );
 
-            // Serialize the results
-            const outputValue = { value: results };
+            // Serialize the results with metadata
+            const outputValue = this._serializePipelineOutput(results);
             SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
             SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
           } catch {
@@ -643,7 +639,8 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
       `[IORedisInstrumentation] Found mock data for pipeline exec: ${JSON.stringify(mockData)}`,
     );
 
-    const result = mockData.result?.value || mockData.result;
+    // Deserialize the pipeline results with metadata
+    const result = this._deserializePipelineOutput(mockData.result);
 
     // Handle callback if present
     const callback = args[args.length - 1];
@@ -659,62 +656,44 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     return Promise.resolve(result);
   }
 
-  private _sanitizeArgs(args: any[]): any[] {
-    return args.map((arg) => {
-      // Handle Buffer objects
-      if (Buffer.isBuffer(arg)) {
-        return {
-          type: "Buffer",
-          data: arg.toString("base64"),
-          length: arg.length,
-        };
-      }
-      return arg;
+  private _sanitizeArgs(args: any[]): { values: any[]; metadata: BufferMetadata[] } {
+    const values: any[] = [];
+    const metadata: BufferMetadata[] = [];
+
+    args.forEach((arg) => {
+      const converted = convertValueToJsonable(arg);
+      values.push(converted.value);
+      metadata.push({
+        bufferMeta: converted.bufferMeta,
+        encoding: converted.encoding,
+      });
     });
+
+    return { values, metadata };
   }
 
-  private _serializeOutput(value: any, commandName: string): IORedisOutputValue {
-    // Convert Buffers to strings since IORedis typically returns strings to users
-    // even though sendCommand internally works with Buffers
-    if (Buffer.isBuffer(value)) {
-      return {
-        value: value.toString("utf8"),
-      };
-    }
-
-    // Handle arrays (common for Redis commands that return multiple values)
-    if (Array.isArray(value)) {
-      const convertedArray = value.map((item) => {
-        if (Buffer.isBuffer(item)) {
-          return item.toString("utf8");
-        }
-        return item;
-      });
-
-      // For hash commands like HGETALL, HKEYS, HVALS, convert flat array to object
-      // HGETALL returns [key1, val1, key2, val2, ...] which IORedis converts to {key1: val1, key2: val2, ...}
-      if (commandName && this._isHashCommand(commandName) && convertedArray.length > 0) {
-        const obj: Record<string, any> = {};
-        for (let i = 0; i < convertedArray.length; i += 2) {
-          obj[convertedArray[i]] = convertedArray[i + 1];
-        }
-        return { value: obj };
-      }
-
-      return {
-        value: convertedArray,
-      };
-    }
-
+  private _serializeOutput(value: any): IORedisOutputValue {
+    // We record the FINAL transformed value from ioredis (after Promise resolution)
+    // This value is already in its final form (strings, numbers, objects, arrays, etc.)
+    // No need for Buffer metadata since ioredis has already transformed Buffers to their final types
     return { value };
   }
 
-  private _isHashCommand(commandName: string): boolean {
-    const hashCommands = ['hgetall'];
-    return hashCommands.includes(commandName.toLowerCase());
+  private _serializePipelineOutput(results: any): any {
+    // Store the final transformed pipeline results as-is
+    return { value: results };
   }
 
-  private _deserializeOutput(outputValue: any, commandName: string): any {
+  private _deserializePipelineOutput(outputValue: any): any {
+    if (!outputValue) {
+      return [];
+    }
+
+    // Return the stored value as-is (already in final form)
+    return outputValue.value || outputValue;
+  }
+
+  private _deserializeOutput(outputValue: any): any {
     if (!outputValue) {
       return undefined;
     }
@@ -725,9 +704,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
       return outputValue;
     }
 
-    // Return the stored value directly
-    // For hash commands, the value is already an object from serialization
-    // For other commands, the value is as-is (string, array, number, etc.)
+    // Return the stored value as-is (it's already in final form from ioredis transformations)
     return outputValue.value;
   }
 
