@@ -43,7 +43,10 @@ export class ProtobufCommunicator {
   // Store the context when connecting and reuse it
   private protobufContext: Context | null = null;
 
-  private makeConnection(socketPath: string, callback: () => void) {
+  private makeConnection(
+    connectionInfo: { socketPath: string } | { host: string; port: number },
+    callback: () => void
+  ) {
     const currentContext = context.active();
     this.protobufContext = currentContext.setValue(
       CALLING_LIBRARY_CONTEXT_KEY,
@@ -52,15 +55,27 @@ export class ProtobufCommunicator {
 
     // Create connection in context so TCP instrumentation knows to ignore these TCP calls
     return context.with(this.protobufContext, () => {
-      // TCP operations here will have the context set
-      this.client = net.createConnection(socketPath, callback);
+      if ('socketPath' in connectionInfo) {
+        // Unix socket connection
+        this.client = net.createConnection(connectionInfo.socketPath, callback);
+      } else {
+        // TCP connection
+        this.client = net.createConnection(
+          { host: connectionInfo.host, port: connectionInfo.port },
+          callback
+        );
+      }
     });
   }
 
-  async connect(socketPath: string, serviceId: string): Promise<void> {
+  async connect(
+    connectionInfo: { socketPath: string } | { host: string; port: number },
+    serviceId: string
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.makeConnection(socketPath, () => {
-        logger.debug("Connected to CLI via protobuf");
+      this.makeConnection(connectionInfo, () => {
+        const connType = 'socketPath' in connectionInfo ? 'Unix socket' : 'TCP';
+        logger.debug(`Connected to CLI via protobuf (${connType})`);
         this.sendConnectMessage(serviceId).then(resolve).catch(reject);
       });
 
@@ -184,7 +199,9 @@ export class ProtobufCommunicator {
    * Since this function blocks the main thread, there is a perfomance impact for using this. We should use requestMockAsync whenever possilbe and only use this function
    * for instrumentations that request fetching mocks synchronously.
    *
-   * (9/10/2025) Currently not using this since for the only sync instrumentation (Date) we're not actually fetching mocks
+   * (10/9/2025) Currently not using this function since we are not actually fetching mocks for the only sync instrumentation (Date)
+   * NOTE: This function probably doesn't work. plus, nc might not be installed on all machines (especially windows)
+   *       Better approach is replacing nc command with pure Node.js implementation
    */
   requestMockSync(mockRequest: MockRequestInput): MockResponseOutput {
     const requestId = this.generateRequestId();
@@ -242,18 +259,33 @@ export class ProtobufCommunicator {
 
       fs.writeFileSync(requestFile, fullMessage);
 
-      // Determine socket path
-      const socketPath =
-        OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_SOCKET") ||
-        path.join(os.tmpdir(), "tusk-connect.sock");
+      // Determine connection method
+      const mockSocket = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_SOCKET");
+      const mockHost = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_HOST");
+      const mockPort = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_PORT");
 
-      try {
-        // Check if the socket file exists and is accessible
+      let command: string;
+
+      if (mockSocket) {
+        // Unix socket mode
+        if (!fs.existsSync(mockSocket)) {
+          throw new Error(`Socket file does not exist: ${mockSocket}`);
+        }
+        command = `nc -U -w 10 "${mockSocket}" < "${requestFile}" > "${responseFile}"`;
+      } else if (mockHost && mockPort) {
+        // TCP mode
+        command = `nc -w 10 "${mockHost}" ${mockPort} < "${requestFile}" > "${responseFile}"`;
+      } else {
+        // Fallback to default Unix socket
+        const socketPath = path.join(os.tmpdir(), "tusk-connect.sock");
         if (!fs.existsSync(socketPath)) {
           throw new Error(`Socket file does not exist: ${socketPath}`);
         }
+        command = `nc -U -w 10 "${socketPath}" < "${requestFile}" > "${responseFile}"`;
+      }
 
-        execSync(`nc -U -w 10 "${socketPath}" < "${requestFile}" > "${responseFile}"`, {
+      try {
+        execSync(command, {
           timeout: 10000,
           stdio: "pipe",
         });
