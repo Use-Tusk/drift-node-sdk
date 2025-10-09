@@ -25,25 +25,28 @@ export interface HttpTransform {
 export type HttpTransformMatcher = {
   /** Request direction, relative to this service. */
   direction: "inbound" | "outbound";
-  /** HTTP method: array of methods like ["GET", "POST"]. Empty array matches all methods. */
+  /** HTTP method: array of methods like ["GET", "POST"]. Empty array matches
+   * all methods. */
   method?: ("GET" | "POST" | "DELETE" | "PUT")[];
   /** URL path pattern: "/api/user/*" */
   pathPattern?: string;
   /** Host pattern. e.g. "api.example.com" */
   host?: string;
-} & OneOf<HttpTransformTarget>;
+} & OneOf<HttpTransformMatchingFields>;
 
-export type HttpTransformTarget = {
-  /** JSONPath expression: "$.user.password" */
+/** Target fields. See doc for more info on why it's split and not part of the
+ * matcher configs . */
+export type HttpTransformMatchingFields = {
+  /** JSONPath expression e.g. "$.user.password" */
   jsonPath: string;
-  /** Query parameter name: "ssn" */
+  /** Query parameter name */
   queryParam: string;
-  /** Header name: "Authorization" */
+  /** Header name */
   headerName: string;
   /** Transform the entire URL path */
-  urlPath: string;
+  urlPath: boolean;
   /** Transform the entire request/response body */
-  fullBody: string;
+  fullBody: boolean;
 };
 
 export type HttpTransformAction =
@@ -91,6 +94,57 @@ type TransformAction = {
 type ActionFunction = (value: string) => string;
 
 type MatcherFunction = (span: HttpSpanData) => boolean;
+
+/**
+ * Creates an empty HttpClientInputValue object for dropped spans
+ */
+function createEmptyClientInputValue(
+  protocol?: HttpClientInputValue["protocol"],
+): HttpClientInputValue {
+  return {
+    protocol: protocol || "http",
+    method: "",
+    headers: {},
+  };
+}
+
+/**
+ * Creates an empty HttpServerInputValue object for dropped spans
+ */
+function createEmptyServerInputValue(): HttpServerInputValue {
+  return {
+    method: "",
+    url: "",
+    target: "",
+    headers: {},
+    body: "",
+    bodySize: 0,
+    httpVersion: "",
+  };
+}
+
+/**
+ * Creates an empty HttpClientOutputValue object for dropped spans
+ */
+function createEmptyClientOutputValue(): HttpClientOutputValue {
+  return {
+    httpVersion: "1.0",
+    httpVersionMajor: 1,
+    httpVersionMinor: 0,
+    complete: true,
+    readable: true,
+    headers: {},
+  };
+}
+
+/**
+ * Creates an empty HttpServerOutputValue object for dropped spans
+ */
+function createEmptyServerOutputValue(): HttpServerOutputValue {
+  return {
+    headers: {},
+  };
+}
 
 export class HttpTransformEngine {
   private compiledTransforms: CompiledTransform[] = [];
@@ -186,13 +240,19 @@ export class HttpTransformEngine {
           return;
         }
 
-        // Drop all sensitive data
+        // Drop all sensitive data by replacing with empty objects
         if (span.inputValue) {
-          span.inputValue = {} as any;
+          span.inputValue =
+            span.kind === SpanKind.CLIENT
+              ? createEmptyClientInputValue(span.protocol)
+              : createEmptyServerInputValue();
         }
 
         if (span.outputValue) {
-          span.outputValue = {} as any;
+          span.outputValue =
+            span.kind === SpanKind.CLIENT
+              ? createEmptyClientOutputValue()
+              : createEmptyServerOutputValue();
         }
 
         return {
@@ -240,10 +300,10 @@ export class HttpTransformEngine {
     if (matcher.headerName) {
       return this.compileHeaderAction(matcher.headerName, actionFunction, matcher.direction);
     }
-    if (matcher.urlPath !== undefined) {
+    if (matcher.urlPath) {
       return this.compileUrlPathAction(actionFunction, matcher.direction);
     }
-    if (matcher.fullBody !== undefined) {
+    if (matcher.fullBody) {
       return this.compileFullBodyAction(actionFunction, matcher.direction);
     }
 
@@ -382,7 +442,7 @@ export class HttpTransformEngine {
   private compileHeaderAction(
     headerName: string,
     actionFunction: ActionFunction,
-    direction: HttpTransformMatcher["direction"],
+    _: HttpTransformMatcher["direction"],
   ): (span: HttpSpanData) => boolean {
     const lowerHeader = headerName.toLowerCase();
 
@@ -571,7 +631,7 @@ export class HttpTransformEngine {
     if (matcher.queryParam) return `queryParam:${matcher.queryParam}`;
     if (matcher.headerName) return `header:${matcher.headerName}`;
     if (matcher.urlPath) return "urlPath";
-    if (matcher.fullBody !== undefined) return "fullBody";
+    if (matcher.fullBody) return "fullBody";
     return "unknown";
   }
 

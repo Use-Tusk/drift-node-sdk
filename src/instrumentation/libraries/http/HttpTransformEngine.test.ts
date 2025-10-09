@@ -55,7 +55,7 @@ const dropConfig: TransformConfigs = {
         direction: "outbound",
         method: ["POST"],
         host: "api.stripe.com",
-        fullBody: "",
+        fullBody: true,
       },
       action: {
         type: "drop",
@@ -246,7 +246,7 @@ test("identifies inbound requests that should be dropped", (t) => {
           direction: "inbound",
           method: ["POST"],
           pathPattern: "/api/auth/login",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "drop" },
       },
@@ -285,7 +285,7 @@ test("correctly matches outbound spans using hostname field", (t) => {
         matcher: {
           direction: "outbound",
           host: "api\\.stripe\\.com",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
@@ -305,7 +305,7 @@ test("correctly matches inbound spans by extracting hostname from URL", (t) => {
         matcher: {
           direction: "inbound",
           host: "localhost",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
@@ -325,7 +325,7 @@ test("correctly matches outbound spans using path field", (t) => {
         matcher: {
           direction: "outbound",
           pathPattern: "/v1/charges",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
@@ -345,7 +345,7 @@ test("correctly matches inbound spans using url field", (t) => {
         matcher: {
           direction: "inbound",
           pathPattern: "/api/auth/login",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
@@ -594,7 +594,7 @@ test("transforms URL path in inbound server request", (t) => {
       {
         matcher: {
           direction: "inbound",
-          urlPath: "",
+          urlPath: true,
         },
         action: {
           type: "replace",
@@ -618,7 +618,7 @@ test("transforms URL path in outbound client request", (t) => {
       {
         matcher: {
           direction: "outbound",
-          urlPath: "",
+          urlPath: true,
         },
         action: {
           type: "replace",
@@ -818,7 +818,7 @@ test("extracts hostname from inbound server URL for host matching", (t) => {
         matcher: {
           direction: "inbound",
           host: "api\\.example\\.com",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
@@ -844,7 +844,7 @@ test("handles malformed URLs gracefully in hostname extraction", (t) => {
         matcher: {
           direction: "inbound",
           host: "api\\.example\\.com",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },

@@ -1,20 +1,18 @@
 process.env.TUSK_DRIFT_MODE = "RECORD";
 
 import { TuskDrift } from "../../../../core/TuskDrift";
-import { TransformConfigs } from "../HttpTransformEngine";
+import { TransformConfigs } from "../FetchTransformEngine";
 
 const transforms: TransformConfigs = {
-  http: [
+  fetch: [
     {
       matcher: {
-        direction: "inbound",
         jsonPath: "$.password",
       },
       action: { type: "redact", hashPrefix: "PWD_" },
     },
     {
       matcher: {
-        direction: "inbound",
         jsonPath: "$.apiKey",
       },
       action: { type: "mask", maskChar: "*" },
@@ -23,7 +21,7 @@ const transforms: TransformConfigs = {
 };
 
 TuskDrift.initialize({
-  apiKey: "test-api-key-multiple-transforms",
+  apiKey: "test-api-key-fetch-multiple-transforms",
   env: "test",
   logLevel: "silent",
   transforms,
@@ -61,11 +59,11 @@ test("should apply multiple transforms to the same request", async (t) => {
     apiKey: "secret-key-789",
   });
 
-  const response = await new Promise<{ statusCode: number }>((resolve, reject) => {
+  const response = await new Promise<{ statusCode: number; data: any }>((resolve, reject) => {
     const options = {
       hostname: "127.0.0.1",
       port: servers.mainServerPort,
-      path: "/auth/login",
+      path: "/echo",
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -77,7 +75,7 @@ test("should apply multiple transforms to the same request", async (t) => {
       let data = "";
       res.on("data", (chunk) => (data += chunk));
       res.on("end", () => {
-        resolve({ statusCode: res.statusCode || 0 });
+        resolve({ statusCode: res.statusCode || 0, data: JSON.parse(data) });
       });
     });
 
@@ -91,22 +89,21 @@ test("should apply multiple transforms to the same request", async (t) => {
   await waitForSpans();
 
   const allSpans = spanAdapter.getAllSpans();
-  const loginSpan = allSpans.find((span) => {
+  const fetchSpan = allSpans.find((span) => {
     const inputValue = span.inputValue as any;
-    const url = inputValue?.url || inputValue?.target;
-    return url && url.includes("/auth/login") && span.kind === SpanKind.SERVER;
+    const url = inputValue?.url;
+    return url && url.includes("/echo-internal") && span.kind === SpanKind.CLIENT;
   });
 
-  t.truthy(loginSpan, "Login span not captured");
-
-  // Password should be redacted
-  const passwordPattern = /^PWD_[0-9a-f]{12}\.\.\.$/;
-  const inputValue = loginSpan!.inputValue as any;
+  t.truthy(fetchSpan, "Fetch span not captured");
 
   // Body is base64 encoded, decode and parse it
+  const inputValue = fetchSpan!.inputValue as any;
   const decodedBody = Buffer.from(inputValue.body, "base64").toString("utf-8");
   const parsedBody = JSON.parse(decodedBody);
 
+  // Password should be redacted
+  const passwordPattern = /^PWD_[0-9a-f]{12}\.\.\.$/;
   t.truthy(
     passwordPattern.test(parsedBody.password),
     `Expected password to match pattern ${passwordPattern}, got ${parsedBody.password}`,
@@ -127,7 +124,7 @@ test("should apply multiple transforms to the same request", async (t) => {
   );
 
   // Should have both transform actions in metadata
-  const actions = loginSpan!.transformMetadata?.actions || [];
+  const actions = fetchSpan!.transformMetadata?.actions || [];
   t.is(actions.length, 2, `Expected 2 transform actions, got ${actions.length}`);
 
   const hasRedactAction = actions.some(

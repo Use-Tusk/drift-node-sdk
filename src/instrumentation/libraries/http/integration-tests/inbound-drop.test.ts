@@ -9,7 +9,7 @@ const transforms: TransformConfigs = {
       matcher: {
         direction: "inbound",
         pathPattern: "/admin/.*",
-        fullBody: "",
+        fullBody: true,
       },
       action: { type: "drop" },
     },

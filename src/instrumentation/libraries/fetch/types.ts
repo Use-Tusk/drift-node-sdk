@@ -1,8 +1,10 @@
 import { TdInstrumentationConfig } from "../../core/baseClasses/TdInstrumentationAbstract";
 import { TuskDriftMode } from "../../../core/TuskDrift";
+import { TransformConfigs } from "../types";
 
 export interface FetchInstrumentationConfig extends TdInstrumentationConfig {
   mode?: TuskDriftMode;
+  transforms?: TransformConfigs;
 }
 
 export interface FetchInputValue {
