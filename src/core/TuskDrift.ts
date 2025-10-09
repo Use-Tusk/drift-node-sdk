@@ -32,7 +32,7 @@ import {
   TuskConfig,
   OriginalGlobalUtils,
 } from "./utils";
-import { TransformConfigs } from "../instrumentation/libraries/http/HttpTransformEngine";
+import { TransformConfigs } from "../instrumentation/libraries/types";
 
 export interface InitParams {
   apiKey?: string;
@@ -168,6 +168,7 @@ export class TuskDriftCore {
     new FetchInstrumentation({
       enabled: true,
       mode: this.mode,
+      transforms,
     });
 
     new TcpInstrumentation({

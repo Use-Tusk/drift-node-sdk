@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import yaml from "js-yaml";
 import { logger } from "./logger";
-import { TransformConfigs } from "src/instrumentation/libraries/http/HttpTransformEngine";
+import { TransformConfigs } from "src/instrumentation/libraries/types";
 
 export interface TuskConfig {
   service?: {

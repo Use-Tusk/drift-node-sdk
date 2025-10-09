@@ -38,7 +38,8 @@ import {
 } from "../../../core/tracing/JsonSchemaHelper";
 import { shouldSample, OriginalGlobalUtils, logger } from "../../../core/utils";
 import { EnvVarTracker } from "../../core/trackers";
-import { HttpSpanData, HttpTransformEngine, TransformConfigs } from "./HttpTransformEngine";
+import { HttpSpanData, HttpTransformEngine } from "./HttpTransformEngine";
+import { TransformConfigs } from "../types";
 
 export interface HttpInstrumentationConfig extends TdInstrumentationConfig {
   requestHook?: (request: any) => void;

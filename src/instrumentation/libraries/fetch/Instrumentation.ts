@@ -12,6 +12,7 @@ import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { EncodingType } from "../../../core/tracing/JsonSchemaHelper";
 import { logger } from "../../../core/utils/logger";
 import { BodyInit } from "undici-types/fetch";
+import { FetchSpanData, FetchTransformEngine } from "./FetchTransformEngine";
 
 /**
  * Fetch API instrumentation for capturing requests made via fetch()
@@ -22,11 +23,13 @@ export class FetchInstrumentation extends TdInstrumentationBase {
   private mode: TuskDriftMode;
   private tuskDrift: TuskDriftCore;
   private originalFetch?: typeof globalThis.fetch;
+  private transformEngine: FetchTransformEngine;
 
   constructor(config: FetchInstrumentationConfig = {}) {
     super("fetch", config);
     this.mode = config.mode || TuskDriftMode.DISABLED;
     this.tuskDrift = TuskDriftCore.getInstance();
+    this.transformEngine = new FetchTransformEngine(config.transforms);
   }
 
   init(): TdInstrumentationNodeModule[] {
@@ -182,17 +185,33 @@ export class FetchInstrumentation extends TdInstrumentationBase {
                 bodySize: encodedBody?.length || 0,
               } as FetchOutputValue;
 
-              SpanUtils.addSpanAttributes(spanInfo.span, {
+              // Apply transforms to span data before adding attributes
+              const spanData: FetchSpanData = {
+                traceId: spanInfo.traceId,
+                spanId: spanInfo.spanId,
+                kind: SpanKind.CLIENT,
+                inputValue,
                 outputValue,
+              };
+              this.transformEngine.applyTransforms(spanData);
+
+              SpanUtils.addSpanAttributes(spanInfo.span, {
+                inputValue: spanData.inputValue,
+                outputValue: spanData.outputValue,
                 outputSchemaMerges: {
                   body: {
                     encoding: EncodingType.BASE64,
-                    decodedType: getDecodedType(outputValue.headers["content-type"] || ""),
+                    decodedType: getDecodedType(
+                      (spanData.outputValue as any).headers?.["content-type"] || "",
+                    ),
                   },
                   headers: {
                     matchImportance: 0,
                   },
                 },
+                ...(spanData.transformMetadata && {
+                  transformMetadata: spanData.transformMetadata,
+                }),
               });
 
               const status =

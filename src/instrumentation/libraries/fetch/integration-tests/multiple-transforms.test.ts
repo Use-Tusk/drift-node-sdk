@@ -4,19 +4,24 @@ import { TuskDrift } from "../../../../core/TuskDrift";
 import { TransformConfigs } from "../../types";
 
 const transforms: TransformConfigs = {
-  http: [
+  fetch: [
     {
       matcher: {
-        direction: "inbound",
         jsonPath: "$.password",
       },
       action: { type: "redact", hashPrefix: "PWD_" },
+    },
+    {
+      matcher: {
+        jsonPath: "$.apiKey",
+      },
+      action: { type: "mask", maskChar: "*" },
     },
   ],
 };
 
 TuskDrift.initialize({
-  apiKey: "test-api-key-redact",
+  apiKey: "test-api-key-fetch-multiple-transforms",
   env: "test",
   logLevel: "silent",
   transforms,
@@ -47,14 +52,18 @@ test.after.always(async () => {
   clearRegisteredInMemoryAdapters();
 });
 
-test("should redact password field in request body", async (t) => {
-  const postData = JSON.stringify({ username: "user@example.com", password: "secretPassword123" });
+test("should apply multiple transforms to the same request", async (t) => {
+  const postData = JSON.stringify({
+    username: "admin@example.com",
+    password: "superSecret456",
+    apiKey: "secret-key-789",
+  });
 
-  const response = await new Promise<{ statusCode: number }>((resolve, reject) => {
+  const response = await new Promise<{ statusCode: number; data: any }>((resolve, reject) => {
     const options = {
       hostname: "127.0.0.1",
       port: servers.mainServerPort,
-      path: "/auth/login",
+      path: "/echo",
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -66,7 +75,7 @@ test("should redact password field in request body", async (t) => {
       let data = "";
       res.on("data", (chunk) => (data += chunk));
       res.on("end", () => {
-        resolve({ statusCode: res.statusCode || 0 });
+        resolve({ statusCode: res.statusCode || 0, data: JSON.parse(data) });
       });
     });
 
@@ -80,38 +89,51 @@ test("should redact password field in request body", async (t) => {
   await waitForSpans();
 
   const allSpans = spanAdapter.getAllSpans();
-  const loginSpan = allSpans.find((span) => {
+  const fetchSpan = allSpans.find((span) => {
     const inputValue = span.inputValue as any;
-    const url = inputValue?.url || inputValue?.target;
-    return url && url.includes("/auth/login") && span.kind === SpanKind.SERVER;
+    const url = inputValue?.url;
+    return url && url.includes("/echo-internal") && span.kind === SpanKind.CLIENT;
   });
 
-  t.truthy(loginSpan, "Login span not captured");
-
-  // Password should be redacted
-  const passwordPattern = /^PWD_[0-9a-f]{12}\.\.\.$/;
-  const inputValue = loginSpan!.inputValue as any;
+  t.truthy(fetchSpan, "Fetch span not captured");
 
   // Body is base64 encoded, decode and parse it
+  const inputValue = fetchSpan!.inputValue as any;
   const decodedBody = Buffer.from(inputValue.body, "base64").toString("utf-8");
   const parsedBody = JSON.parse(decodedBody);
 
+  // Password should be redacted
+  const passwordPattern = /^PWD_[0-9a-f]{12}\.\.\.$/;
   t.truthy(
     passwordPattern.test(parsedBody.password),
     `Expected password to match pattern ${passwordPattern}, got ${parsedBody.password}`,
   );
-  t.is(
-    parsedBody.username,
-    "user@example.com",
-    `Expected username to be "user@example.com", got ${parsedBody.username}`,
+
+  // API key should be masked
+  const maskPattern = /^\*+$/;
+  t.truthy(
+    maskPattern.test(parsedBody.apiKey),
+    `Expected apiKey to be masked with asterisks, got ${parsedBody.apiKey}`,
   );
 
-  // Should have transform metadata
-  const hasRedactAction = loginSpan!.transformMetadata?.actions?.some(
+  // Username should remain unchanged
+  t.is(
+    parsedBody.username,
+    "admin@example.com",
+    `Expected username to be "admin@example.com", got ${parsedBody.username}`,
+  );
+
+  // Should have both transform actions in metadata
+  const actions = fetchSpan!.transformMetadata?.actions || [];
+  t.is(actions.length, 2, `Expected 2 transform actions, got ${actions.length}`);
+
+  const hasRedactAction = actions.some(
     (action) => action.type === "redact" && action.field === "jsonPath:$.password",
   );
-  t.truthy(
-    hasRedactAction,
-    `Expected redact action in transformMetadata, got ${JSON.stringify(loginSpan!.transformMetadata?.actions)}`,
+  const hasMaskAction = actions.some(
+    (action) => action.type === "mask" && action.field === "jsonPath:$.apiKey",
   );
+
+  t.truthy(hasRedactAction, "Expected redact action for password");
+  t.truthy(hasMaskAction, "Expected mask action for apiKey");
 });

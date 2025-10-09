@@ -1,7 +1,7 @@
 process.env.TUSK_DRIFT_MODE = "RECORD";
 
 import { TuskDrift } from "../../../../core/TuskDrift";
-import { TransformConfigs } from "../HttpTransformEngine";
+import { TransformConfigs } from "../../types";
 
 const transforms: TransformConfigs = {
   http: [
@@ -11,6 +11,13 @@ const transforms: TransformConfigs = {
         jsonPath: "$.password",
       },
       action: { type: "redact", hashPrefix: "PWD_" },
+    },
+    {
+      matcher: {
+        direction: "inbound",
+        jsonPath: "$.apiKey",
+      },
+      action: { type: "mask", maskChar: "*" },
     },
   ],
 };
@@ -105,15 +112,31 @@ test("should apply multiple transforms to the same request", async (t) => {
     `Expected password to match pattern ${passwordPattern}, got ${parsedBody.password}`,
   );
 
-  // Other fields should remain unchanged
+  // API key should be masked
+  const maskPattern = /^\*+$/;
+  t.truthy(
+    maskPattern.test(parsedBody.apiKey),
+    `Expected apiKey to be masked with asterisks, got ${parsedBody.apiKey}`,
+  );
+
+  // Username should remain unchanged
   t.is(
     parsedBody.username,
     "admin@example.com",
     `Expected username to be "admin@example.com", got ${parsedBody.username}`,
   );
-  t.is(
-    parsedBody.apiKey,
-    "secret-key-789",
-    `Expected apiKey to be "secret-key-789", got ${parsedBody.apiKey}`,
+
+  // Should have both transform actions in metadata
+  const actions = loginSpan!.transformMetadata?.actions || [];
+  t.is(actions.length, 2, `Expected 2 transform actions, got ${actions.length}`);
+
+  const hasRedactAction = actions.some(
+    (action) => action.type === "redact" && action.field === "jsonPath:$.password",
   );
+  const hasMaskAction = actions.some(
+    (action) => action.type === "mask" && action.field === "jsonPath:$.apiKey",
+  );
+
+  t.truthy(hasRedactAction, "Expected redact action for password");
+  t.truthy(hasMaskAction, "Expected mask action for apiKey");
 });
