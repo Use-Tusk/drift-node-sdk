@@ -103,7 +103,7 @@ export { TuskDrift };
 
 **Why the ESM loader is needed**: ESM imports are statically analyzed and hoisted, meaning all imports are resolved before any code runs. The `register()` call sets up Node.js loader hooks that intercept module imports, allowing the SDK to instrument packages like `postgres`, `http`, etc. Without this, the SDK cannot patch ESM modules.
 
-#### Configuration Options
+#### Initialization Parameters
 
 <table>
   <thead>
@@ -255,7 +255,7 @@ TUSK_DRIFT_MODE=RECORD node server.js
 
 You should see logs indicating Tusk Drift is active:
 
-```
+```text
 [TuskDrift] SDK initialized in RECORD mode
 [TuskDrift] App marked as ready
 ```
@@ -280,9 +280,9 @@ In your project directory, list the recorded traces:
 tusk list
 ```
 
-You should see output similar to:
+You should see an output similar to:
 
-<img src="images/tusk-list-output.png">
+![List output](images/tusk-list-output.png)
 
 Press `ESC` to exit the list view.
 
@@ -296,9 +296,9 @@ Replay the recorded test:
 tusk run
 ```
 
-You should see output similar to:
+You should see an output similar to:
 
-<img src="images/tusk-run-output.png">
+![Run output](images/tusk-run-output.png)
 
 **Success!** You've recorded and replayed your first trace.
 
