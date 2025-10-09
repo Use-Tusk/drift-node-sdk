@@ -196,6 +196,26 @@ The SDK includes comprehensive end-to-end (E2E) tests that verify instrumentatio
 5. Test your changes locally
 6. Submit a pull request
 
+## SDK Architecture: Socket Communication
+
+The SDK communicates with the Tusk CLI using socket connections, supporting both Unix sockets and TCP sockets depending on the environment.
+
+### Connection Types
+
+#### Unix Socket (Default)
+- **Use case**: Local development and non-containerized environments
+- **How it works**: SDK connects to the CLI via a Unix domain socket file
+- **Environment variable**: `TUSK_MOCK_SOCKET` (optional, defaults to `/tmp/tusk-connect.sock`)
+- **Benefits**: Lower overhead, faster communication for same-machine connections
+
+#### TCP Socket (Docker/Remote)
+- **Use case**: Dockerized applications where Unix sockets can't be shared
+- **How it works**: SDK connects to the CLI via TCP (host:port)
+- **Environment variables**:
+  - `TUSK_MOCK_HOST` - CLI host address (e.g., `host.docker.internal`)
+  - `TUSK_MOCK_PORT` - CLI port number (e.g., `9001`)
+- **Benefits**: Works across container boundaries and remote connections
+
 ## Getting Help
 
 If you need help with development:
