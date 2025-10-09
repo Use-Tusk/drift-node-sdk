@@ -3,10 +3,7 @@ import jp from "jsonpath";
 import { SpanKind } from "@opentelemetry/api";
 import { FetchInputValue, FetchOutputValue } from "./types";
 import { OneOf } from "src/core/types";
-
-export interface TransformConfigs {
-  fetch: FetchTransform[];
-}
+import { TransformConfigs } from "../types";
 
 export interface FetchTransform {
   matcher: FetchTransformMatcher;

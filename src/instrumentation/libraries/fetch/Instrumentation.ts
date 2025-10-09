@@ -12,7 +12,7 @@ import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { EncodingType } from "../../../core/tracing/JsonSchemaHelper";
 import { logger } from "../../../core/utils/logger";
 import { BodyInit } from "undici-types/fetch";
-import { FetchSpanData, FetchTransformEngine, TransformConfigs } from "./FetchTransformEngine";
+import { FetchSpanData, FetchTransformEngine } from "./FetchTransformEngine";
 
 /**
  * Fetch API instrumentation for capturing requests made via fetch()

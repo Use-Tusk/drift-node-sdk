@@ -1,6 +1,7 @@
 import test from "ava";
 import { SpanKind } from "@opentelemetry/api";
-import { HttpTransformEngine, TransformConfigs, HttpSpanData } from "./HttpTransformEngine";
+import { HttpTransformEngine, HttpSpanData } from "./HttpTransformEngine";
+import { TransformConfigs } from "../types";
 import {
   HttpClientInputValue,
   HttpServerInputValue,
@@ -214,8 +215,20 @@ test("drops outbound spans that match the Stripe policy", (t) => {
   t.truthy(transformed);
   const span = transformed as HttpSpanData;
 
-  t.deepEqual(span.inputValue, {});
-  t.deepEqual(span.outputValue, {});
+  // Verify dropped span has empty values but maintains structure
+  const inputValue = span.inputValue as HttpClientInputValue;
+  t.is(inputValue.method, "");
+  t.is(inputValue.protocol, "https");
+  t.deepEqual(inputValue.headers, {});
+
+  const outputValue = span.outputValue as HttpClientOutputValue;
+  t.is(outputValue.httpVersion, "1.0");
+  t.is(outputValue.httpVersionMajor, 1);
+  t.is(outputValue.httpVersionMinor, 0);
+  t.is(outputValue.complete, true);
+  t.is(outputValue.readable, true);
+  t.deepEqual(outputValue.headers, {});
+
   t.is(span.transformMetadata?.actions.length, 1);
   t.is(span.transformMetadata?.actions[0].type, "drop");
   t.is(span.transformMetadata?.actions[0].field, "entire_span");

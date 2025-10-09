@@ -1,7 +1,7 @@
 process.env.TUSK_DRIFT_MODE = "RECORD";
 
 import { TuskDrift } from "../../../../core/TuskDrift";
-import { TransformConfigs } from "../FetchTransformEngine";
+import { TransformConfigs } from "../../types";
 
 const transforms: TransformConfigs = {
   fetch: [

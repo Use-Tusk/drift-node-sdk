@@ -8,10 +8,7 @@ import {
   HttpServerOutputValue,
 } from "./types";
 import { OneOf } from "src/core/types";
-
-export interface TransformConfigs {
-  http: HttpTransform[];
-}
+import { TransformConfigs } from "../types";
 
 export interface HttpTransform {
   matcher: HttpTransformMatcher;
@@ -160,8 +157,8 @@ export class HttpTransformEngine {
   shouldDropInboundRequest(
     method: string,
     url: string,
-    headers?: Record<string, any>,
-    body?: any,
+    headers?: Record<string, string | string[] | undefined>,
+    body?: string,
   ): boolean {
     const testSpan: HttpSpanData = {
       traceId: "",
@@ -405,7 +402,11 @@ export class HttpTransformEngine {
       }
 
       try {
-        const body = (target as any).body;
+        // Access body based on direction
+        const body = direction === "inbound"
+          ? (target as HttpServerInputValue).body
+          : (target as HttpClientOutputValue | HttpServerOutputValue).body;
+
         if (!body) {
           return false;
         }
@@ -429,7 +430,11 @@ export class HttpTransformEngine {
         // Re-encode the modified body as base64
         if (typeof body === "string" && nodes.length > 0) {
           const reencoded = Buffer.from(JSON.stringify(bodyObj)).toString("base64");
-          (target as any).body = reencoded;
+          if (direction === "inbound") {
+            (target as HttpServerInputValue).body = reencoded;
+          } else {
+            (target as HttpClientOutputValue | HttpServerOutputValue).body = reencoded;
+          }
         }
 
         return nodes.length > 0;
@@ -450,7 +455,7 @@ export class HttpTransformEngine {
       // For inbound: transform request headers (SERVER span inputValue)
       // For outbound: transform request headers (CLIENT span inputValue)
       // Note: We always transform the request headers, which is inputValue for both directions
-      const target = span.inputValue as any;
+      const target = span.inputValue;
       if (!target?.headers) {
         return false;
       }
@@ -458,8 +463,11 @@ export class HttpTransformEngine {
       let applied = false;
       for (const key of Object.keys(target.headers)) {
         if (key.toLowerCase() === lowerHeader) {
-          target.headers[key] = actionFunction(target.headers[key]);
-          applied = true;
+          const headerValue = target.headers[key];
+          if (typeof headerValue === "string") {
+            (target.headers as Record<string, string>)[key] = actionFunction(headerValue);
+            applied = true;
+          }
         }
       }
       return applied;
@@ -487,30 +495,37 @@ export class HttpTransformEngine {
     const selector = direction === "inbound" ? "inputValue" : "outputValue";
 
     return (span) => {
-      const target = span[selector] as any;
-      if (!target || target.body === undefined) {
+      const target = span[selector];
+      if (!target || !("body" in target) || target.body === undefined) {
         return false;
       }
 
       if (direction === "outbound") {
         // Output bodies are base64-encoded strings - decode, transform, re-encode
-        if (typeof target.body === "string") {
+        const outputTarget = target as HttpClientOutputValue | HttpServerOutputValue;
+        if (typeof outputTarget.body === "string") {
           try {
-            const decoded = Buffer.from(target.body, "base64").toString("utf8");
+            const decoded = Buffer.from(outputTarget.body, "base64").toString("utf8");
             const transformed = actionFunction(decoded);
-            target.body = Buffer.from(transformed).toString("base64");
+            outputTarget.body = Buffer.from(transformed).toString("base64");
           } catch (error) {
             // If not valid base64, treat as plain string
-            target.body = Buffer.from(actionFunction(target.body)).toString("base64");
+            outputTarget.body = Buffer.from(actionFunction(outputTarget.body)).toString("base64");
           }
-        } else {
-          target.body = Buffer.from(actionFunction(JSON.stringify(target.body))).toString("base64");
         }
       } else {
-        // Input bodies can be objects or strings - keep as is
-        target.body = actionFunction(
-          typeof target.body === "string" ? target.body : JSON.stringify(target.body),
-        );
+        // Input bodies are base64-encoded strings
+        const inputTarget = target as HttpServerInputValue;
+        if (typeof inputTarget.body === "string") {
+          try {
+            const decoded = Buffer.from(inputTarget.body, "base64").toString("utf8");
+            const transformed = actionFunction(decoded);
+            inputTarget.body = Buffer.from(transformed).toString("base64");
+          } catch (error) {
+            // If not valid base64, treat as plain string
+            inputTarget.body = Buffer.from(actionFunction(inputTarget.body)).toString("base64");
+          }
+        }
       }
       return true;
     };
@@ -529,48 +544,65 @@ export class HttpTransformEngine {
   }
 
   private transformQueryParamInData(
-    data: any,
+    data: HttpClientInputValue | HttpServerInputValue,
     queryParam: string,
     actionFunction: ActionFunction,
     direction: HttpTransformMatcher["direction"],
   ): boolean {
-    if (!data || typeof data !== "object") {
+    if (!data) {
       return false;
     }
 
     let applied = false;
 
     if (direction === "outbound") {
-      if (data.path && typeof data.path === "string") {
-        const url = new URL(data.path, "http://localhost");
+      const clientData = data as HttpClientInputValue;
+      if (clientData.path && typeof clientData.path === "string") {
+        const url = new URL(clientData.path, "http://localhost");
         if (url.searchParams.has(queryParam)) {
           const oldValue = url.searchParams.get(queryParam);
           if (oldValue !== null) {
             const newValue = actionFunction(oldValue);
             url.searchParams.set(queryParam, newValue);
-            data.path = url.pathname + url.search;
+            clientData.path = url.pathname + url.search;
             applied = true;
           }
         }
       }
     } else {
-      for (const field of ["url", "target"]) {
-        if (data[field] && typeof data[field] === "string") {
-          try {
-            const url =
-              field === "url" ? new URL(data[field]) : new URL(data[field], "http://localhost");
-            if (url.searchParams.has(queryParam)) {
-              const oldValue = url.searchParams.get(queryParam);
-              if (oldValue !== null) {
-                const newValue = actionFunction(oldValue);
-                url.searchParams.set(queryParam, newValue);
-                data[field] = field === "url" ? url.toString() : url.pathname + url.search;
-                applied = true;
-              }
+      const serverData = data as HttpServerInputValue;
+      // Transform url field
+      if (serverData.url && typeof serverData.url === "string") {
+        try {
+          const url = new URL(serverData.url);
+          if (url.searchParams.has(queryParam)) {
+            const oldValue = url.searchParams.get(queryParam);
+            if (oldValue !== null) {
+              const newValue = actionFunction(oldValue);
+              url.searchParams.set(queryParam, newValue);
+              serverData.url = url.toString();
+              applied = true;
             }
-          } catch {
-            // ignore
           }
+        } catch {
+          // ignore
+        }
+      }
+      // Transform target field
+      if (serverData.target && typeof serverData.target === "string") {
+        try {
+          const url = new URL(serverData.target, "http://localhost");
+          if (url.searchParams.has(queryParam)) {
+            const oldValue = url.searchParams.get(queryParam);
+            if (oldValue !== null) {
+              const newValue = actionFunction(oldValue);
+              url.searchParams.set(queryParam, newValue);
+              serverData.target = url.pathname + url.search;
+              applied = true;
+            }
+          }
+        } catch {
+          // ignore
         }
       }
     }
@@ -579,27 +611,31 @@ export class HttpTransformEngine {
   }
 
   private transformUrlPathInData(
-    data: any,
+    data: HttpClientInputValue | HttpServerInputValue,
     actionFunction: ActionFunction,
     direction: HttpTransformMatcher["direction"],
   ): boolean {
-    if (!data || typeof data !== "object") {
+    if (!data) {
       return false;
     }
 
     let applied = false;
 
     if (direction === "outbound") {
-      if (data.path && typeof data.path === "string") {
-        data.path = actionFunction(data.path);
+      const clientData = data as HttpClientInputValue;
+      if (clientData.path && typeof clientData.path === "string") {
+        clientData.path = actionFunction(clientData.path);
         applied = true;
       }
     } else {
-      for (const field of ["url", "target"]) {
-        if (data[field] && typeof data[field] === "string") {
-          data[field] = actionFunction(data[field]);
-          applied = true;
-        }
+      const serverData = data as HttpServerInputValue;
+      if (serverData.url && typeof serverData.url === "string") {
+        serverData.url = actionFunction(serverData.url);
+        applied = true;
+      }
+      if (serverData.target && typeof serverData.target === "string") {
+        serverData.target = actionFunction(serverData.target);
+        applied = true;
       }
     }
 

@@ -11,7 +11,7 @@ export interface FetchInputValue {
   url: string;
   method: string;
   headers: Record<string, string>;
-  body?: any;
+  body?: string;
   [key: string]: unknown;
 }
 

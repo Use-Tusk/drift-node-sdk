@@ -2,7 +2,7 @@ process.env.TUSK_DRIFT_MODE = "RECORD";
 
 import test from "ava";
 import { TuskDrift } from "../../../../core/TuskDrift";
-import { TransformConfigs } from "../HttpTransformEngine";
+import { TransformConfigs } from "../../types";
 import {
   InMemorySpanAdapter,
   registerInMemoryAdapter,

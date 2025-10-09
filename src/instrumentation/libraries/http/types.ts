@@ -45,7 +45,7 @@ export interface HttpServerInputValue {
   method?: string;
   url: string;
   target?: string;
-  body: any;
+  body: string;
   bodySize: number;
   headers: IncomingHttpHeaders;
   httpVersion: string;
