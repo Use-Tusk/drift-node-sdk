@@ -79,6 +79,24 @@ docker-compose exec app curl -s http://localhost:3000/test/connection-ping > /de
 echo "  - GET /test/stream-query"
 docker-compose exec app curl -s http://localhost:3000/test/stream-query > /dev/null
 
+echo "  - GET /test/sequelize-authenticate"
+docker-compose exec app curl -s http://localhost:3000/test/sequelize-authenticate > /dev/null
+
+echo "  - GET /test/sequelize-findall"
+docker-compose exec app curl -s http://localhost:3000/test/sequelize-findall > /dev/null
+
+echo "  - POST /test/sequelize-findone"
+docker-compose exec app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/sequelize-findone > /dev/null
+
+echo "  - GET /test/sequelize-complex"
+docker-compose exec app curl -s http://localhost:3000/test/sequelize-complex > /dev/null
+
+echo "  - GET /test/sequelize-raw"
+docker-compose exec app curl -s http://localhost:3000/test/sequelize-raw > /dev/null
+
+echo "  - POST /test/sequelize-transaction"
+docker-compose exec app curl -s -X POST http://localhost:3000/test/sequelize-transaction > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 4: Wait before stopping server

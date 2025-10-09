@@ -1,6 +1,8 @@
 import { TuskDrift } from './tdInit.js';
 import http from 'http';
 import mysql from 'mysql2';
+import { sequelize, User, Product, initializeSequelize } from './sequelizeSetup.js';
+import { Op, QueryTypes } from 'sequelize';
 
 const PORT = process.env.PORT || 3000;
 
@@ -372,6 +374,178 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Sequelize authenticate test - this triggers internal queries like SELECT VERSION()
+    if (url === '/test/sequelize-authenticate' && method === 'GET') {
+      try {
+        await sequelize.authenticate();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          message: 'Sequelize authentication successful',
+          queryType: 'sequelize-authenticate',
+        }));
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+      return;
+    }
+
+    // Sequelize findAll test - ORM query
+    if (url === '/test/sequelize-findall' && method === 'GET') {
+      try {
+        const users = await User.findAll({
+          order: [['id', 'ASC']],
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          data: users,
+          rowCount: users.length,
+          queryType: 'sequelize-findAll',
+        }));
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+      return;
+    }
+
+    // Sequelize findOne test - parameterized ORM query
+    if (url === '/test/sequelize-findone' && method === 'POST') {
+      try {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        await new Promise<void>((resolve) => req.on('end', () => resolve()));
+
+        const { userId } = JSON.parse(body);
+        const user = await User.findOne({
+          where: { id: userId },
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          data: user,
+          queryType: 'sequelize-findOne',
+        }));
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+      return;
+    }
+
+    // Sequelize complex query with joins and aggregations
+    if (url === '/test/sequelize-complex' && method === 'GET') {
+      try {
+        // This will trigger multiple internal queries
+        const [users, products] = await Promise.all([
+          User.findAll({
+            attributes: ['id', 'name', 'email'],
+            limit: 5,
+          }),
+          Product.findAll({
+            attributes: ['id', 'name', 'price', 'stock'],
+            where: {
+              stock: {
+                [Op.gt]: 0,
+              },
+            },
+            order: [['price', 'DESC']],
+          }),
+        ]);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          data: {
+            users,
+            products,
+          },
+          queryType: 'sequelize-complex',
+        }));
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+      return;
+    }
+
+    // Sequelize raw query test
+    if (url === '/test/sequelize-raw' && method === 'GET') {
+      try {
+        const results = await sequelize.query(
+          'SELECT * FROM test_users WHERE id <= ? ORDER BY id',
+          {
+            replacements: [3],
+            type: QueryTypes.SELECT,
+          }
+        );
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          data: results,
+          rowCount: Array.isArray(results) ? results.length : 0,
+          queryType: 'sequelize-raw',
+        }));
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+      return;
+    }
+
+    // Sequelize transaction test - this will create multiple queries
+    if (url === '/test/sequelize-transaction' && method === 'POST') {
+      try {
+        const result = await sequelize.transaction(async (t) => {
+          // Multiple queries within a transaction
+          const user = await User.findOne({
+            where: { id: 1 },
+            transaction: t,
+          });
+
+          const products = await Product.findAll({
+            where: { stock: { [Op.gt]: 10 } },
+            transaction: t,
+          });
+
+          return { user, products };
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          data: result,
+          queryType: 'sequelize-transaction',
+        }));
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
@@ -389,6 +563,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, async () => {
   try {
     await initializeDatabase();
+    await initializeSequelize();
     TuskDrift.markAppAsReady();
     console.log(`MySQL2 integration test server running on port ${PORT}`);
     console.log(`Test mode: ${process.env.TUSK_DRIFT_MODE}`);
@@ -406,6 +581,12 @@ server.listen(PORT, async () => {
     console.log('  GET  /test/connection-connect - Test connection connect');
     console.log('  GET  /test/connection-ping - Test connection ping');
     console.log('  GET  /test/stream-query - Test stream query');
+    console.log('  GET  /test/sequelize-authenticate - Test Sequelize authenticate (triggers internal queries)');
+    console.log('  GET  /test/sequelize-findall - Test Sequelize findAll');
+    console.log('  POST /test/sequelize-findone - Test Sequelize findOne');
+    console.log('  GET  /test/sequelize-complex - Test Sequelize complex queries');
+    console.log('  GET  /test/sequelize-raw - Test Sequelize raw query');
+    console.log('  POST /test/sequelize-transaction - Test Sequelize transaction');
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
@@ -418,6 +599,7 @@ async function shutdown() {
   try {
     connection.end();
     pool.end();
+    await sequelize.close();
   } catch (error) {
     console.error("Error during shutdown:", error);
   }
