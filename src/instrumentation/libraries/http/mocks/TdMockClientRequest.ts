@@ -334,6 +334,20 @@ export class TdMockClientRequest extends EventEmitter {
   private playResponse(mockDataResult: HttpClientOutputValue): void {
     logger.debug(`[TdMockClientRequest] Playing HTTP mock response:`, mockDataResult);
     try {
+      // Check if this is an error response that should emit an error event
+      if (mockDataResult.errorName) {
+        logger.debug(`[TdMockClientRequest] Detected error response, emitting error event`);
+
+        // Create the appropriate error object
+        const error = new Error(mockDataResult.errorMessage);
+
+        // For connection errors, emit error immediately
+        process.nextTick(() => {
+          this.emit("error", error);
+        });
+        return;
+      }
+
       // Set up response properties
       this.response.statusCode = mockDataResult.statusCode || 200;
       this.response.statusMessage = mockDataResult.statusMessage || "OK";

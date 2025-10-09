@@ -142,6 +142,9 @@ docker-compose exec app curl -s http://localhost:3000/test/pipeline > /dev/null
 echo "  - GET /test/multi"
 docker-compose exec app curl -s http://localhost:3000/test/multi > /dev/null
 
+echo "  - GET /test/new-client"
+docker-compose exec app curl -s http://localhost:3000/test/new-client > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 4: Wait before stopping server

@@ -922,6 +922,33 @@ export class HttpInstrumentation extends TdInstrumentationBase {
         logger.debug(
           `[HttpInstrumentation] HTTP request error: ${error.message} (${SpanUtils.getTraceInfo()})`,
         );
+
+        // Record the error as the output value for replay
+        const errorOutputValue: HttpClientOutputValue = {
+          headers: {},
+          httpVersion: "1.1",
+          httpVersionMajor: 1,
+          httpVersionMinor: 1,
+          complete: true,
+          readable: false,
+          // Add error-specific fields
+          errorName: error.name || 'UNKNOWN',
+          errorMessage: error.message,
+        };
+
+        // Add the error output to the span so it gets recorded
+        this._addOutputAttributesToSpan({
+          spanInfo,
+          outputValue: errorOutputValue,
+          statusCode: 0,
+          outputSchemaMerges: {
+            headers: {
+              matchImportance: 0,
+            },
+          },
+          inputValue: completeInputValue,
+        });
+
         SpanUtils.endSpan(spanInfo.span, {
           code: SpanStatusCode.ERROR,
           message: error.message,

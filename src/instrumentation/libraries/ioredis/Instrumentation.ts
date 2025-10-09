@@ -231,7 +231,6 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
 
   private _getConnectPatchFn() {
     const self = this;
-
     return (originalConnect: Function) => {
       return function connect(this: IORedisInterface) {
         const inputValue: IORedisConnectInputValue = {
@@ -257,7 +256,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayConnect(spanInfo);
+                  return self._handleReplayConnect(spanInfo, this);
                 },
               );
             },
@@ -551,7 +550,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     return promise;
   }
 
-  private async _handleReplayConnect(spanInfo: SpanInfo): Promise<any> {
+  private async _handleReplayConnect(spanInfo: SpanInfo, thisContext: IORedisInterface): Promise<any> {
     logger.debug(`[IORedisInstrumentation] Replaying IORedis connect`);
 
     // Connect operations typically don't have meaningful output to replay
@@ -560,6 +559,10 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
       outputValue: { connected: true },
     });
     SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+
+    process.nextTick(() => {
+      (thisContext as any).emit("ready");
+    });
 
     return Promise.resolve();
   }
