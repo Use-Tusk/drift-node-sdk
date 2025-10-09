@@ -199,7 +199,9 @@ export class ProtobufCommunicator {
    * Since this function blocks the main thread, there is a perfomance impact for using this. We should use requestMockAsync whenever possilbe and only use this function
    * for instrumentations that request fetching mocks synchronously.
    *
-   * (9/10/2025) Currently not using this since for the only sync instrumentation (Date) we're not actually fetching mocks
+   * (10/9/2025) Currently not using this function since we are not actually fetching mocks for the only sync instrumentation (Date)
+   * NOTE: This function probably doesn't work. plus, nc might not be installed on all machines (especially windows)
+   *       Better approach is replacing nc command with pure Node.js implementation
    */
   requestMockSync(mockRequest: MockRequestInput): MockResponseOutput {
     const requestId = this.generateRequestId();
