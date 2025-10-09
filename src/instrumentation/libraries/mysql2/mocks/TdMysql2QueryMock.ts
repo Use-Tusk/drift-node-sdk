@@ -36,19 +36,11 @@ export class TdMysql2QueryMock {
     const clientType = inputValue.clientType;
     const spanName = `mysql2.${clientType}.${submoduleName}`;
 
-    // For streaming queries (no callback), return an EventEmitter
-    if (!queryConfig.callback) {
-      return this._handleStreamingQuery(
-        queryConfig,
-        inputValue,
-        spanInfo,
-        spanName,
-        submoduleName,
-      );
-    }
-
-    // For callback-based queries (no return value, uses callback)
-    this._handleCallbackQuery(
+    // Always return an EventEmitter, even when using callbacks
+    // This is because mysql2 always returns a Query object (EventEmitter)
+    // that can be used for both streaming and callback modes
+    // Sequelize relies on this behavior to call .setMaxListeners() on the return value
+    return this._handleQuery(
       queryConfig,
       inputValue,
       spanInfo,
@@ -58,9 +50,10 @@ export class TdMysql2QueryMock {
   }
 
   /**
-   * Handle streaming query (EventEmitter-based)
+   * Handle query - always returns an EventEmitter (like mysql2 does)
+   * This handles both callback and streaming modes
    */
-  private _handleStreamingQuery(
+  private _handleQuery(
     queryConfig: Mysql2QueryConfig,
     inputValue: Mysql2InputValue,
     spanInfo: SpanInfo,
@@ -77,8 +70,14 @@ export class TdMysql2QueryMock {
         if (!mockData) {
           const sql = queryConfig.sql || inputValue.sql || "UNKNOWN_QUERY";
           logger.warn(`[Mysql2Instrumentation] No mock data found for MySQL2 query: ${sql}`);
+          const error = new Error("No mock data found") as QueryError;
           process.nextTick(() => {
-            emitter.emit("error", new Error("No mock data found"));
+            // If callback provided, call it with error
+            if (queryConfig.callback) {
+              queryConfig.callback(error);
+            }
+            // Always emit error event
+            emitter.emit("error", error);
           });
           return;
         }
@@ -86,12 +85,19 @@ export class TdMysql2QueryMock {
         // Convert mock data to proper MySQL2 format
         const processedResult = this._convertMysql2Types(mockData.result);
 
-        // Emit events to simulate streaming query
+        // Emit events to simulate query execution
         process.nextTick(() => {
+          // Emit fields event if available
           if (processedResult.fields) {
             emitter.emit("fields", processedResult.fields);
           }
 
+          // If callback is provided, call it with results
+          if (queryConfig.callback) {
+            queryConfig.callback(null, processedResult.rows, processedResult.fields);
+          }
+
+          // Emit result events for streaming mode
           if (Array.isArray(processedResult.rows)) {
             for (const row of processedResult.rows) {
               emitter.emit("result", row);
@@ -100,51 +106,22 @@ export class TdMysql2QueryMock {
             emitter.emit("result", processedResult.rows);
           }
 
+          // Always emit end event
           emitter.emit("end");
         });
       } catch (error) {
         process.nextTick(() => {
+          // If callback provided, call it with error
+          if (queryConfig.callback) {
+            queryConfig.callback(error as QueryError);
+          }
+          // Always emit error event
           emitter.emit("error", error);
         });
       }
     })();
 
     return emitter;
-  }
-
-  /**
-   * Handle callback-based query
-   */
-  private _handleCallbackQuery(
-    queryConfig: Mysql2QueryConfig,
-    inputValue: Mysql2InputValue,
-    spanInfo: SpanInfo,
-    spanName: string,
-    submoduleName: string,
-  ): void {
-    (async () => {
-      try {
-        const mockData = await this._fetchMockData(inputValue, spanInfo, spanName, submoduleName);
-
-        if (!mockData) {
-          const sql = queryConfig.sql || inputValue.sql || "UNKNOWN_QUERY";
-          logger.warn(`[Mysql2Instrumentation] No mock data found for MySQL2 query: ${sql}`);
-          process.nextTick(() =>
-            queryConfig.callback!(new Error("No mock data found") as QueryError),
-          );
-          return;
-        }
-
-        // Convert mock data to proper MySQL2 format
-        const processedResult = this._convertMysql2Types(mockData.result);
-
-        process.nextTick(() => {
-          queryConfig.callback!(null, processedResult.rows, processedResult.fields);
-        });
-      } catch (error) {
-        process.nextTick(() => queryConfig.callback!(error as QueryError));
-      }
-    })();
   }
 
   /**
