@@ -657,6 +657,48 @@ app.get('/test/multi', async (req: Request, res: Response) => {
   }
 });
 
+// Test new client connection - this surfaces the 'ready' event issue during replay
+app.get('/test/new-client', async (req: Request, res: Response) => {
+  try {
+    // Create a new Redis client within the request handler
+    const newClient = new Redis(redisConfig);
+
+    // Wait for the client to be ready - this is where the 'ready' event must be emitted
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Timeout waiting for Redis client to be ready'));
+      }, 5000);
+
+      newClient.on('ready', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+
+      newClient.on('error', (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
+
+    // Perform a simple operation with the new client
+    const result = await newClient.ping();
+
+    // Clean up
+    await newClient.quit();
+
+    res.json({
+      success: true,
+      data: { result },
+      operation: 'NEW_CLIENT',
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 // Start server and initialize Redis
 app.listen(PORT, async () => {
   try {
@@ -699,6 +741,7 @@ app.listen(PORT, async () => {
     console.log('  GET  /test/ping - Test PING operation');
     console.log('  GET  /test/pipeline - Test PIPELINE operation');
     console.log('  GET  /test/multi - Test MULTI/EXEC transaction');
+    console.log('  GET  /test/new-client - Test new client connection with ready event');
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
