@@ -62,7 +62,8 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
       },
     });
 
-    // Server file instrumentation - patch the internal server module
+    // NOTE: Not using this yet. This is somewhat working, haven't full tested it yet
+    // Adding this would require more changes to replay grpc server calls. Holding off until a customer asks for it
     // const grpcServerFileInstrumentation = new TdInstrumentationNodeModuleFile({
     //   name: `${GRPC_MODULE_NAME}/build/src/server.js`,
     //   supportedVersions: ["1.*"],
@@ -88,9 +89,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
         logger.debug(`[GrpcInstrumentation] Patching main gRPC module v${version}`);
         return this._patchGrpcModule(moduleExports, version || "");
       },
-      files: [grpcClientFileInstrumentation, 
-        // grpcServerFileInstrumentation
-        ],
+      files: [grpcClientFileInstrumentation],
     });
 
     return [grpcInstrumentation];
@@ -146,6 +145,8 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
     logger.debug(`[GrpcInstrumentation] Client methods patched successfully`);
   }
 
+  // NOTE: Not using this yet. This is somewhat working, haven't full tested it yet
+  // Adding this would require more changes to replay grpc server calls. Holding off until a customer asks for it
   private _patchGrpcServer(serverPrototype: any, version: string): void {
     if (!serverPrototype) {
       logger.warn(`[GrpcInstrumentation] Server prototype not found`);
@@ -165,7 +166,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
    * 1. (metadata: Metadata, callback: Function) - no options
    * 2. (metadata: Metadata, options: Object, callback: Function) - with options
    */
-  private checkOptionalUnaryResponseArguments(
+  private parseUnaryCallArguments(
     MetadataConstructor: any,
     arg1: any,
     arg2: any,
@@ -202,7 +203,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
   /**
    * Helper method to extract and validate all input parameters for makeUnaryRequest
    */
-  private getInputParameters(
+  private extractRequestParameters(
     args: any[],
     MetadataConstructor: any,
   ): {
@@ -219,7 +220,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
     const deserialize = args[2];
     const argument = args[3];
 
-    const { metadata, options, callback } = this.checkOptionalUnaryResponseArguments(
+    const { metadata, options, callback } = this.parseUnaryCallArguments(
       MetadataConstructor,
       args[4],
       args[5],
@@ -259,7 +260,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
         };
 
         try {
-          parsedParams = self.getInputParameters(args, MetadataConstructor);
+          parsedParams = self.extractRequestParameters(args, MetadataConstructor);
         } catch (error: any) {
           logger.error(`[GrpcInstrumentation] Error parsing makeUnaryRequest arguments:`, error);
           // Fall back to original function if we can't parse the arguments
