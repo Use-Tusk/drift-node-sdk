@@ -1,16 +1,6 @@
 import { decompressBuffer } from "./bodyDecompression";
-import { DecodedType } from "../../../../core/tracing/JsonSchemaHelper";
+import { DecodedType } from "@use-tusk/drift-schemas/core/json_schema";
 import { logger } from "../../../../core/utils/logger";
-
-export enum HttpBodyType {
-  NONE = "NONE",
-  JSON = "JSON",
-  TEXT = "TEXT",
-  RAW = "RAW",
-  X_WWW_URL_FORM_URLENCODED = "X_WWW_URL_FORM_URLENCODED",
-  MULTIPART = "MULTIPART",
-  UNSPECIFIED = "UNSPECIFIED",
-}
 
 // Mapping from content-type to decoded type
 const CONTENT_TYPE_MAPPING: Record<string, DecodedType> = {

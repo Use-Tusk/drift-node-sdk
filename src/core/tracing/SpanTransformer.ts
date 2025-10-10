@@ -1,6 +1,6 @@
 import { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 import { SpanKind as OtSpanKind } from "@opentelemetry/api";
-import { JsonSchemaHelper, JsonSchema, JsonSchemaType } from "./JsonSchemaHelper";
+import { JsonSchemaHelper, JsonSchemaType, JsonSchema } from "./JsonSchemaHelper";
 import { CleanSpanData, MetadataObject, TdSpanAttributes } from "../types";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
 import { logger, OriginalGlobalUtils } from "../utils";

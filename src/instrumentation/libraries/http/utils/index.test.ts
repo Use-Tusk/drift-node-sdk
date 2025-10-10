@@ -13,12 +13,9 @@ test("HTTP Utils Index - should export functions from binaryDataHandler", (t) =>
   t.is(typeof httpUtils.combineChunks, "function");
 });
 
-test("HTTP Utils Index - should export functions and enums from httpBodyEncoder", (t) => {
+test("HTTP Utils Index - should export functions from httpBodyEncoder", (t) => {
   t.is(typeof httpUtils.httpBodyEncoder, "function");
   t.is(typeof httpUtils.getDecodedType, "function");
-  t.is(typeof httpUtils.HttpBodyType, "object");
-  t.is(httpUtils.HttpBodyType.JSON, "JSON");
-  t.is(httpUtils.HttpBodyType.TEXT, "TEXT");
 });
 
 test("HTTP Utils Index - should have all expected exports available", (t) => {
@@ -35,23 +32,12 @@ test("HTTP Utils Index - should have all expected exports available", (t) => {
 
     // From httpBodyEncoder
     'httpBodyEncoder',
-    'getDecodedType',
-    'HttpBodyType'
+    'getDecodedType'
   ];
 
   expectedExports.forEach(exportName => {
     t.true(httpUtils.hasOwnProperty(exportName) || (httpUtils as any)[exportName] !== undefined);
   });
-});
-
-test("HTTP Utils Index - should export HttpBodyType enum with correct values", (t) => {
-  t.is(httpUtils.HttpBodyType.NONE, "NONE");
-  t.is(httpUtils.HttpBodyType.JSON, "JSON");
-  t.is(httpUtils.HttpBodyType.TEXT, "TEXT");
-  t.is(httpUtils.HttpBodyType.RAW, "RAW");
-  t.is(httpUtils.HttpBodyType.X_WWW_URL_FORM_URLENCODED, "X_WWW_URL_FORM_URLENCODED");
-  t.is(httpUtils.HttpBodyType.MULTIPART, "MULTIPART");
-  t.is(httpUtils.HttpBodyType.UNSPECIFIED, "UNSPECIFIED");
 });
 
 test("HTTP Utils Index - should work together - decompress, detect encoding, and encode", async (t) => {

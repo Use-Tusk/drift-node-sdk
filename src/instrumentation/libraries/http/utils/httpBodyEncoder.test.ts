@@ -1,7 +1,7 @@
 import test from 'ava';
 import * as zlib from 'zlib';
-import { httpBodyEncoder, getDecodedType, HttpBodyType } from './httpBodyEncoder';
-import { DecodedType } from '../../../../core/tracing/JsonSchemaHelper';
+import { httpBodyEncoder, getDecodedType } from './httpBodyEncoder';
+import { DecodedType } from '@use-tusk/drift-schemas/core/json_schema';
 
 // httpBodyEncoder function
 test('should base64 encode a simple buffer', async (t) => {
@@ -264,15 +264,4 @@ test('should handle content types with extra whitespace', (t) => {
 test('should handle content types with complex parameters', (t) => {
   const complexContentType = 'multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW; charset=utf-8';
   t.is(getDecodedType(complexContentType), DecodedType.MULTIPART_FORM);
-});
-
-// HttpBodyType enum
-test('should have correct enum values', (t) => {
-  t.is(HttpBodyType.NONE, 'NONE');
-  t.is(HttpBodyType.JSON, 'JSON');
-  t.is(HttpBodyType.TEXT, 'TEXT');
-  t.is(HttpBodyType.RAW, 'RAW');
-  t.is(HttpBodyType.X_WWW_URL_FORM_URLENCODED, 'X_WWW_URL_FORM_URLENCODED');
-  t.is(HttpBodyType.MULTIPART, 'MULTIPART');
-  t.is(HttpBodyType.UNSPECIFIED, 'UNSPECIFIED');
 });

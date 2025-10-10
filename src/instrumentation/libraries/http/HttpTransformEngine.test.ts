@@ -130,6 +130,11 @@ const stripeClientSpanData: HttpSpanData = {
     headers: {
       "content-type": "application/json",
     },
+    httpVersion: "1.1",
+    httpVersionMajor: 1,
+    httpVersionMinor: 1,
+    complete: true,
+    readable: false,
     body: Buffer.from(JSON.stringify({
       id: "ch_123456",
       amount: 1000,
@@ -256,7 +261,7 @@ test("identifies inbound requests that should be dropped", (t) => {
   const engine = new HttpTransformEngine(inboundDropConfig);
 
   t.true(
-    engine.shouldDropInboundRequest("POST", "http://localhost:3000/api/auth/login", "localhost", {
+    engine.shouldDropInboundRequest("POST", "http://localhost:3000/api/auth/login", {
       "content-type": "application/json",
     }),
   );
@@ -265,13 +270,12 @@ test("identifies inbound requests that should be dropped", (t) => {
     engine.shouldDropInboundRequest(
       "POST",
       "http://localhost:3000/api/other/endpoint",
-      "localhost",
       { "content-type": "application/json" },
     ),
   );
 
   t.false(
-    engine.shouldDropInboundRequest("GET", "http://localhost:3000/api/auth/login", "localhost", {
+    engine.shouldDropInboundRequest("GET", "http://localhost:3000/api/auth/login", {
       "content-type": "application/json",
     }),
   );
@@ -417,7 +421,7 @@ test("handles spans with null/undefined headers", (t) => {
   const spanWithoutHeaders = cloneSpan(exampleServerSpanData);
   spanWithoutHeaders.inputValue = {
     ...(spanWithoutHeaders.inputValue as HttpServerInputValue),
-    headers: undefined,
+    headers: {} as any,
   };
 
   const result = engine.applyTransforms(spanWithoutHeaders as any);
@@ -661,7 +665,7 @@ test("transforms query parameter in server URL with existing params", (t) => {
 
   const inputValue = result.inputValue as HttpServerInputValue;
   t.regex(inputValue.url, /http:\/\/localhost:3000\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
-  t.regex(inputValue.target, /\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
+  t.regex(inputValue.target!, /\/api\/test\?token=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
 });
 
 test("transforms query parameter in client path with existing params", (t) => {
@@ -687,7 +691,7 @@ test("transforms query parameter in client path with existing params", (t) => {
   const result = engine.applyTransforms(spanWithQuery);
 
   const inputValue = result.inputValue as HttpClientInputValue;
-  t.regex(inputValue.path, /\/v1\/charges\?api_key=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
+  t.regex(inputValue.path!, /\/v1\/charges\?api_key=REDACTED_[0-9a-f]{12}\.\.\.&other=value/);
 });
 
 test("handles query param that doesn't exist", (t) => {

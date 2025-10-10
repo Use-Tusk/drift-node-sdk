@@ -9,97 +9,100 @@ import {
 } from "./JsonSchemaHelper";
 
 test("getDetailedType - should correctly identify primitive types", (t) => {
-  t.is(JsonSchemaHelper.getDetailedType(null), "NULL");
-  t.is(JsonSchemaHelper.getDetailedType(undefined), "UNDEFINED");
-  t.is(JsonSchemaHelper.getDetailedType("hello"), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(42), "NUMBER");
-  t.is(JsonSchemaHelper.getDetailedType(3.14), "NUMBER");
-  t.is(JsonSchemaHelper.getDetailedType(true), "BOOLEAN");
-  t.is(JsonSchemaHelper.getDetailedType(false), "BOOLEAN");
-  t.is(JsonSchemaHelper.getDetailedType(BigInt(123)), "NUMBER");
-  t.is(JsonSchemaHelper.getDetailedType(Symbol("test")), "STRING");
+  t.is(JsonSchemaHelper.getDetailedType(null), JsonSchemaType.NULL);
+  t.is(JsonSchemaHelper.getDetailedType(undefined), JsonSchemaType.UNDEFINED);
+  t.is(JsonSchemaHelper.getDetailedType("hello"), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(42), JsonSchemaType.NUMBER);
+  t.is(JsonSchemaHelper.getDetailedType(3.14), JsonSchemaType.NUMBER);
+  t.is(JsonSchemaHelper.getDetailedType(true), JsonSchemaType.BOOLEAN);
+  t.is(JsonSchemaHelper.getDetailedType(false), JsonSchemaType.BOOLEAN);
+  t.is(JsonSchemaHelper.getDetailedType(BigInt(123)), JsonSchemaType.NUMBER);
+  t.is(JsonSchemaHelper.getDetailedType(Symbol("test")), JsonSchemaType.STRING);
 });
 
 test("getDetailedType - should correctly identify object types", (t) => {
-  t.is(JsonSchemaHelper.getDetailedType({}), "OBJECT");
-  t.is(JsonSchemaHelper.getDetailedType([]), "ORDERED_LIST");
-  t.is(JsonSchemaHelper.getDetailedType(new Date()), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(/regex/), "OBJECT");
-  t.is(JsonSchemaHelper.getDetailedType(new Error("test")), "OBJECT");
-  t.is(JsonSchemaHelper.getDetailedType(new Set()), "UNORDERED_LIST");
-  t.is(JsonSchemaHelper.getDetailedType(new Map()), "OBJECT");
-  t.is(JsonSchemaHelper.getDetailedType(() => {}), "FUNCTION");
+  t.is(JsonSchemaHelper.getDetailedType({}), JsonSchemaType.OBJECT);
+  t.is(JsonSchemaHelper.getDetailedType([]), JsonSchemaType.ORDERED_LIST);
+  t.is(JsonSchemaHelper.getDetailedType(new Date()), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(/regex/), JsonSchemaType.OBJECT);
+  t.is(JsonSchemaHelper.getDetailedType(new Error("test")), JsonSchemaType.OBJECT);
+  t.is(JsonSchemaHelper.getDetailedType(new Set()), JsonSchemaType.UNORDERED_LIST);
+  t.is(JsonSchemaHelper.getDetailedType(new Map()), JsonSchemaType.OBJECT);
+  t.is(JsonSchemaHelper.getDetailedType(() => {}), JsonSchemaType.FUNCTION);
 });
 
 test("getDetailedType - should correctly identify typed arrays", (t) => {
-  t.is(JsonSchemaHelper.getDetailedType(new Int8Array()), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(new Uint8Array()), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(new Uint8ClampedArray()), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(new Int16Array()), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(new Uint16Array()), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(new Int32Array()), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(new Uint32Array()), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(new Float32Array()), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(new Float64Array()), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(new DataView(new ArrayBuffer(8))), "STRING");
-  t.is(JsonSchemaHelper.getDetailedType(new ArrayBuffer(8)), "STRING");
+  t.is(JsonSchemaHelper.getDetailedType(new Int8Array()), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(new Uint8Array()), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(new Uint8ClampedArray()), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(new Int16Array()), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(new Uint16Array()), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(new Int32Array()), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(new Uint32Array()), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(new Float32Array()), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(new Float64Array()), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(new DataView(new ArrayBuffer(8))), JsonSchemaType.STRING);
+  t.is(JsonSchemaHelper.getDetailedType(new ArrayBuffer(8)), JsonSchemaType.STRING);
 });
 
 test("getDetailedType - should handle arguments object", (t) => {
   function testFunc() {
     return JsonSchemaHelper.getDetailedType(arguments);
   }
-  t.is(testFunc(), "ORDERED_LIST");
+  t.is(testFunc(), JsonSchemaType.ORDERED_LIST);
 });
 
 test("getDetailedType - should fall back to STRING for unknown types", (t) => {
   const unknownObj = Object.create(null);
   Object.setPrototypeOf(unknownObj, null);
-  t.is(JsonSchemaHelper.getDetailedType(unknownObj), "OBJECT");
+  t.is(JsonSchemaHelper.getDetailedType(unknownObj), JsonSchemaType.OBJECT);
 });
 
 test("generateSchema - should generate schema for primitive types", (t) => {
-  t.deepEqual(JsonSchemaHelper.generateSchema(null), { type: "NULL" });
-  t.deepEqual(JsonSchemaHelper.generateSchema(undefined), { type: "UNDEFINED" });
-  t.deepEqual(JsonSchemaHelper.generateSchema("test"), { type: "STRING" });
-  t.deepEqual(JsonSchemaHelper.generateSchema(42), { type: "NUMBER" });
-  t.deepEqual(JsonSchemaHelper.generateSchema(true), { type: "BOOLEAN" });
+  t.deepEqual(JsonSchemaHelper.generateSchema(null), { type: JsonSchemaType.NULL, properties: {} });
+  t.deepEqual(JsonSchemaHelper.generateSchema(undefined), { type: JsonSchemaType.UNDEFINED, properties: {} });
+  t.deepEqual(JsonSchemaHelper.generateSchema("test"), { type: JsonSchemaType.STRING, properties: {} });
+  t.deepEqual(JsonSchemaHelper.generateSchema(42), { type: JsonSchemaType.NUMBER, properties: {} });
+  t.deepEqual(JsonSchemaHelper.generateSchema(true), { type: JsonSchemaType.BOOLEAN, properties: {} });
 });
 
 test("generateSchema - should generate schema for arrays", (t) => {
   t.deepEqual(JsonSchemaHelper.generateSchema([]), {
-    type: "ORDERED_LIST",
-    items: null,
+    type: JsonSchemaType.ORDERED_LIST,
+    properties: {},
   });
 
   t.deepEqual(JsonSchemaHelper.generateSchema([1, 2, 3]), {
-    type: "ORDERED_LIST",
-    items: { type: "NUMBER" },
+    type: JsonSchemaType.ORDERED_LIST,
+    items: { type: JsonSchemaType.NUMBER, properties: {} },
+    properties: {},
   });
 
   t.deepEqual(JsonSchemaHelper.generateSchema(["a", "b"]), {
-    type: "ORDERED_LIST",
-    items: { type: "STRING" },
+    type: JsonSchemaType.ORDERED_LIST,
+    items: { type: JsonSchemaType.STRING, properties: {} },
+    properties: {},
   });
 
   t.deepEqual(JsonSchemaHelper.generateSchema([{ id: 1 }]), {
-    type: "ORDERED_LIST",
+    type: JsonSchemaType.ORDERED_LIST,
     items: {
-      type: "OBJECT",
+      type: JsonSchemaType.OBJECT,
       properties: {
-        id: { type: "NUMBER" },
+        id: { type: JsonSchemaType.NUMBER, properties: {} },
       },
     },
+    properties: {},
   });
 });
 
 test("generateSchema - should generate schema for objects", (t) => {
   const simpleObj = { name: "John", age: 30 };
   t.deepEqual(JsonSchemaHelper.generateSchema(simpleObj), {
-    type: "OBJECT",
+    type: JsonSchemaType.OBJECT,
     properties: {
-      name: { type: "STRING" },
-      age: { type: "NUMBER" },
+      name: { type: JsonSchemaType.STRING, properties: {} },
+      age: { type: JsonSchemaType.NUMBER, properties: {} },
     },
   });
 
@@ -111,15 +114,15 @@ test("generateSchema - should generate schema for objects", (t) => {
     },
   };
   t.deepEqual(JsonSchemaHelper.generateSchema(nestedObj), {
-    type: "OBJECT",
+    type: JsonSchemaType.OBJECT,
     properties: {
       user: {
-        type: "OBJECT",
+        type: JsonSchemaType.OBJECT,
         properties: {
           profile: {
-            type: "OBJECT",
+            type: JsonSchemaType.OBJECT,
             properties: {
-              name: { type: "STRING" },
+              name: { type: JsonSchemaType.STRING, properties: {} },
             },
           },
         },
@@ -131,27 +134,29 @@ test("generateSchema - should generate schema for objects", (t) => {
 test("generateSchema - should generate schema for Set objects", (t) => {
   const emptySet = new Set();
   t.deepEqual(JsonSchemaHelper.generateSchema(emptySet), {
-    type: "UNORDERED_LIST",
-    items: null,
+    type: JsonSchemaType.UNORDERED_LIST,
+    properties: {},
   });
 
   const numberSet = new Set([1, 2, 3]);
   t.deepEqual(JsonSchemaHelper.generateSchema(numberSet), {
-    type: "UNORDERED_LIST",
-    items: { type: "NUMBER" },
+    type: JsonSchemaType.UNORDERED_LIST,
+    items: { type: JsonSchemaType.NUMBER, properties: {} },
+    properties: {},
   });
 
   const stringSet = new Set(["a", "b"]);
   t.deepEqual(JsonSchemaHelper.generateSchema(stringSet), {
-    type: "UNORDERED_LIST",
-    items: { type: "STRING" },
+    type: JsonSchemaType.UNORDERED_LIST,
+    items: { type: JsonSchemaType.STRING, properties: {} },
+    properties: {},
   });
 });
 
 test("generateSchema - should generate schema for Map objects", (t) => {
   const emptyMap = new Map();
   t.deepEqual(JsonSchemaHelper.generateSchema(emptyMap), {
-    type: "OBJECT",
+    type: JsonSchemaType.OBJECT,
     properties: {},
   });
 
@@ -161,10 +166,10 @@ test("generateSchema - should generate schema for Map objects", (t) => {
   ] as [string, any][]);
 
   t.deepEqual(JsonSchemaHelper.generateSchema(map), {
-    type: "OBJECT",
+    type: JsonSchemaType.OBJECT,
     properties: {
-      key1: { type: "STRING" },
-      key2: { type: "NUMBER" },
+      key1: { type: JsonSchemaType.STRING, properties: {} },
+      key2: { type: JsonSchemaType.NUMBER, properties: {} },
     },
   });
 });
@@ -184,14 +189,15 @@ test("generateSchema - should apply schema merges", (t) => {
 
   const schema = JsonSchemaHelper.generateSchema(data, merges);
   t.deepEqual(schema, {
-    type: "OBJECT",
+    type: JsonSchemaType.OBJECT,
     properties: {
       body: {
-        type: "STRING",
+        type: JsonSchemaType.STRING,
         encoding: EncodingType.BASE64,
         decodedType: DecodedType.JSON,
+        properties: {},
       },
-      header: { type: JsonSchemaType.STRING },
+      header: { type: JsonSchemaType.STRING, properties: {} },
     },
   });
 });
@@ -213,13 +219,13 @@ test("generateSchema - should not apply schema merges to nested properties with 
 
   const schema = JsonSchemaHelper.generateSchema(data, merges);
   t.deepEqual(schema, {
-    type: "OBJECT",
+    type: JsonSchemaType.OBJECT,
     properties: {
       body: {
-        type: "OBJECT",
+        type: JsonSchemaType.OBJECT,
         properties: {
-          title: { type: "STRING" },
-          body: { type: "STRING" }, // Should NOT have encoding/decodedType
+          title: { type: JsonSchemaType.STRING, properties: {} },
+          body: { type: JsonSchemaType.STRING, properties: {} }, // Should NOT have encoding/decodedType
         },
         encoding: EncodingType.BASE64,
         decodedType: DecodedType.JSON,
@@ -320,10 +326,10 @@ test("generateSchemaAndHash - should generate schema and hashes for simple data"
   const result = JsonSchemaHelper.generateSchemaAndHash(data);
 
   t.deepEqual(result.schema, {
-    type: "OBJECT",
+    type: JsonSchemaType.OBJECT,
     properties: {
-      name: { type: "STRING" },
-      age: { type: "NUMBER" },
+      name: { type: JsonSchemaType.STRING, properties: {} },
+      age: { type: JsonSchemaType.NUMBER, properties: {} },
     },
   });
   t.is(typeof result.decodedValueHash, "string");
@@ -351,17 +357,17 @@ test("generateSchemaAndHash - should handle schema merges with base64 encoding",
   const result = JsonSchemaHelper.generateSchemaAndHash(data, schemaMerges);
 
   t.deepEqual(result.schema, {
-    type: "OBJECT",
+    type: JsonSchemaType.OBJECT,
     properties: {
       body: {
-        type: "OBJECT",
+        type: JsonSchemaType.OBJECT,
         properties: {
-          message: { type: "STRING" },
+          message: { type: JsonSchemaType.STRING, properties: {} },
         },
         encoding: EncodingType.BASE64,
         decodedType: DecodedType.JSON,
       },
-      contentType: { type: "STRING" },
+      contentType: { type: JsonSchemaType.STRING, properties: {} },
     },
   });
 
@@ -380,10 +386,10 @@ test("generateSchemaAndHash - should normalize data by removing undefined values
   const result = JsonSchemaHelper.generateSchemaAndHash(data);
 
   t.deepEqual(result.schema, {
-    type: "OBJECT",
+    type: JsonSchemaType.OBJECT,
     properties: {
-      name: { type: "STRING" },
-      city: { type: "STRING" },
+      name: { type: JsonSchemaType.STRING, properties: {} },
+      city: { type: JsonSchemaType.STRING, properties: {} },
     },
   });
   t.false(Object.prototype.hasOwnProperty.call(result.schema.properties, "age"));
@@ -406,7 +412,8 @@ test("generateSchemaAndHash - should handle decoding errors gracefully", (t) => 
   // The warning message is expected and demonstrates graceful error handling
   const result = JsonSchemaHelper.generateSchemaAndHash(data, schemaMerges);
   t.deepEqual(result.schema.properties?.body, {
-    type: "STRING",
+    type: JsonSchemaType.STRING,
+    properties: {},
     encoding: EncodingType.BASE64,
     decodedType: DecodedType.JSON,
   });
@@ -422,19 +429,20 @@ test("generateSchemaAndHash - should handle empty objects and arrays", (t) => {
   const result = JsonSchemaHelper.generateSchemaAndHash(data);
 
   t.deepEqual(result.schema, {
-    type: "OBJECT",
+    type: JsonSchemaType.OBJECT,
     properties: {
       emptyObj: {
-        type: "OBJECT",
+        type: JsonSchemaType.OBJECT,
         properties: {},
       },
       emptyArr: {
-        type: "ORDERED_LIST",
-        items: null,
+        type: JsonSchemaType.ORDERED_LIST,
+        properties: {},
       },
       items: {
-        type: "ORDERED_LIST",
-        items: { type: "NUMBER" },
+        type: JsonSchemaType.ORDERED_LIST,
+        items: { type: JsonSchemaType.NUMBER, properties: {} },
+        properties: {},
       },
     },
   });
@@ -443,42 +451,44 @@ test("generateSchemaAndHash - should handle empty objects and arrays", (t) => {
 test("getTypeMapping - should return the type mapping object", (t) => {
   const mapping = JsonSchemaHelper.getTypeMapping();
   t.truthy(mapping);
-  t.is(mapping.string, "STRING");
-  t.is(mapping.number, "NUMBER");
-  t.is(mapping.boolean, "BOOLEAN");
-  t.is(mapping.null, "NULL");
-  t.is(mapping.undefined, "UNDEFINED");
-  t.is(mapping.Array, "ORDERED_LIST");
-  t.is(mapping.object, "OBJECT");
+  t.is(mapping.string, JsonSchemaType.STRING);
+  t.is(mapping.number, JsonSchemaType.NUMBER);
+  t.is(mapping.boolean, JsonSchemaType.BOOLEAN);
+  t.is(mapping.null, JsonSchemaType.NULL);
+  t.is(mapping.undefined, JsonSchemaType.UNDEFINED);
+  t.is(mapping.Array, JsonSchemaType.ORDERED_LIST);
+  t.is(mapping.object, JsonSchemaType.OBJECT);
 });
 
 test("EncodingType and DecodedType enums - should have correct EncodingType values", (t) => {
-  t.is(EncodingType.BASE64, "BASE64");
+  t.is(EncodingType.BASE64, 1);
+  t.is(EncodingType.UNSPECIFIED, 0);
 });
 
 test("EncodingType and DecodedType enums - should have correct DecodedType values", (t) => {
-  t.is(DecodedType.JSON, "JSON");
-  t.is(DecodedType.HTML, "HTML");
-  t.is(DecodedType.CSS, "CSS");
-  t.is(DecodedType.JAVASCRIPT, "JAVASCRIPT");
-  t.is(DecodedType.XML, "XML");
-  t.is(DecodedType.YAML, "YAML");
-  t.is(DecodedType.MARKDOWN, "MARKDOWN");
-  t.is(DecodedType.CSV, "CSV");
-  t.is(DecodedType.SQL, "SQL");
-  t.is(DecodedType.GRAPHQL, "GRAPHQL");
-  t.is(DecodedType.PLAIN_TEXT, "PLAIN_TEXT");
-  t.is(DecodedType.FORM_DATA, "FORM_DATA");
-  t.is(DecodedType.MULTIPART_FORM, "MULTIPART_FORM");
-  t.is(DecodedType.PDF, "PDF");
-  t.is(DecodedType.AUDIO, "AUDIO");
-  t.is(DecodedType.VIDEO, "VIDEO");
-  t.is(DecodedType.GZIP, "GZIP");
-  t.is(DecodedType.BINARY, "BINARY");
-  t.is(DecodedType.JPEG, "JPEG");
-  t.is(DecodedType.PNG, "PNG");
-  t.is(DecodedType.GIF, "GIF");
-  t.is(DecodedType.WEBP, "WEBP");
-  t.is(DecodedType.SVG, "SVG");
-  t.is(DecodedType.ZIP, "ZIP");
+  t.is(DecodedType.UNSPECIFIED, 0);
+  t.is(DecodedType.JSON, 1);
+  t.is(DecodedType.HTML, 2);
+  t.is(DecodedType.CSS, 3);
+  t.is(DecodedType.JAVASCRIPT, 4);
+  t.is(DecodedType.XML, 5);
+  t.is(DecodedType.YAML, 6);
+  t.is(DecodedType.MARKDOWN, 7);
+  t.is(DecodedType.CSV, 8);
+  t.is(DecodedType.SQL, 9);
+  t.is(DecodedType.GRAPHQL, 10);
+  t.is(DecodedType.PLAIN_TEXT, 11);
+  t.is(DecodedType.FORM_DATA, 12);
+  t.is(DecodedType.MULTIPART_FORM, 13);
+  t.is(DecodedType.PDF, 14);
+  t.is(DecodedType.AUDIO, 15);
+  t.is(DecodedType.VIDEO, 16);
+  t.is(DecodedType.GZIP, 17);
+  t.is(DecodedType.BINARY, 18);
+  t.is(DecodedType.JPEG, 19);
+  t.is(DecodedType.PNG, 20);
+  t.is(DecodedType.GIF, 21);
+  t.is(DecodedType.WEBP, 22);
+  t.is(DecodedType.SVG, 23);
+  t.is(DecodedType.ZIP, 24);
 });

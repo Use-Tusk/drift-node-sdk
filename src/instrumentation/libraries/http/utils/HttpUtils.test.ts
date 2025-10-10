@@ -11,9 +11,9 @@ import {
 } from './binaryDataHandler';
 import {
   httpBodyEncoder,
-  getDecodedType,
-  HttpBodyType
+  getDecodedType
 } from './httpBodyEncoder';
+import { DecodedType } from '@use-tusk/drift-schemas/core/json_schema';
 
 // Body Decompression Tests
 test("decompressBuffer - should decompress gzip encoded data", async (t) => {
@@ -161,14 +161,14 @@ test("httpBodyEncoder - should handle unsupported content encoding gracefully", 
 });
 
 test("getDecodedType - should return correct decoded type for JSON content types", (t) => {
-  t.is(getDecodedType('application/json'), HttpBodyType.JSON);
-  t.is(getDecodedType('application/json; charset=utf-8'), HttpBodyType.JSON);
+  t.is(getDecodedType('application/json'), DecodedType.JSON);
+  t.is(getDecodedType('application/json; charset=utf-8'), DecodedType.JSON);
 });
 
 test("getDecodedType - should return correct decoded type for text content types", (t) => {
   // Based on the actual enum and mapping, text/plain maps to PLAIN_TEXT, not TEXT
-  t.is(getDecodedType('text/plain'), 'PLAIN_TEXT');
-  t.is(getDecodedType('text/html'), 'HTML');
+  t.is(getDecodedType('text/plain'), DecodedType.PLAIN_TEXT);
+  t.is(getDecodedType('text/html'), DecodedType.HTML);
 });
 
 test("getDecodedType - should return undefined for unknown content types", (t) => {
@@ -177,18 +177,11 @@ test("getDecodedType - should return undefined for unknown content types", (t) =
 });
 
 test("getDecodedType - should handle array of content types", (t) => {
-  t.is(getDecodedType(['application/json', 'text/plain']), HttpBodyType.JSON);
+  t.is(getDecodedType(['application/json', 'text/plain']), DecodedType.JSON);
 });
 
 test("getDecodedType - should handle case insensitive content types", (t) => {
-  t.is(getDecodedType('APPLICATION/JSON'), HttpBodyType.JSON);
-});
-
-test("HttpBodyType - should have correct enum values", (t) => {
-  t.is(HttpBodyType.JSON, 'JSON');
-  t.is(HttpBodyType.TEXT, 'TEXT');
-  t.is(HttpBodyType.RAW, 'RAW');
-  t.is(HttpBodyType.NONE, 'NONE');
+  t.is(getDecodedType('APPLICATION/JSON'), DecodedType.JSON);
 });
 
 // Integration Tests
@@ -208,7 +201,7 @@ test("Integration - should work together - decompress, detect encoding, and enco
 
   // Get type
   const type = getDecodedType('application/json');
-  t.is(type, HttpBodyType.JSON);
+  t.is(type, DecodedType.JSON);
 });
 
 test("Integration - should handle binary data flow", async (t) => {

@@ -55,7 +55,7 @@ function withRootSpan<T>(fn: () => T): T {
 }
 
 let spanAdapter: InMemorySpanAdapter;
-let client: Client;
+let client: InstanceType<typeof Client>;
 
 test.before(async (t) => {
   spanAdapter = new InMemorySpanAdapter();
@@ -204,7 +204,7 @@ test.serial("should capture spans for UPDATE operations", async (t) => {
 test.serial("should capture spans for callback-style queries", async (t) => {
   await new Promise<void>((resolve, reject) => {
     withRootSpan(() => {
-      client.query("SELECT COUNT(*) as count FROM test_users", async (err, result) => {
+      client.query("SELECT COUNT(*) as count FROM test_users", async (err: any, result: any) => {
         try {
           t.is(err, null);
           t.true(parseInt(result.rows[0].count) >= 2);
