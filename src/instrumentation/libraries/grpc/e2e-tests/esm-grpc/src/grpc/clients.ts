@@ -1,89 +1,83 @@
-import * as grpc from '@grpc/grpc-js';
-import * as protoLoader from '@grpc/proto-loader';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
+import * as grpc from "@grpc/grpc-js";
+import * as protoLoader from "@grpc/proto-loader";
+import * as path from "path";
+import { fileURLToPath } from "url";
 
 // Get __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Proto files are in the src directory, not dist
-const PROTO_PATH_GREETER = path.join(__dirname, '../../src/grpc/protos/greeter.proto');
-const PROTO_PATH_CALCULATOR = path.join(__dirname, '../../src/grpc/protos/calculator.proto');
-const PROTO_PATH_USER = path.join(__dirname, '../../src/grpc/protos/user.proto');
-const PROTO_PATH_FILE = path.join(__dirname, '../../src/grpc/protos/file.proto');
+const PROTO_PATH_GREETER = path.join(__dirname, "../../src/grpc/protos/greeter.proto");
+const PROTO_PATH_CALCULATOR = path.join(__dirname, "../../src/grpc/protos/calculator.proto");
+const PROTO_PATH_USER = path.join(__dirname, "../../src/grpc/protos/user.proto");
+const PROTO_PATH_FILE = path.join(__dirname, "../../src/grpc/protos/file.proto");
 
-const GRPC_SERVER_ADDRESS = process.env.GRPC_SERVER_ADDRESS || 'localhost:50051';
+const GRPC_SERVER_ADDRESS = process.env.GRPC_SERVER_ADDRESS || "localhost:50051";
 
-// Load proto files
-const packageDefinitionGreeter = protoLoader.loadSync(PROTO_PATH_GREETER, {
-  keepCase: true,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true,
-});
-
-const packageDefinitionCalculator = protoLoader.loadSync(PROTO_PATH_CALCULATOR, {
-  keepCase: true,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true,
-});
-
-const packageDefinitionUser = protoLoader.loadSync(PROTO_PATH_USER, {
-  keepCase: true,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true,
-});
-
-const packageDefinitionFile = protoLoader.loadSync(PROTO_PATH_FILE, {
-  keepCase: true,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true,
-});
-
-// Declare clients as variables that will be initialized later
-export let greeterClient: any;
-export let calculatorClient: any;
-export let userClient: any;
-export let fileClient: any;
+// Export an object that will hold the clients
+export const clientsObj: {
+  greeterClient?: any;
+  calculatorClient?: any;
+  userClient?: any;
+  fileClient?: any;
+} = {};
 
 // Initialize clients - must be called after instrumentation is set up
 export function initializeClients() {
-  console.log('[gRPC Clients] Initializing clients for server:', GRPC_SERVER_ADDRESS);
+  const packageDefinitionGreeter = protoLoader.loadSync(PROTO_PATH_GREETER, {
+    keepCase: true,
+    longs: String,
+    enums: String,
+    defaults: true,
+    oneofs: true,
+  });
+
+  const packageDefinitionCalculator = protoLoader.loadSync(PROTO_PATH_CALCULATOR, {
+    keepCase: true,
+    longs: String,
+    enums: String,
+    defaults: true,
+    oneofs: true,
+  });
+
+  const packageDefinitionUser = protoLoader.loadSync(PROTO_PATH_USER, {
+    keepCase: true,
+    longs: String,
+    enums: String,
+    defaults: true,
+    oneofs: true,
+  });
+
+  const packageDefinitionFile = protoLoader.loadSync(PROTO_PATH_FILE, {
+    keepCase: true,
+    longs: String,
+    enums: String,
+    defaults: true,
+    oneofs: true,
+  });
 
   const greeterProto = grpc.loadPackageDefinition(packageDefinitionGreeter).greeter as any;
   const calculatorProto = grpc.loadPackageDefinition(packageDefinitionCalculator).calculator as any;
   const userProto = grpc.loadPackageDefinition(packageDefinitionUser).user as any;
   const fileProto = grpc.loadPackageDefinition(packageDefinitionFile).file as any;
 
-  greeterClient = new greeterProto.Greeter(
+  clientsObj.greeterClient = new greeterProto.Greeter(
     GRPC_SERVER_ADDRESS,
-    grpc.credentials.createInsecure()
+    grpc.credentials.createInsecure(),
   );
-
-  calculatorClient = new calculatorProto.Calculator(
+  clientsObj.calculatorClient = new calculatorProto.Calculator(
     GRPC_SERVER_ADDRESS,
-    grpc.credentials.createInsecure()
+    grpc.credentials.createInsecure(),
   );
-
-  userClient = new userProto.UserService(
+  clientsObj.userClient = new userProto.UserService(
     GRPC_SERVER_ADDRESS,
-    grpc.credentials.createInsecure()
+    grpc.credentials.createInsecure(),
   );
-
-  fileClient = new fileProto.FileService(
+  clientsObj.fileClient = new fileProto.FileService(
     GRPC_SERVER_ADDRESS,
-    grpc.credentials.createInsecure()
+    grpc.credentials.createInsecure(),
   );
-
-  console.log('[gRPC Clients] Clients initialized successfully');
 }
 
 // Helper function to promisify gRPC calls
@@ -91,7 +85,7 @@ export function grpcCallPromise<TRequest, TResponse>(
   client: any,
   methodName: string,
   request: TRequest,
-  metadata?: grpc.Metadata
+  metadata?: grpc.Metadata,
 ): Promise<TResponse> {
   return new Promise((resolve, reject) => {
     const meta = metadata || new grpc.Metadata();

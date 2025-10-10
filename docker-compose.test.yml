@@ -51,3 +51,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  grpc-server:
+    image: node:20-alpine
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    command: node /workspace/src/instrumentation/libraries/grpc/integration-tests/server.cjs
+    ports:
+      - "50051:50051"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 50051 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s

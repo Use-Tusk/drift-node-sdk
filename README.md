@@ -19,6 +19,7 @@ For comprehensive guides and API reference, visit our [full documentation](https
 Tusk Drift currently supports the following packages and versions:
 
 - **HTTP/HTTPS**: All versions (Node.js built-in)
+- **GRPC**: `@grpc/grpc-js@1.x` (Outbound requests only)
 - **PG**: `pg@8.x`, `pg-pool@2.x-3.x`
 - **Postgres**: `postgres@3.x`
 - **MySQL**: `mysql2@3.x`
@@ -83,12 +84,12 @@ ESM applications require additional setup to properly intercept module imports:
 
 ```typescript
 // tuskDriftInit.ts
-import { register } from 'node:module';
-import { pathToFileURL } from 'node:url';
+import { register } from "node:module";
+import { pathToFileURL } from "node:url";
 
 // Register the ESM loader
 // This enables interception of ESM module imports
-register('@use-tusk/drift-node-sdk/hook.mjs', pathToFileURL('./'));
+register("@use-tusk/drift-node-sdk/hook.mjs", pathToFileURL("./"));
 
 import { TuskDrift } from "@use-tusk/drift-node-sdk";
 
