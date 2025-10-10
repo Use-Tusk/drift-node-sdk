@@ -15,10 +15,11 @@ import {
   PostgresInstrumentation,
   Mysql2Instrumentation,
   IORedisInstrumentation,
+  GrpcInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
-import { NodeSDK } from "@opentelemetry/sdk-node";
 import { trace, Tracer } from "@opentelemetry/api";
+import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { ProtobufCommunicator, MockRequestInput } from "./ProtobufCommunicator";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { CleanSpanData } from "./types";
@@ -33,6 +34,9 @@ import {
   OriginalGlobalUtils,
 } from "./utils";
 import { TransformConfigs } from "../instrumentation/libraries/http/HttpTransformEngine";
+import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import { Resource } from "@opentelemetry/resources";
+
 
 export interface InitParams {
   apiKey?: string;
@@ -56,7 +60,6 @@ export class TuskDriftCore {
   private initialized = false;
   private appReady = false;
   private mode: TuskDriftMode;
-  private sdk?: NodeSDK;
   private initParams: InitParams;
   private config: TuskConfig;
   private communicator?: ProtobufCommunicator | undefined;
@@ -214,6 +217,11 @@ export class TuskDriftCore {
       enabled: true,
       mode: this.mode,
     });
+
+    new GrpcInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
   }
 
   private initializeTracing({ baseDirectory }: { baseDirectory: string }): void {
@@ -233,24 +241,26 @@ export class TuskDriftCore {
       sdkInstanceId: this.generateSdkInstanceId(),
     });
 
-    // Create NodeSDK with custom trace exporter, handled by opentelemetry
-    this.sdk = new NodeSDK({
-      serviceName,
-      spanProcessor: new BatchSpanProcessor(this.spanExporter, {
-        // Maximum queue size before spans are dropped, default 2048
-        maxQueueSize: 2048,
-        // Maximum batch size per export, default 512
-        maxExportBatchSize: 512,
-        // Interval between exports, default 5s
-        scheduledDelayMillis: 2000,
-        // Max time for export before timeout, default 30s
-        exportTimeoutMillis: 30000,
+    const tracerProvider = new NodeTracerProvider({
+      resource: new Resource({
+        [ATTR_SERVICE_NAME]: serviceName,
       }),
-      // Disable auto-instrumentations since we handle them manually
-      instrumentations: [],
     });
 
-    this.sdk.start();
+    // Add your custom span processor
+    tracerProvider.addSpanProcessor(new BatchSpanProcessor(this.spanExporter, {
+      // Maximum queue size before spans are dropped, default 2048
+      maxQueueSize: 2048,
+      // Maximum batch size per export, default 512
+      maxExportBatchSize: 512,
+      // Interval between exports, default 5s
+      scheduledDelayMillis: 2000,
+      // Max time for export before timeout, default 30s
+      exportTimeoutMillis: 30000,
+    }));
+
+    // Register the tracer provider
+    tracerProvider.register();
     logger.debug(`OpenTelemetry tracing initialized`);
   }
 
@@ -387,11 +397,13 @@ export class TuskDriftCore {
     logger.debug(`Config: ${JSON.stringify(this.config)}`);
     logger.debug(`Base directory: ${baseDirectory}`);
 
-    // Initialize OpenTelemetry tracing (runs in parallel with connection)
-    this.initializeTracing({ baseDirectory });
-
     // Register instrumentations (runs in parallel with connection)
     this.registerDefaultInstrumentations();
+
+    // Initialize OpenTelemetry tracing (runs in parallel with connection)
+    // Important to do this after registering instrumentations since initializeTracing lazy imports the NodeSDK from OpenTelemetry
+    // which imports the gRPC exporter
+    this.initializeTracing({ baseDirectory });
 
     this.initialized = true;
     logger.info("SDK initialized successfully");
