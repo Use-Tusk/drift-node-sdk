@@ -1,6 +1,11 @@
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get __dirname equivalent in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Proto files are in the src directory, not dist
 const PROTO_PATH_GREETER = path.join(__dirname, '../../src/grpc/protos/greeter.proto');

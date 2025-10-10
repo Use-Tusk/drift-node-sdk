@@ -1,7 +1,7 @@
-import { TuskDrift } from "./tdInit";
+import { TuskDrift } from "./tdInit.js";
 import express, { Request, Response } from "express";
 import * as grpc from "@grpc/grpc-js";
-import { startGrpcServer } from "./grpc/server";
+import { startGrpcServer } from "./grpc/server.js";
 import {
   greeterClient,
   calculatorClient,
@@ -9,7 +9,7 @@ import {
   fileClient,
   grpcCallPromise,
   initializeClients,
-} from "./grpc/clients";
+} from "./grpc/clients.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;

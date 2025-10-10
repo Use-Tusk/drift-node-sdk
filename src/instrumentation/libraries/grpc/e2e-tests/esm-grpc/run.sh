@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../../e2e-common/e2e-helpers.sh"
 
-echo "Starting gRPC E2E test run..."
+echo "Starting gRPC ESM E2E test run..."
 
 # Step 0: Clean up traces and logs
 echo "Step 0: Cleaning up traces and logs..."
@@ -127,9 +127,9 @@ echo "Step 7: Cleaning up docker containers..."
 docker-compose down
 
 # Step 8: Clean up traces and logs
-# echo "Step 8: Cleaning up traces and logs..."
-# cleanup_tusk_files
+echo "Step 8: Cleaning up traces and logs..."
+cleanup_tusk_files
 
-echo "gRPC E2E test run complete."
+echo "gRPC ESM E2E test run complete."
 
 exit $EXIT_CODE

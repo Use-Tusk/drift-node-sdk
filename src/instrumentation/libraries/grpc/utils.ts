@@ -1,4 +1,4 @@
-import { ReadableMetadata, ReadableMetadataValue, BufferMetadata } from "./types";
+import { ReadableMetadata, ReadableMetadataValue } from "./types";
 
 /**
  * Check if a buffer contains valid UTF-8 text
@@ -15,7 +15,7 @@ function isUtf8(buffer: Buffer): boolean {
 /**
  * Convert gRPC Metadata object to a plain JavaScript object
  */
-export function getReadableMetadata(metadata: any): ReadableMetadata {
+export function serializeGrpcMetadata(metadata: any): ReadableMetadata {
   if (!metadata) {
     return {};
   }
@@ -61,7 +61,10 @@ export function getReadableMetadata(metadata: any): ReadableMetadata {
 /**
  * Convert a plain JavaScript object back to gRPC Metadata
  */
-export function getRealMetadata(MetadataConstructor: any, readableMetadata: ReadableMetadata): any {
+export function deserializeGrpcMetadata(
+  MetadataConstructor: any,
+  readableMetadata: ReadableMetadata,
+): any {
   const metadata = new MetadataConstructor();
 
   for (const [key, valueArr] of Object.entries(readableMetadata)) {
@@ -90,7 +93,7 @@ export function getRealMetadata(MetadataConstructor: any, readableMetadata: Read
  * Extract service and method name from gRPC path
  * Path format: /package.ServiceName/MethodName
  */
-export function extractServiceAndMethodFromPath(path: string): {
+export function parseGrpcPath(path: string): {
   method: string;
   service: string;
 } {
@@ -108,7 +111,7 @@ export function extractServiceAndMethodFromPath(path: string): {
 /**
  * Convert request/response body to a serializable format, handling Buffers
  */
-export function getReadableBodyAndBufferMap(realBody: any): {
+export function serializeGrpcPayload(realBody: any): {
   readableBody: any;
   bufferMap: Record<string, { value: string; encoding: string }>;
   jsonableStringMap: Record<string, string>;
@@ -150,13 +153,13 @@ function processPayloadForSerialization(
           value: stringValue,
           encoding: "utf8",
         };
-        payload[key] = "__tusk_drift_buffer__";
+        payload[key] = "__tusk_drift_buffer_replaced__";
       } else {
         bufferMap[currentPathStr] = {
           value: payload[key].toString("base64"),
           encoding: "base64",
         };
-        payload[key] = "__tusk_drift_buffer__";
+        payload[key] = "__tusk_drift_buffer_replaced__";
       }
       continue;
     }
@@ -171,7 +174,7 @@ function processPayloadForSerialization(
 /**
  * Convert a serialized payload back to its original format with Buffers restored
  */
-export function getRealPayload(
+export function deserializeGrpcPayload(
   readablePayload: any,
   bufferMap: Record<string, { value: string; encoding: string }>,
   jsonableStringMap: Record<string, string>,
@@ -199,7 +202,7 @@ function restorePayloadFromSerialization(
     const currentPathStr = currentPath.join(".");
 
     // Restore Buffer placeholders
-    if (payload[key] === "__tusk_drift_buffer__") {
+    if (payload[key] === "__tusk_drift_buffer_replaced__") {
       const buffer = bufferMap[currentPathStr];
       if (buffer) {
         if (buffer.encoding === "utf8") {

@@ -17,6 +17,7 @@ export interface GrpcClientInputValue {
   service: string;
   body: any;
   metadata: Record<string, any>;
+  inputMeta: BufferMetadata;
   [key: string]: unknown;
 }
 
@@ -36,6 +37,8 @@ export interface GrpcOutputValue {
     details: string;
     metadata: Record<string, any>;
   };
+  bufferMap: Record<string, { value: string; encoding: string }>;
+  jsonableStringMap: Record<string, string>;
   [key: string]: unknown;
 }
 
@@ -51,6 +54,7 @@ export interface GrpcErrorOutput {
     metadata: Record<string, any>;
   };
   metadata: Record<string, any>;
+  [key: string]: unknown;
 }
 
 export interface BufferMetadata {

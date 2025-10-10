@@ -14,15 +14,17 @@ import {
   GrpcModuleExports,
   GrpcClientInputValue,
   GrpcServerInputValue,
+  ReadableMetadata,
   GrpcOutputValue,
   BufferMetadata,
+  GrpcErrorOutput,
 } from "./types";
 import {
-  getReadableMetadata,
-  getRealMetadata,
-  extractServiceAndMethodFromPath,
-  getReadableBodyAndBufferMap,
-  getRealPayload,
+  serializeGrpcMetadata,
+  deserializeGrpcMetadata,
+  parseGrpcPath,
+  serializeGrpcPayload,
+  deserializeGrpcPayload,
 } from "./utils";
 import { EventEmitter } from "events";
 
@@ -127,11 +129,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
     }
 
     // Wrap makeUnaryRequest
-    this._wrap(
-      clientPrototype,
-      "makeUnaryRequest",
-      this._getMakeUnaryRequestPatchFn(version),
-    );
+    this._wrap(clientPrototype, "makeUnaryRequest", this._getMakeUnaryRequestPatchFn(version));
 
     // Wrap waitForReady (for replay mode, we skip the actual wait)
     this._wrap(clientPrototype, "waitForReady", this._getWaitForReadyPatchFn());
@@ -147,17 +145,17 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
 
   // NOTE: Not using this yet. This is somewhat working, haven't full tested it yet
   // Adding this would require more changes to replay grpc server calls. Holding off until a customer asks for it
-  private _patchGrpcServer(serverPrototype: any, version: string): void {
-    if (!serverPrototype) {
-      logger.warn(`[GrpcInstrumentation] Server prototype not found`);
-      return;
-    }
+  // private _patchGrpcServer(serverPrototype: any, version: string): void {
+  //   if (!serverPrototype) {
+  //     logger.warn(`[GrpcInstrumentation] Server prototype not found`);
+  //     return;
+  //   }
 
-    // Wrap register method to intercept handler registration
-    this._wrap(serverPrototype, "register", this._getRegisterPatchFn(version));
+  //   // Wrap register method to intercept handler registration
+  //   this._wrap(serverPrototype, "register", this._getRegisterPatchFn(version));
 
-    logger.debug(`[GrpcInstrumentation] Server methods patched successfully`);
-  }
+  //   logger.debug(`[GrpcInstrumentation] Server methods patched successfully`);
+  // }
 
   /**
    * Helper method to parse optional unary response arguments
@@ -232,13 +230,11 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
 
   private _getMakeUnaryRequestPatchFn(version: string) {
     const self = this;
-    logger.debug(`[GrpcInstrumentation] _getMakeUnaryRequestPatchFn called for version: ${version}`);
-
+    logger.debug(
+      `[GrpcInstrumentation] _getMakeUnaryRequestPatchFn called for version: ${version}`,
+    );
     return (original: Function) => {
-      logger.debug(`[GrpcInstrumentation] makeUnaryRequest wrapper created`);
       return function makeUnaryRequest(this: any, ...args: any[]) {
-        logger.debug(`[GrpcInstrumentation] makeUnaryRequest called! args length: ${args.length}`);
-
         const MetadataConstructor = GrpcInstrumentation.metadataStore.get(version) || self.Metadata;
 
         if (!MetadataConstructor) {
@@ -261,7 +257,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
 
         try {
           parsedParams = self.extractRequestParameters(args, MetadataConstructor);
-        } catch (error: any) {
+        } catch (error) {
           logger.error(`[GrpcInstrumentation] Error parsing makeUnaryRequest arguments:`, error);
           // Fall back to original function if we can't parse the arguments
           return original.apply(this, args);
@@ -269,21 +265,40 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
 
         const { method: path, argument, metadata, options, callback } = parsedParams;
 
-        const { method, service } = extractServiceAndMethodFromPath(path);
-        const { readableBody, bufferMap, jsonableStringMap } =
-          getReadableBodyAndBufferMap(argument);
-        const readableMetadata = getReadableMetadata(metadata);
+        let method: string;
+        let service: string;
+        let readableBody: any;
+        let bufferMap: Record<
+          string,
+          {
+            value: string;
+            encoding: string;
+          }
+        >;
+        let jsonableStringMap: Record<string, string>;
+        let readableMetadata: ReadableMetadata;
+
+        try {
+          ({ method, service } = parseGrpcPath(path));
+          ({ readableBody, bufferMap, jsonableStringMap } = serializeGrpcPayload(argument));
+          readableMetadata = serializeGrpcMetadata(metadata);
+        } catch (error) {
+          logger.error(`[GrpcInstrumentation] Error parsing makeUnaryRequest arguments:`, error);
+          // Fall back to original function if we can't parse the arguments
+          return original.apply(this, args);
+        }
+
+        const inputMeta: BufferMetadata = {
+          bufferMap,
+          jsonableStringMap,
+        };
 
         const inputValue: GrpcClientInputValue = {
           method,
           service,
           body: readableBody,
           metadata: readableMetadata,
-        };
-
-        const inputMeta: BufferMetadata = {
-          bufferMap,
-          jsonableStringMap,
+          inputMeta,
         };
 
         // Handle replay mode
@@ -307,7 +322,6 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
                   return self._handleReplayUnaryRequest(
                     spanInfo,
                     inputValue,
-                    inputMeta,
                     callback,
                     MetadataConstructor,
                   );
@@ -339,7 +353,6 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
                     this,
                     parsedParams,
                     callback,
-                    inputMeta,
                   );
                 },
               );
@@ -367,97 +380,42 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
       callback: Function;
     },
     callback: Function,
-    inputMeta: BufferMetadata,
   ): any {
     let isResponseReceived = false;
     let isStatusEmitted = false;
     let hasErrorOccurred = false;
     let readableResponseBody: any;
-    let outputMeta: BufferMetadata = { bufferMap: {}, jsonableStringMap: {} };
-    let status: any;
+    let responseBufferMap: Record<string, { value: string; encoding: string }> = {};
+    let responseJsonableStringMap: Record<string, string> = {};
+    let status: {
+      code: number;
+      details: string;
+      metadata: Record<string, any>;
+    };
     let responseMetadataInitial: any = {};
     let serviceError: any;
 
     // Wrap the callback to capture response
     const patchedCallback = (err: any, value: any) => {
-      if (err) {
-        serviceError = err;
-        hasErrorOccurred = true;
-      } else {
-        const { readableBody, bufferMap, jsonableStringMap } = getReadableBodyAndBufferMap(value);
-        readableResponseBody = readableBody;
-        outputMeta = { bufferMap, jsonableStringMap };
-        isResponseReceived = true;
-      }
+      try {
+        if (err) {
+          serviceError = err;
+          hasErrorOccurred = true;
+        } else {
+          const { readableBody, bufferMap, jsonableStringMap } = serializeGrpcPayload(value);
+          readableResponseBody = readableBody;
+          responseBufferMap = bufferMap;
+          responseJsonableStringMap = jsonableStringMap;
+          isResponseReceived = true;
+        }
 
-      if (isStatusEmitted && isResponseReceived) {
-        const realOutput: GrpcOutputValue = {
-          body: readableResponseBody,
-          metadata: responseMetadataInitial,
-          status,
-        };
-        SpanUtils.addSpanAttributes(spanInfo.span, {
-          outputValue: realOutput,
-        });
-        SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-      }
-
-      if (isStatusEmitted && hasErrorOccurred) {
-        const errorOutput = {
-          error: {
-            message: serviceError.message,
-            name: serviceError.name,
-            stack: serviceError.stack,
-          },
-          status,
-          metadata: responseMetadataInitial,
-        };
-        SpanUtils.addSpanAttributes(spanInfo.span, {
-          outputValue: errorOutput,
-        });
-        SpanUtils.endSpan(spanInfo.span, {
-          code: SpanStatusCode.ERROR,
-          message: serviceError.message,
-        });
-      }
-
-      return callback(err, value);
-    };
-
-    try {
-      // Reconstruct the makeUnaryRequest call with all validated parameters
-      // This ensures we always pass the full 7 arguments in the correct format
-      const inputArgs = [
-        parsedParams.method,
-        parsedParams.serialize,
-        parsedParams.deserialize,
-        parsedParams.argument,
-        parsedParams.metadata,
-        parsedParams.options,
-        patchedCallback,
-      ];
-
-      // Execute the original function within the span context to ensure the span is active
-      const result = SpanUtils.withSpan(spanInfo, () => original.apply(context, inputArgs));
-
-      // Listen to metadata and status events
-      result.on("metadata", (initialMetadata: any) => {
-        responseMetadataInitial = getReadableMetadata(initialMetadata);
-      });
-
-      result.on("status", (responseStatus: any) => {
-        status = {
-          code: responseStatus.code,
-          details: responseStatus.details,
-          metadata: getReadableMetadata(responseStatus.metadata),
-        };
-        isStatusEmitted = true;
-
-        if (isResponseReceived) {
+        if (isStatusEmitted && isResponseReceived) {
           const realOutput: GrpcOutputValue = {
             body: readableResponseBody,
             metadata: responseMetadataInitial,
             status,
+            bufferMap: responseBufferMap,
+            jsonableStringMap: responseJsonableStringMap,
           };
           SpanUtils.addSpanAttributes(spanInfo.span, {
             outputValue: realOutput,
@@ -465,8 +423,8 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
           SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
         }
 
-        if (hasErrorOccurred) {
-          const errorOutput = {
+        if (isStatusEmitted && hasErrorOccurred) {
+          const errorOutput: GrpcErrorOutput = {
             error: {
               message: serviceError.message,
               name: serviceError.name,
@@ -483,23 +441,96 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             message: serviceError.message,
           });
         }
-      });
+      } catch (e) {
+        logger.error(`[GrpcInstrumentation] Error in patchedCallback:`, e);
+      }
 
-      return result;
-    } catch (e: any) {
-      logger.error(`[GrpcInstrumentation] Error in makeUnaryRequest:`, e);
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: e.message,
-      });
-      throw e;
-    }
+      return callback(err, value);
+    };
+
+    // Reconstruct the makeUnaryRequest call with all validated parameters
+    // This ensures we always pass the full 7 arguments in the correct format
+    const inputArgs = [
+      parsedParams.method,
+      parsedParams.serialize,
+      parsedParams.deserialize,
+      parsedParams.argument,
+      parsedParams.metadata,
+      parsedParams.options,
+      patchedCallback,
+    ];
+
+    const result = original.apply(context, inputArgs);
+
+    // Listen to metadata and status events
+    result.on("metadata", (initialMetadata: any) => {
+      responseMetadataInitial = serializeGrpcMetadata(initialMetadata);
+    });
+
+    result.on("status", (responseStatus: any) => {
+      status = {
+        code: responseStatus.code,
+        details: responseStatus.details,
+        metadata: serializeGrpcMetadata(responseStatus.metadata),
+      };
+      isStatusEmitted = true;
+
+      if (isResponseReceived) {
+        try {
+          const realOutput: GrpcOutputValue = {
+            body: readableResponseBody,
+            metadata: responseMetadataInitial,
+            status,
+            bufferMap: responseBufferMap,
+            jsonableStringMap: responseJsonableStringMap,
+          };
+          SpanUtils.addSpanAttributes(spanInfo.span, {
+            outputValue: realOutput,
+          });
+          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+        } catch (e) {
+          logger.error(`[GrpcInstrumentation] Error adding span attributes in status event:`, e);
+        }
+      }
+
+      if (hasErrorOccurred) {
+        try {
+          const errorOutput = {
+            error: {
+              message: serviceError.message,
+              name: serviceError.name,
+              stack: serviceError.stack,
+            },
+            status,
+            metadata: responseMetadataInitial,
+          };
+          SpanUtils.addSpanAttributes(spanInfo.span, {
+            outputValue: errorOutput,
+          });
+          SpanUtils.endSpan(spanInfo.span, {
+            code: SpanStatusCode.ERROR,
+            message: serviceError.message,
+          });
+        } catch (e) {
+          logger.error(
+            `[GrpcInstrumentation] Error adding span attributes in hasErrorOccurred event:`,
+            e,
+          );
+        }
+      }
+    });
+
+    return result;
+  }
+
+  // Add this helper function to check if it's an error response
+  private isGrpcErrorOutput(result: GrpcOutputValue | GrpcErrorOutput): result is GrpcErrorOutput {
+    return "error" in result;
   }
 
   private async _handleReplayUnaryRequest(
     spanInfo: SpanInfo,
     inputValue: GrpcClientInputValue,
-    inputMeta: BufferMetadata,
     callback: Function,
     MetadataConstructor: any,
   ): Promise<any> {
@@ -533,24 +564,17 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
       return;
     }
 
-    const mockResult = mockData.result;
-
-    // Create event emitter to simulate gRPC call
-    const emitter = Object.assign(new EventEmitter(), {
-      cancel() {},
-      getPeer: () => "0.0.0.0:0000",
-      call: undefined,
-    });
+    const mockResult: GrpcOutputValue | GrpcErrorOutput = mockData.result;
 
     let status: any;
 
     // Check if it's an error response
-    if (mockResult.error) {
-      const { error, status: errorStatus, metadata } = mockResult;
+    if (this.isGrpcErrorOutput(mockResult)) {
+      const { error, status: errorStatus } = mockResult;
       status = {
         code: errorStatus.code,
         details: errorStatus.details,
-        metadata: getRealMetadata(MetadataConstructor, errorStatus.metadata),
+        metadata: deserializeGrpcMetadata(MetadataConstructor, errorStatus.metadata),
       };
 
       const errorObj = Object.assign(new Error(error.message), {
@@ -562,25 +586,32 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
       callback(errorObj);
     } else {
       // Success response
-      const { body, status: successStatus, metadata } = mockResult;
-      // Note: bufferMap and jsonableStringMap would need to be stored in the mock result if needed
-      const bufferMap = {};
-      const jsonableStringMap = {};
+      const { body, status: successStatus, bufferMap, jsonableStringMap } = mockResult;
+      // Use the stored bufferMap and jsonableStringMap from the recorded response
+      const bufferMapToUse = bufferMap || {};
+      const jsonableStringMapToUse = jsonableStringMap || {};
 
       status = {
         code: successStatus.code,
         details: successStatus.details,
-        metadata: getRealMetadata(MetadataConstructor, successStatus.metadata),
+        metadata: deserializeGrpcMetadata(MetadataConstructor, successStatus.metadata),
       };
 
-      const realResponse = getRealPayload(body, bufferMap, jsonableStringMap);
+      const realResponse = deserializeGrpcPayload(body, bufferMapToUse, jsonableStringMapToUse);
       callback(null, realResponse);
     }
+
+    // Create event emitter to simulate gRPC call
+    const emitter = Object.assign(new EventEmitter(), {
+      cancel() {},
+      getPeer: () => "0.0.0.0:0000",
+      call: undefined,
+    });
 
     // Emit events on next tick to simulate async behavior
     process.nextTick(() => {
       if (mockResult.metadata) {
-        emitter.emit("metadata", getRealMetadata(MetadataConstructor, mockResult.metadata));
+        emitter.emit("metadata", deserializeGrpcMetadata(MetadataConstructor, mockResult.metadata));
       }
       emitter.emit("status", status);
     });
@@ -595,251 +626,259 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
     return emitter;
   }
 
-  private _getRegisterPatchFn(version: string) {
-    const self = this;
+  // NOTE: Not using this yet. This is somewhat working, haven't full tested it yet
+  // Adding this would require more changes to replay grpc server calls. Holding off until a customer asks for it
+  // private _getRegisterPatchFn(version: string) {
+  //   const self = this;
 
-    return (originalRegister: Function) => {
-      return function register(this: any, ...args: any[]) {
-        const path = args[0];
-        const handler = args[1];
-        const type = args[4]; // 'unary', 'clientStream', 'serverStream', 'bidi'
+  //   return (originalRegister: Function) => {
+  //     return function register(this: any, ...args: any[]) {
+  //       const path = args[0];
+  //       const handler = args[1];
+  //       const type = args[4]; // 'unary', 'clientStream', 'serverStream', 'bidi'
 
-        // Only instrument unary calls for now
-        if (type !== "unary") {
-          return originalRegister.apply(this, args);
-        }
+  //       // Only instrument unary calls for now
+  //       if (type !== "unary") {
+  //         return originalRegister.apply(this, args);
+  //       }
 
-        // Patch the handler
-        const patchedHandler = self._getHandlerPatchFn(path, version)(handler);
-        const newArgs = [path, patchedHandler, ...args.slice(2)];
+  //       // Patch the handler
+  //       const patchedHandler = self._getHandlerPatchFn(path, version)(handler);
+  //       const newArgs = [path, patchedHandler, ...args.slice(2)];
 
-        if (self.mode === TuskDriftMode.RECORD) {
-          return originalRegister.apply(this, newArgs);
-        } else if (self.mode === TuskDriftMode.REPLAY) {
-          // In replay mode, we still register the handler but it will use mocked data
-          return originalRegister.apply(this, newArgs);
-        } else {
-          return originalRegister.apply(this, args);
-        }
-      };
-    };
-  }
+  //       if (self.mode === TuskDriftMode.RECORD) {
+  //         return originalRegister.apply(this, newArgs);
+  //       } else if (self.mode === TuskDriftMode.REPLAY) {
+  //         // In replay mode, we still register the handler but it will use mocked data
+  //         return originalRegister.apply(this, newArgs);
+  //       } else {
+  //         return originalRegister.apply(this, args);
+  //       }
+  //     };
+  //   };
+  // }
 
-  private _getHandlerPatchFn(path: string, version: string) {
-    const self = this;
+  // NOTE: Not using this yet. This is somewhat working, haven't full tested it yet
+  // Adding this would require more changes to replay grpc server calls. Holding off until a customer asks for it
+  // private _getHandlerPatchFn(path: string, version: string) {
+  //   const self = this;
 
-    return (originalHandler: Function) => {
-      return function handler(this: any, call: any, callback: Function) {
-        const { method, service } = extractServiceAndMethodFromPath(path);
-        const { request: requestBody, metadata: requestMetadata } = call;
+  //   return (originalHandler: Function) => {
+  //     return function handler(this: any, call: any, callback: Function) {
+  //       const { method, service } = extractServiceAndMethodFromPath(path);
+  //       const { request: requestBody, metadata: requestMetadata } = call;
 
-        const { readableBody, bufferMap, jsonableStringMap } =
-          getReadableBodyAndBufferMap(requestBody);
-        const readableMetadata = getReadableMetadata(requestMetadata);
+  //       const { readableBody, bufferMap, jsonableStringMap } =
+  //         getReadableBodyAndBufferMap(requestBody);
+  //       const readableMetadata = getReadableMetadata(requestMetadata);
 
-        const inputValue: GrpcServerInputValue = {
-          method,
-          service,
-          body: readableBody,
-          metadata: readableMetadata,
-        };
+  //       const inputValue: GrpcServerInputValue = {
+  //         method,
+  //         service,
+  //         body: readableBody,
+  //         metadata: readableMetadata,
+  //       };
 
-        const inputMeta: BufferMetadata = {
-          bufferMap,
-          jsonableStringMap,
-        };
+  //       const inputMeta: BufferMetadata = {
+  //         bufferMap,
+  //         jsonableStringMap,
+  //       };
 
-        if (self.mode === TuskDriftMode.RECORD) {
-          return handleRecordMode({
-            originalFunctionCall: () => originalHandler.call(this, call, callback),
-            recordModeHandler: ({ isPreAppStart }) => {
-              return SpanUtils.createAndExecuteSpan(
-                self.mode,
-                () => originalHandler.call(this, call, callback),
-                {
-                  name: "grpc.server.unary",
-                  kind: SpanKind.SERVER,
-                  submodule: "server",
-                  packageType: PackageType.GRPC,
-                  packageName: GRPC_MODULE_NAME,
-                  instrumentationName: self.INSTRUMENTATION_NAME,
-                  inputValue: inputValue,
-                  isPreAppStart,
-                },
-                (spanInfo) => {
-                  return self._handleRecordServerHandler(
-                    spanInfo,
-                    originalHandler,
-                    this,
-                    call,
-                    callback,
-                    version,
-                  );
-                },
-              );
-            },
-            spanKind: SpanKind.SERVER,
-          });
-        } else if (self.mode === TuskDriftMode.REPLAY) {
-          return handleReplayMode({
-            replayModeHandler: () => {
-              return SpanUtils.createAndExecuteSpan(
-                self.mode,
-                () => originalHandler.call(this, call, callback),
-                {
-                  name: "grpc.server.unary",
-                  kind: SpanKind.SERVER,
-                  submodule: "server",
-                  packageType: PackageType.GRPC,
-                  packageName: GRPC_MODULE_NAME,
-                  instrumentationName: self.INSTRUMENTATION_NAME,
-                  inputValue: inputValue,
-                  isPreAppStart: false,
-                },
-                (spanInfo) => {
-                  return self._handleReplayServerHandler(
-                    spanInfo,
-                    originalHandler,
-                    this,
-                    call,
-                    callback,
-                  );
-                },
-              );
-            },
-          });
-        } else {
-          return originalHandler.call(this, call, callback);
-        }
-      };
-    };
-  }
+  //       if (self.mode === TuskDriftMode.RECORD) {
+  //         return handleRecordMode({
+  //           originalFunctionCall: () => originalHandler.call(this, call, callback),
+  //           recordModeHandler: ({ isPreAppStart }) => {
+  //             return SpanUtils.createAndExecuteSpan(
+  //               self.mode,
+  //               () => originalHandler.call(this, call, callback),
+  //               {
+  //                 name: "grpc.server.unary",
+  //                 kind: SpanKind.SERVER,
+  //                 submodule: "server",
+  //                 packageType: PackageType.GRPC,
+  //                 packageName: GRPC_MODULE_NAME,
+  //                 instrumentationName: self.INSTRUMENTATION_NAME,
+  //                 inputValue: inputValue,
+  //                 isPreAppStart,
+  //               },
+  //               (spanInfo) => {
+  //                 return self._handleRecordServerHandler(
+  //                   spanInfo,
+  //                   originalHandler,
+  //                   this,
+  //                   call,
+  //                   callback,
+  //                   version,
+  //                 );
+  //               },
+  //             );
+  //           },
+  //           spanKind: SpanKind.SERVER,
+  //         });
+  //       } else if (self.mode === TuskDriftMode.REPLAY) {
+  //         return handleReplayMode({
+  //           replayModeHandler: () => {
+  //             return SpanUtils.createAndExecuteSpan(
+  //               self.mode,
+  //               () => originalHandler.call(this, call, callback),
+  //               {
+  //                 name: "grpc.server.unary",
+  //                 kind: SpanKind.SERVER,
+  //                 submodule: "server",
+  //                 packageType: PackageType.GRPC,
+  //                 packageName: GRPC_MODULE_NAME,
+  //                 instrumentationName: self.INSTRUMENTATION_NAME,
+  //                 inputValue: inputValue,
+  //                 isPreAppStart: false,
+  //               },
+  //               (spanInfo) => {
+  //                 return self._handleReplayServerHandler(
+  //                   spanInfo,
+  //                   originalHandler,
+  //                   this,
+  //                   call,
+  //                   callback,
+  //                 );
+  //               },
+  //             );
+  //           },
+  //         });
+  //       } else {
+  //         return originalHandler.call(this, call, callback);
+  //       }
+  //     };
+  //   };
+  // }
 
-  private _handleRecordServerHandler(
-    spanInfo: SpanInfo,
-    originalHandler: Function,
-    context: any,
-    call: any,
-    originalCallback: Function,
-    version: string,
-  ): void {
-    const MetadataConstructor = GrpcInstrumentation.metadataStore.get(version) || this.Metadata;
-    let initialMetadata: any = {};
+  // NOTE: Not using this yet. This is somewhat working, haven't full tested it yet
+  // Adding this would require more changes to replay grpc server calls. Holding off until a customer asks for it
+  // private _handleRecordServerHandler(
+  //   spanInfo: SpanInfo,
+  //   originalHandler: Function,
+  //   context: any,
+  //   call: any,
+  //   originalCallback: Function,
+  //   version: string,
+  // ): void {
+  //   const MetadataConstructor = GrpcInstrumentation.metadataStore.get(version) || this.Metadata;
+  //   let initialMetadata: any = {};
 
-    // Wrap sendMetadata to capture initial metadata
-    const originalSendMetadata = call.sendMetadata;
-    call.sendMetadata = function (metadata: any) {
-      initialMetadata = getReadableMetadata(metadata);
-      if (originalSendMetadata) {
-        originalSendMetadata.call(call, metadata);
-      }
-    };
+  //   // Wrap sendMetadata to capture initial metadata
+  //   const originalSendMetadata = call.sendMetadata;
+  //   call.sendMetadata = function (metadata: any) {
+  //     initialMetadata = getReadableMetadata(metadata);
+  //     if (originalSendMetadata) {
+  //       originalSendMetadata.call(call, metadata);
+  //     }
+  //   };
 
-    // Wrap the callback to capture response
-    const patchedCallback = (err: any, response: any, trailingMetadata?: any) => {
-      const metadata = trailingMetadata || new MetadataConstructor();
+  //   // Wrap the callback to capture response
+  //   const patchedCallback = (err: any, response: any, trailingMetadata?: any) => {
+  //     const metadata = trailingMetadata || new MetadataConstructor();
 
-      if (err) {
-        const status = {
-          code: err.code || 2, // 2 = UNKNOWN
-          details: err.details || err.message,
-          metadata: getReadableMetadata(metadata),
-        };
+  //     if (err) {
+  //       const status = {
+  //         code: err.code || 2, // 2 = UNKNOWN
+  //         details: err.details || err.message,
+  //         metadata: getReadableMetadata(metadata),
+  //       };
 
-        const errorOutput = {
-          error: {
-            message: err.message,
-            name: err.name,
-            stack: err.stack,
-          },
-          status,
-          metadata: initialMetadata,
-        };
+  //       const errorOutput = {
+  //         error: {
+  //           message: err.message,
+  //           name: err.name,
+  //           stack: err.stack,
+  //         },
+  //         status,
+  //         metadata: initialMetadata,
+  //       };
 
-        SpanUtils.addSpanAttributes(spanInfo.span, {
-          outputValue: errorOutput,
-        });
-        SpanUtils.endSpan(spanInfo.span, {
-          code: SpanStatusCode.ERROR,
-          message: err.message,
-        });
-      } else {
-        const { readableBody, bufferMap, jsonableStringMap } =
-          getReadableBodyAndBufferMap(response);
+  //       SpanUtils.addSpanAttributes(spanInfo.span, {
+  //         outputValue: errorOutput,
+  //       });
+  //       SpanUtils.endSpan(spanInfo.span, {
+  //         code: SpanStatusCode.ERROR,
+  //         message: err.message,
+  //       });
+  //     } else {
+  //       const { readableBody, bufferMap, jsonableStringMap } =
+  //         getReadableBodyAndBufferMap(response);
 
-        const status = {
-          code: 0, // OK
-          details: "OK",
-          metadata: getReadableMetadata(metadata),
-        };
+  //       const status = {
+  //         code: 0, // OK
+  //         details: "OK",
+  //         metadata: getReadableMetadata(metadata),
+  //       };
 
-        const successOutput: GrpcOutputValue = {
-          body: readableBody,
-          status,
-          metadata: initialMetadata,
-        };
+  //       const successOutput: GrpcOutputValue = {
+  //         body: readableBody,
+  //         status,
+  //         metadata: initialMetadata,
+  //       };
 
-        SpanUtils.addSpanAttributes(spanInfo.span, {
-          outputValue: successOutput,
-        });
-        SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-      }
+  //       SpanUtils.addSpanAttributes(spanInfo.span, {
+  //         outputValue: successOutput,
+  //       });
+  //       SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+  //     }
 
-      return originalCallback(err, response, metadata);
-    };
+  //     return originalCallback(err, response, metadata);
+  //   };
 
-    try {
-      originalHandler.call(context, call, patchedCallback);
-    } catch (e: any) {
-      logger.error(`[GrpcInstrumentation] Error in server handler:`, e);
-      const status = {
-        code: 2, // UNKNOWN
-        details: `Server method handler threw error ${e.message}`,
-        metadata: {},
-      };
+  //   try {
+  //     originalHandler.call(context, call, patchedCallback);
+  //   } catch (e: any) {
+  //     logger.error(`[GrpcInstrumentation] Error in server handler:`, e);
+  //     const status = {
+  //       code: 2, // UNKNOWN
+  //       details: `Server method handler threw error ${e.message}`,
+  //       metadata: {},
+  //     };
 
-      const errorOutput = {
-        error: {
-          message: e.message,
-          name: e.name,
-          stack: e.stack,
-        },
-        status,
-        metadata: initialMetadata,
-      };
+  //     const errorOutput = {
+  //       error: {
+  //         message: e.message,
+  //         name: e.name,
+  //         stack: e.stack,
+  //       },
+  //       status,
+  //       metadata: initialMetadata,
+  //     };
 
-      SpanUtils.addSpanAttributes(spanInfo.span, {
-        outputValue: errorOutput,
-      });
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: e.message,
-      });
+  //     SpanUtils.addSpanAttributes(spanInfo.span, {
+  //       outputValue: errorOutput,
+  //     });
+  //     SpanUtils.endSpan(spanInfo.span, {
+  //       code: SpanStatusCode.ERROR,
+  //       message: e.message,
+  //     });
 
-      throw e;
-    }
-  }
+  //     throw e;
+  //   }
+  // }
 
-  private _handleReplayServerHandler(
-    spanInfo: SpanInfo,
-    originalHandler: Function,
-    context: any,
-    call: any,
-    originalCallback: Function,
-  ): void {
-    // In replay mode, we still execute the handler to maintain server behavior
-    // but the downstream calls will be mocked
-    try {
-      originalHandler.call(context, call, originalCallback);
-    } catch (e: any) {
-      logger.error(`[GrpcInstrumentation] Error in replay server handler:`, e);
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: e.message,
-      });
-      throw e;
-    }
-  }
+  // NOTE: Not using this yet. This is somewhat working, haven't full tested it yet
+  // Adding this would require more changes to replay grpc server calls. Holding off until a customer asks for it
+  // private _handleReplayServerHandler(
+  //   spanInfo: SpanInfo,
+  //   originalHandler: Function,
+  //   context: any,
+  //   call: any,
+  //   originalCallback: Function,
+  // ): void {
+  //   // In replay mode, we still execute the handler to maintain server behavior
+  //   // but the downstream calls will be mocked
+  //   try {
+  //     originalHandler.call(context, call, originalCallback);
+  //   } catch (e: any) {
+  //     logger.error(`[GrpcInstrumentation] Error in replay server handler:`, e);
+  //     SpanUtils.endSpan(spanInfo.span, {
+  //       code: SpanStatusCode.ERROR,
+  //       message: e.message,
+  //     });
+  //     throw e;
+  //   }
+  // }
 
   private _getWaitForReadyPatchFn() {
     const self = this;
