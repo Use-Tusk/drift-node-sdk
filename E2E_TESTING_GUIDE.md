@@ -9,6 +9,7 @@ The SDK instruments various Node.js libraries (http, https, fetch, pg, postgres,
 ## Purpose of This Guide
 
 This guide provides step-by-step instructions for iterating on SDK instrumentations when debugging E2E tests. Use this when:
+
 - An E2E test endpoint is failing
 - You need to debug or fix instrumentation code
 - You want to verify that SDK changes work correctly
@@ -18,6 +19,7 @@ This guide provides step-by-step instructions for iterating on SDK instrumentati
 E2E tests are located in `src/instrumentation/libraries/{library}/e2e-tests/{module-type}-{library}/`:
 
 Each test directory contains:
+
 - `src/` - Test application source code
 - `Dockerfile` - Container configuration
 - `docker-compose.yml` - Container orchestration
@@ -33,6 +35,7 @@ cd src/instrumentation/libraries/{library}/e2e-tests/{test-name}
 ```
 
 Example:
+
 ```bash
 cd src/instrumentation/libraries/http/e2e-tests/cjs-http
 ```
@@ -65,6 +68,7 @@ docker-compose exec -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm ru
 ```
 
 Wait a few seconds for the server to fully start (5-10 seconds recommended):
+
 ```bash
 sleep 5
 ```
@@ -111,11 +115,13 @@ docker-compose exec -T app tusk run --print --output-format "json" --enable-serv
 ```
 
 **Flags explained:**
+
 - `--print` - Print test results to stdout
 - `--output-format "json"` - Output results in JSON format
 - `--enable-service-logs` - Write detailed service logs to `.tusk/logs/` for debugging
 
 To see all available flags, run:
+
 ```bash
 tusk run --help
 ```
@@ -123,6 +129,7 @@ tusk run --help
 **Interpreting Results:**
 
 The output will be JSON with test results:
+
 ```json
 [
   {
@@ -156,9 +163,11 @@ When you need to fix instrumentation code:
 
 1. **Make changes to the SDK source code**
 2. **Rebuild the SDK** from the repository root:
+
    ```bash
    npm run build
    ```
+
 3. **NO need to rebuild Docker containers** - the SDK is mounted as a volume, so changes propagate automatically
 4. **Clean up traces and logs** (Step 2)
 5. **Restart the server in RECORD mode** (Step 4)
@@ -182,10 +191,11 @@ The Docker Compose configuration mounts the SDK source code as a read-only volum
 
 ```yaml
 volumes:
-  - ../../../../../..:/sdk:ro  # SDK source mounted at /sdk
+  - ../../../../../..:/sdk:ro # SDK source mounted at /sdk
 ```
 
 This means:
+
 - ✅ **SDK changes propagate automatically** - no need to rebuild containers
 - ✅ **Fast iteration** - just run `npm run build` in the SDK root
 - ❌ **Must rebuild SDK** - changes won't take effect until you run `npm run build`
@@ -212,6 +222,7 @@ Each E2E test directory has a `run.sh` script that automates the entire workflow
 ```
 
 This script:
+
 1. Cleans traces and logs
 2. Starts containers
 3. Starts server in RECORD mode

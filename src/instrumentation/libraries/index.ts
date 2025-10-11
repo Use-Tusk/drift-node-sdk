@@ -10,3 +10,4 @@ export * from "./jsonwebtoken";
 export * from "./jwks-rsa";
 export * from "./fetch";
 export * from "./ioredis";
+export * from "./grpc";

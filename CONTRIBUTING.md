@@ -96,22 +96,27 @@ An instrumentation needs custom ESM support if it:
 **Why**: In ESM, default exports are in the `.default` property of the namespace object, not directly accessible.
 
 **Example** (postgres):
+
 - **CommonJS**: `const postgres = require('postgres')` → `postgres` IS the function
 - **ESM**: `import postgres from 'postgres'` → `postgres.default` IS the function
 
 **Detection**:
+
 ```typescript
-const isESM = (moduleExports as any)[Symbol.toStringTag] === 'Module';
+const isESM = (moduleExports as any)[Symbol.toStringTag] === "Module";
 ```
 
 **Solution**:
+
 ```typescript
 if (isESM) {
   // Wrap the .default property
-  this._wrap(moduleExports, 'default', wrapper);
+  this._wrap(moduleExports, "default", wrapper);
 } else {
   // Create wrapped function and return it
-  const wrappedFn = function(...args) { /* ... */ };
+  const wrappedFn = function (...args) {
+    /* ... */
+  };
   // Copy all properties...
   return wrappedFn;
 }
@@ -145,7 +150,8 @@ Each instrumentation typically:
 We have unit tests and integration tests with [ava](https://github.com/avajs/ava).
 Some integration tests (pg, mongo, etc.) require external dependencies.
 A docker compose is provided for you to get these dependencies up easily:
-```
+
+```yaml
 docker compose -f docker-compose.test.yml up -d --wait
 ```
 
@@ -153,11 +159,13 @@ After it's done setting up you can run `npm test` as usual.
 You can leave it up, and tests should clean up after themselves so that we can
 leave these services up during development without restarting all the time.
 To bring them down, run
-```
+
+```yaml
 docker compose -f docker-compose.test.yml down
 ```
 
 Some important notes during testing, especially integration tests:
+
 - The tusk sdk needs to be initialized before importing anything that is going
   to be patched.
 - Since the TuskDrift object is a singleton, each integration test (or at least
@@ -173,13 +181,13 @@ Some important notes during testing, especially integration tests:
 The SDK includes comprehensive end-to-end (E2E) tests that verify instrumentations work correctly in real Docker environments. These tests record actual network traffic and replay it to ensure consistent behavior.
 
 **Quick Overview:**
+
 - E2E tests are located in `src/instrumentation/libraries/{library}/e2e-tests/`
 - Each test runs in a Docker container with the full SDK
 - Tests record network interactions, then replay them to verify correctness
 - Use these tests when debugging instrumentation issues or adding new features
 
 **For detailed instructions on running and debugging E2E tests, see the [E2E Testing Guide](./E2E_TESTING_GUIDE.md).**
-
 
 #### Code Quality
 
@@ -203,12 +211,14 @@ The SDK communicates with the Tusk CLI using socket connections, supporting both
 ### Connection Types
 
 #### Unix Socket (Default)
+
 - **Use case**: Local development and non-containerized environments
 - **How it works**: SDK connects to the CLI via a Unix domain socket file
 - **Environment variable**: `TUSK_MOCK_SOCKET` (optional, defaults to `/tmp/tusk-connect.sock`)
 - **Benefits**: Lower overhead, faster communication for same-machine connections
 
 #### TCP Socket (Docker/Remote)
+
 - **Use case**: Dockerized applications where Unix sockets can't be shared
 - **How it works**: SDK connects to the CLI via TCP (host:port)
 - **Environment variables**:

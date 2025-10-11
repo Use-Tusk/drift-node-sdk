@@ -19,6 +19,7 @@ For comprehensive guides and API reference, visit our [full documentation](https
 Tusk Drift currently supports the following packages and versions:
 
 - **HTTP/HTTPS**: All versions (Node.js built-in)
+- **GRPC**: `@grpc/grpc-js@1.x` (Outbound requests only)
 - **PG**: `pg@8.x`, `pg-pool@2.x-3.x`
 - **Postgres**: `postgres@3.x`
 - **MySQL**: `mysql2@3.x`
