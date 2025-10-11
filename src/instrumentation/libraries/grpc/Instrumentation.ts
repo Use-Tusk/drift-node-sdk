@@ -384,9 +384,10 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
     let isResponseReceived = false;
     let isStatusEmitted = false;
     let hasErrorOccurred = false;
+    let isSpanCompleted = false;
     let readableResponseBody: any;
     let responseBufferMap: Record<string, { value: string; encoding: string }> = {};
-    let responseJsonableStringMap: Record<string, string> = {};
+    let responseJsonableStringMap: Record<string, any> = {};
     let status: {
       code: number;
       details: string;
@@ -394,6 +395,30 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
     };
     let responseMetadataInitial: any = {};
     let serviceError: any;
+
+    /**
+     * Completes the span exactly once, regardless of which event fires first.
+     * gRPC's asynchronous nature means the callback and status event can fire in any order,
+     * so we need to guard against double span completion.
+     */
+    const completeSpan = (output: any, statusCode: SpanStatusCode, errorMessage?: string) => {
+      if (isSpanCompleted) {
+        return; // Span already completed, prevent double-ending
+      }
+      isSpanCompleted = true;
+
+      try {
+        SpanUtils.addSpanAttributes(spanInfo.span, {
+          outputValue: output,
+        });
+        SpanUtils.endSpan(spanInfo.span, {
+          code: statusCode,
+          message: errorMessage,
+        });
+      } catch (e) {
+        logger.error(`[GrpcInstrumentation] Error completing span:`, e);
+      }
+    };
 
     // Wrap the callback to capture response
     const patchedCallback = (err: any, value: any) => {
@@ -417,10 +442,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             bufferMap: responseBufferMap,
             jsonableStringMap: responseJsonableStringMap,
           };
-          SpanUtils.addSpanAttributes(spanInfo.span, {
-            outputValue: realOutput,
-          });
-          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+          completeSpan(realOutput, SpanStatusCode.OK);
         } else if (isStatusEmitted && hasErrorOccurred) {
           const errorOutput: GrpcErrorOutput = {
             error: {
@@ -431,19 +453,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             status,
             metadata: responseMetadataInitial,
           };
-          SpanUtils.addSpanAttributes(spanInfo.span, {
-            outputValue: errorOutput,
-          });
-          SpanUtils.endSpan(spanInfo.span, {
-            code: SpanStatusCode.ERROR,
-            message: serviceError.message,
-          });
-        } else {
-          logger.error(`[GrpcInstrumentation] Unexpected condition in patchedCallback`, {
-            isStatusEmitted,
-            isResponseReceived,
-            hasErrorOccurred,
-          });
+          completeSpan(errorOutput, SpanStatusCode.ERROR, serviceError.message);
         }
       } catch (e) {
         logger.error(`[GrpcInstrumentation] Error in patchedCallback:`, e);
@@ -480,47 +490,25 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
       isStatusEmitted = true;
 
       if (isResponseReceived) {
-        try {
-          const realOutput: GrpcOutputValue = {
-            body: readableResponseBody,
-            metadata: responseMetadataInitial,
-            status,
-            bufferMap: responseBufferMap,
-            jsonableStringMap: responseJsonableStringMap,
-          };
-          SpanUtils.addSpanAttributes(spanInfo.span, {
-            outputValue: realOutput,
-          });
-          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-        } catch (e) {
-          logger.error(`[GrpcInstrumentation] Error adding span attributes in status event:`, e);
-        }
-      }
-
-      if (hasErrorOccurred) {
-        try {
-          const errorOutput = {
-            error: {
-              message: serviceError.message,
-              name: serviceError.name,
-              stack: serviceError.stack,
-            },
-            status,
-            metadata: responseMetadataInitial,
-          };
-          SpanUtils.addSpanAttributes(spanInfo.span, {
-            outputValue: errorOutput,
-          });
-          SpanUtils.endSpan(spanInfo.span, {
-            code: SpanStatusCode.ERROR,
+        const realOutput: GrpcOutputValue = {
+          body: readableResponseBody,
+          metadata: responseMetadataInitial,
+          status,
+          bufferMap: responseBufferMap,
+          jsonableStringMap: responseJsonableStringMap,
+        };
+        completeSpan(realOutput, SpanStatusCode.OK);
+      } else if (hasErrorOccurred) {
+        const errorOutput: GrpcErrorOutput = {
+          error: {
             message: serviceError.message,
-          });
-        } catch (e) {
-          logger.error(
-            `[GrpcInstrumentation] Error adding span attributes in hasErrorOccurred event:`,
-            e,
-          );
-        }
+            name: serviceError.name,
+            stack: serviceError.stack,
+          },
+          status,
+          metadata: responseMetadataInitial,
+        };
+        completeSpan(errorOutput, SpanStatusCode.ERROR, serviceError.message);
       }
     });
 

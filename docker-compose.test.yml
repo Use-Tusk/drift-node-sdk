@@ -53,11 +53,11 @@ services:
       retries: 5
 
   grpc-server:
-    image: node:20-alpine
+    image: node:20
     working_dir: /workspace
     volumes:
       - .:/workspace
-    command: sh -c "apk add --no-cache busybox-extras && node /workspace/src/instrumentation/libraries/grpc/integration-tests/server.cjs"
+    command: sh -c "apt-get update && apt-get install -y netcat-openbsd && node /workspace/src/instrumentation/libraries/grpc/integration-tests/server.cjs"
     ports:
       - "50051:50051"
     healthcheck:
