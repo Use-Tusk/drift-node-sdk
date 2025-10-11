@@ -421,9 +421,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             outputValue: realOutput,
           });
           SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-        }
-
-        if (isStatusEmitted && hasErrorOccurred) {
+        } else if (isStatusEmitted && hasErrorOccurred) {
           const errorOutput: GrpcErrorOutput = {
             error: {
               message: serviceError.message,
@@ -439,6 +437,12 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
           SpanUtils.endSpan(spanInfo.span, {
             code: SpanStatusCode.ERROR,
             message: serviceError.message,
+          });
+        } else {
+          logger.error(`[GrpcInstrumentation] Unexpected condition in patchedCallback`, {
+            isStatusEmitted,
+            isResponseReceived,
+            hasErrorOccurred,
           });
         }
       } catch (e) {
