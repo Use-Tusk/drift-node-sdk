@@ -9,4 +9,5 @@ export const TuskDriftInstrumentationModuleNames = [
   "jwks-rsa",
   "mysql2",
   "ioredis",
+  "@grpc/grpc-js",
 ];
