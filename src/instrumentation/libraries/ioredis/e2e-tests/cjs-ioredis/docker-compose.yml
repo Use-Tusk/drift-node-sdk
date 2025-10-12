@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    platform: linux/arm64
+    build:
+      context: ../../../../../..
+      dockerfile: src/instrumentation/libraries/ioredis/e2e-tests/cjs-ioredis/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      # Mount SDK source for hot reload (this is what package.json expects)
+      - ../../../../../..:/sdk:ro
+      # Mount .tusk folder to persist traces
+      - ./.tusk:/app/.tusk
+      # Mount app source for development
+      - ./src:/app/src
+    working_dir: /app
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Keep container running without starting the app
+    # The CLI will control starting/stopping the app
+    command: tail -f /dev/null

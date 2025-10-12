@@ -13,6 +13,8 @@ import {
   JwksRsaInstrumentation,
   EnvInstrumentation,
   PostgresInstrumentation,
+  Mysql2Instrumentation,
+  IORedisInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
 import { NodeSDK } from "@opentelemetry/sdk-node";
@@ -203,6 +205,16 @@ export class TuskDriftCore {
       enabled: true,
       mode: this.mode,
     });
+
+    new Mysql2Instrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
+
+    new IORedisInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
   }
 
   private initializeTracing({ baseDirectory }: { baseDirectory: string }): void {
@@ -260,9 +272,9 @@ export class TuskDriftCore {
       this.initParams.env = nodeEnv;
     }
 
-    // Initialize logging with provided level or default to 'warn'
+    // Initialize logging with provided level or default to 'silent'
     initializeGlobalLogger({
-      logLevel: initParams.logLevel || "info",
+      logLevel: initParams.logLevel || "silent",
       prefix: "TuskDrift",
     });
 
@@ -306,31 +318,48 @@ export class TuskDriftCore {
     this.communicator = new ProtobufCommunicator();
 
     if (this.mode === TuskDriftMode.REPLAY) {
-      const socketPath =
-        OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_SOCKET") ||
-        path.join(os.tmpdir(), "tusk-connect.sock");
+      // Check if TCP mode or Unix socket mode
+      const mockHost = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_HOST");
+      const mockPort = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_PORT");
+      const mockSocket = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_SOCKET");
 
-      // Check if socket exists and is ready
-      try {
-        fs.accessSync(socketPath, fs.constants.F_OK);
-        const stats = fs.statSync(socketPath);
-        if (!stats.isSocket()) {
-          throw new Error(`Path exists but is not a socket: ${socketPath}`);
+      let connectionInfo: { socketPath: string } | { host: string; port: number };
+
+      if (mockHost && mockPort) {
+        // TCP mode (Docker)
+        connectionInfo = {
+          host: mockHost,
+          port: parseInt(mockPort, 10),
+        };
+        logger.debug(`Using TCP connection to CLI: ${mockHost}:${mockPort}`);
+      } else {
+        // Unix socket mode (default)
+        const socketPath = mockSocket || path.join(os.tmpdir(), "tusk-connect.sock");
+
+        // Check if socket exists and is ready
+        try {
+          fs.accessSync(socketPath, fs.constants.F_OK);
+          const stats = fs.statSync(socketPath);
+          if (!stats.isSocket()) {
+            throw new Error(`Path exists but is not a socket: ${socketPath}`);
+          }
+          logger.debug("Socket found and verified at", socketPath);
+        } catch (error) {
+          if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+            throw new Error(`Socket not found at ${socketPath}. Make sure Tusk CLI is running.`);
+          }
+          throw new Error(
+            `Socket check failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+          );
         }
-        logger.debug("Socket found and verified at", socketPath);
-      } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-          throw new Error(`Socket not found at ${socketPath}. Make sure Tusk CLI is running.`);
-        }
-        throw new Error(
-          `Socket check failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-        );
+
+        connectionInfo = { socketPath };
       }
 
       // Start connection early for replay mode (runs in parallel with other initialization)
       // This will be awaited when the first requestAsyncMock is called
       this.cliConnectionPromise = this.communicator
-        .connect(socketPath, this.config.service?.id || "unknown")
+        .connect(connectionInfo, this.config.service?.id || "unknown")
         .then(() => {
           this.isConnectedWithCLI = true;
           logger.debug("SDK successfully connected to CLI");

@@ -25,7 +25,9 @@ import { SpanKind } from "@opentelemetry/api";
 import { SpanUtils } from "../../../../core/tracing/SpanUtils";
 import { TuskDriftMode } from "../../../../core/TuskDrift";
 
-// TODO: This does not work with import.
+// Use require() instead of import to ensure the modules under test is loaded AFTER TuskDrift initialization.
+// ESM imports are hoisted and executed before any other code, but we need the instrumentation
+// to be set up first before the modules under test is loaded and patched.
 const jwt = require("jsonwebtoken");
 
 const TEST_SECRET = "test-secret-key-for-jwt-testing-12345";

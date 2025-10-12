@@ -7,4 +7,6 @@ export const TuskDriftInstrumentationModuleNames = [
   "graphql",
   "jsonwebtoken",
   "jwks-rsa",
+  "mysql2",
+  "ioredis",
 ];

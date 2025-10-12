@@ -38,6 +38,8 @@ export interface HttpClientOutputValue {
   body?: string;
   bodySize?: number;
   bodyProcessingError?: string;
+  errorName?: string
+  errorMessage?: string
   [key: string]: unknown;
 }
 

@@ -168,6 +168,18 @@ Some important notes during testing, especially integration tests:
 - Know the diff between `devDependency` and `dependency` -- most libraries that
   you need for testing (axios, express) should go in `devDependency`.
 
+#### E2E Testing
+
+The SDK includes comprehensive end-to-end (E2E) tests that verify instrumentations work correctly in real Docker environments. These tests record actual network traffic and replay it to ensure consistent behavior.
+
+**Quick Overview:**
+- E2E tests are located in `src/instrumentation/libraries/{library}/e2e-tests/`
+- Each test runs in a Docker container with the full SDK
+- Tests record network interactions, then replay them to verify correctness
+- Use these tests when debugging instrumentation issues or adding new features
+
+**For detailed instructions on running and debugging E2E tests, see the [E2E Testing Guide](./E2E_TESTING_GUIDE.md).**
+
 
 #### Code Quality
 
@@ -183,6 +195,26 @@ Some important notes during testing, especially integration tests:
 4. Add/update documentation
 5. Test your changes locally
 6. Submit a pull request
+
+## SDK Architecture: Socket Communication
+
+The SDK communicates with the Tusk CLI using socket connections, supporting both Unix sockets and TCP sockets depending on the environment.
+
+### Connection Types
+
+#### Unix Socket (Default)
+- **Use case**: Local development and non-containerized environments
+- **How it works**: SDK connects to the CLI via a Unix domain socket file
+- **Environment variable**: `TUSK_MOCK_SOCKET` (optional, defaults to `/tmp/tusk-connect.sock`)
+- **Benefits**: Lower overhead, faster communication for same-machine connections
+
+#### TCP Socket (Docker/Remote)
+- **Use case**: Dockerized applications where Unix sockets can't be shared
+- **How it works**: SDK connects to the CLI via TCP (host:port)
+- **Environment variables**:
+  - `TUSK_MOCK_HOST` - CLI host address (e.g., `host.docker.internal`)
+  - `TUSK_MOCK_PORT` - CLI port number (e.g., `9001`)
+- **Benefits**: Works across container boundaries and remote connections
 
 ## Getting Help
 
