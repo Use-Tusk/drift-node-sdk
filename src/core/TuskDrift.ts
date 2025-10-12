@@ -33,10 +33,9 @@ import {
   TuskConfig,
   OriginalGlobalUtils,
 } from "./utils";
-import { TransformConfigs } from "../instrumentation/libraries/http/HttpTransformEngine";
+import { TransformConfigs } from "../instrumentation/libraries/types";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { Resource } from "@opentelemetry/resources";
-
 
 export interface InitParams {
   apiKey?: string;
@@ -171,6 +170,7 @@ export class TuskDriftCore {
     new FetchInstrumentation({
       enabled: true,
       mode: this.mode,
+      transforms,
     });
 
     new TcpInstrumentation({
@@ -248,16 +248,18 @@ export class TuskDriftCore {
     });
 
     // Add your custom span processor
-    tracerProvider.addSpanProcessor(new BatchSpanProcessor(this.spanExporter, {
-      // Maximum queue size before spans are dropped, default 2048
-      maxQueueSize: 2048,
-      // Maximum batch size per export, default 512
-      maxExportBatchSize: 512,
-      // Interval between exports, default 5s
-      scheduledDelayMillis: 2000,
-      // Max time for export before timeout, default 30s
-      exportTimeoutMillis: 30000,
-    }));
+    tracerProvider.addSpanProcessor(
+      new BatchSpanProcessor(this.spanExporter, {
+        // Maximum queue size before spans are dropped, default 2048
+        maxQueueSize: 2048,
+        // Maximum batch size per export, default 512
+        maxExportBatchSize: 512,
+        // Interval between exports, default 5s
+        scheduledDelayMillis: 2000,
+        // Max time for export before timeout, default 30s
+        exportTimeoutMillis: 30000,
+      }),
+    );
 
     // Register the tracer provider
     tracerProvider.register();
