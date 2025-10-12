@@ -4,11 +4,10 @@ import { TuskDrift } from "../../../../core/TuskDrift";
 import { TransformConfigs } from "../../types";
 
 const transforms: TransformConfigs = {
-  http: [
+  fetch: [
     {
       matcher: {
         direction: "outbound",
-        host: "127\\.0\\.0\\.1",
         pathPattern: "/api/sensitive",
         fullBody: true,
       },
@@ -18,7 +17,7 @@ const transforms: TransformConfigs = {
 };
 
 TuskDrift.initialize({
-  apiKey: "test-api-key-outbound-drop",
+  apiKey: "test-api-key-fetch-drop",
   env: "test",
   logLevel: "silent",
   transforms,
@@ -49,14 +48,14 @@ test.after.always(async () => {
   clearRegisteredInMemoryAdapters();
 });
 
-test("should drop outbound span data but keep span present when calling dropped service", async (t) => {
+test("should drop fetch span data but keep span present when calling dropped endpoint", async (t) => {
   const postData = JSON.stringify({ userId: 123 });
 
   const response = await new Promise<{ statusCode: number; data: any }>((resolve, reject) => {
     const options = {
       hostname: "127.0.0.1",
       port: servers.mainServerPort,
-      path: "/call-service-a-sensitive",
+      path: "/call-sensitive",
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -84,29 +83,30 @@ test("should drop outbound span data but keep span present when calling dropped 
 
   const allSpans = spanAdapter.getAllSpans();
 
-  const outboundSpans = allSpans.filter(
-    (span) => span.kind === SpanKind.CLIENT && span.instrumentationName === "HttpInstrumentation",
+  const fetchSpans = allSpans.filter(
+    (span) => span.kind === SpanKind.CLIENT && span.instrumentationName === "FetchInstrumentation",
   );
 
-  t.truthy(outboundSpans.length > 0, "Outbound spans not captured in test environment");
+  t.truthy(fetchSpans.length > 0, "Fetch spans not captured in test environment");
 
-  // Since the span is dropped, we can't identify it by path (which is dropped)
-  // Instead, look for a span with drop action in transform metadata
-  const droppedSpan = outboundSpans.find((span) => {
+  // Find dropped span by checking for drop action in transform metadata
+  const droppedSpan = fetchSpans.find((span) => {
     const hasDropAction = span.transformMetadata?.actions?.some((action) => action.type === "drop");
     return hasDropAction;
   });
 
-  t.truthy(droppedSpan, "Could not find dropped outbound span");
+  t.truthy(droppedSpan, "Could not find dropped fetch span");
 
   // Span should exist but with empty/cleared input/output values
   const inputValue = droppedSpan!.inputValue as any;
+  t.is(inputValue.url, "", "Expected url to be empty string");
   t.is(inputValue.method, "", "Expected method to be empty string");
   t.deepEqual(inputValue.headers, {}, "Expected headers to be empty object");
-  t.is(inputValue.path, undefined, "Expected path to be undefined");
   t.is(inputValue.body, undefined, "Expected body to be undefined");
 
   const outputValue = droppedSpan!.outputValue as any;
+  t.is(outputValue.status, 0, "Expected status to be 0");
+  t.is(outputValue.statusText, "", "Expected statusText to be empty string");
   t.deepEqual(outputValue.headers, {}, "Expected headers to be empty object");
   t.is(outputValue.body, undefined, "Expected body to be undefined");
 

@@ -1,9 +1,9 @@
 Here we talk about PII redaction rules.
-Tentatively I have just called them "filters".
+These are called "transforms".
 
 ## Proposed syntax
 
-Each filter is made up of two parts: a matcher, and a transform.
+Each transform is made up of two parts: a matcher, and an action.
 
 **Matcher**
 
@@ -29,7 +29,7 @@ This configuration syntax was chosen mainly because of simplicity.
 It is easy to explain, and to understand.
 The thing that matches, is the thing that satisfies all conditions at the same
 time.
-Some pseudo code gets the idea across
+Some pseudo code gets the idea across (although it's not that simple)
 ```
 def matched(matcher, method, path, jsonBody, queryParams, etc...):
   if matcher.pathPattern:
@@ -53,44 +53,23 @@ Look at the first code example.
 It is currently ambiguous if we want to redact the path or the JSON body.
 Common sense tells us it is the body, but that still leaves room for confusion.
 What if both a query param and a json path is provided?
-Here is a quick set of rules to make it work and still be common sensical
 enough:
-- We can split matches into "common fields" and "matching fields".
+
+Therefore,
+- We split matches into "common fields" and "matching fields".
 - There can only be one matching field. There can be many common fields.
-- Common fields are like `method`, `pathPattern`, etc.
-- Matching fields are like `jsonPath`, `queryPath`, etc.
-- Common fields are things nobody really cares to redact. They're just used to
-narrow down the search.
-- Matching fields are things that will be redacted. Only one is allowed to be
-present so that it's clear what is going to be modified.
+- Common fields are fields you don't redact, and only use for matching, like `method`, `pathPattern`, etc.
+- Matching fields are the other fields like `jsonPath`, `queryPath`, etc. Only
+  one is present so that it's clear what is going to be modified.
 
-Available common fields:
-- `method`
-- `pathPattern`
-- `host` (have to investigate what the SDK sees, `127.0.0.1` might not always
-represent localhost for example)
+**Actions**
 
-Available matching fields:
-- `jsonPath`
-- `queryPath`
-- `headerPath`
-
-Questions:
-- Does this cover most (sensible) cases? Are most things matchable with this
-syntax?
-- Is this intuitive enough?
-
-
-**Transforms**
-
-Transforms specify how to mutate the span.
-This is relatively simple.
-There only need to be three kinds of transforms:
+Actions specify how to mutate the span.
 1. Redact. This replaces the value with a hash.
 2. Masking. This replaces the value with a repeated (or random) character. This
    satisfies the use case of fixed width strings (phone numbers, zip codes,
 etc.)
-3. Custom. User specifies a string to act as replacement. This can be used for
+3. Replace. User specifies a string to act as replacement. This can be used for
    things like testing token, etc.
 4. Drop. Just drops the whole span.
 
@@ -102,7 +81,7 @@ An example config:
     "method": "POST",
     "jsonPath": "$.user.password"
   },
-  "transform": {
+  "action": {
     "type": "redact"
   }
 }
@@ -111,26 +90,42 @@ An example config:
 ## Configuration
 
 Each instrumentation will have their own configuration.
-The user will specify this during `initialize` under the `<xyz>Config` field,
-where xyz is the instrumentation module they're configuring.
-For example, `httpConfig` holds stuff regarding the HTTP instrumentation (not
-necessarily just filters!).
-The big class then just injects the configurations to the right instrumentation
-module.
-
-One idea I had is, since it's all in code anyway, we could just have users
-provide functions that we call.
-That's great iff we don't want to be able to serialize configs.
-In other words, we can consider doing it this way only if
-- We don't really need users to provide a config file, just do it in code
-- We don't really need to save the config file (for example to share with other
-  services)
-Which actually we can get by with?
-
-## Refined Transform Configuration Format
+This would ideally sit in the config.yaml, though its also possible to supply it
+as an argument to `initialize()`.
 
 ```typescript
-
+// During SDK initialization
+TuskDrift.initialize({
+  httpConfig: {
+    filters: [
+      // Inbound request filters
+      {
+        matcher: {
+          direction: "inbound",
+          method: "POST",
+          pathPattern: "/api/auth/*",
+          jsonPath: "$.password"
+        },
+        action: { type: "redact" }
+      }
+    ]
+  },
+  pgConfig: {
+    filters: [
+      // Database query filters
+      {
+        matcher: {
+          direction: "outbound",
+          jsonPath: "$.query"
+        },
+        action: {
+          type: "replace",
+          replaceWith: "SELECT * FROM users WHERE id = ?"
+        }
+      }
+    ]
+  }
+});
 ```
 
 ## Examples
@@ -146,7 +141,7 @@ Which actually we can get by with?
     "pathPattern": "/api/auth/login",
     "jsonPath": "$.password"
   },
-  "transform": {
+  "action": {
     "type": "redact"
   }
 }
@@ -163,16 +158,15 @@ Which actually we can get by with?
     "pathPattern": "/api/user/lookup",
     "queryParam": "ssn"
   },
-  "transform": {
+  "action": {
     "type": "mask",
     "maskChar": "X",
-    "preserveLength": true
   }
 }
 ```
 
 **Before**: `/api/user/lookup?ssn=123-45-6789&name=john`
-**After**: `/api/user/lookup?ssn=XXX-XX-XXXX&name=john`
+**After**: `/api/user/lookup?ssn=XXXXXXXXXXX&name=john`
 
 #### Example: Replace
 ```json
@@ -181,7 +175,7 @@ Which actually we can get by with?
     "direction": "inbound",
     "headerName": "Authorization"
   },
-  "transform": {
+  "action": {
     "type": "replace",
     "replaceWith": "Bearer test-token-12345"
   }
@@ -198,7 +192,7 @@ Which actually we can get by with?
     "direction": "inbound",
     "pathPattern": "/admin/internal/*"
   },
-  "transform": {
+  "action": {
     "type": "drop"
   }
 }
@@ -217,7 +211,7 @@ Which actually we can get by with?
     "pathPattern": "/api/user/profile",
     "jsonPath": "$.data.creditCard"
   },
-  "transform": {
+  "action": {
     "type": "redact"
   }
 }
@@ -234,10 +228,9 @@ Which actually we can get by with?
     "pathPattern": "/api/users",
     "jsonPath": "$.users[*].phone"
   },
-  "transform": {
+  "action": {
     "type": "mask",
     "maskChar": "*",
-    "preserveLength": false
   }
 }
 ```
@@ -255,7 +248,7 @@ Which actually we can get by with?
     "host": "api.stripe.com",
     "headerName": "Authorization"
   },
-  "transform": {
+  "action": {
     "type": "redact"
   },
   "description": "Redact Stripe API keys"
@@ -274,16 +267,15 @@ Which actually we can get by with?
     "method": "POST",
     "jsonPath": "$.customer.creditCard.number"
   },
-  "transform": {
+  "action": {
     "type": "mask",
     "maskChar": "*",
-    "preserveLength": true
   }
 }
 ```
 
 **Before**: `{"customer": {"creditCard": {"number": "4111111111111111"}}}`
-**After**: `{"customer": {"creditCard": {"number": "************1111"}}}`
+**After**: `{"customer": {"creditCard": {"number": "****************"}}}`
 
 #### Example: Replace
 ```json
@@ -293,7 +285,7 @@ Which actually we can get by with?
     "host": "database.internal.com",
     "jsonPath": "$.auth.password"
   },
-  "transform": {
+  "action": {
     "type": "replace",
     "replaceWith": "test-db-password"
   }
@@ -313,7 +305,7 @@ Which actually we can get by with?
     "host": "api.external-service.com",
     "jsonPath": "$.users[*].email"
   },
-  "transform": {
+  "action": {
     "type": "redact"
   }
 }
@@ -330,58 +322,31 @@ Which actually we can get by with?
     "host": "api.bank.com",
     "jsonPath": "$.accounts[*].accountNumber"
   },
-  "transform": {
+  "action": {
     "type": "mask",
     "maskChar": "X",
-    "preserveLength": false
   }
 }
 ```
 
 **Before**: `{"accounts": [{"type": "checking", "accountNumber": "1234567890123456"}]}`
-**After**: `{"accounts": [{"type": "checking", "accountNumber": "XXXXXXXXXXXX3456"}]}`
+**After**: `{"accounts": [{"type": "checking", "accountNumber": "XXXXXXXXXXXXXXXX"}]}`
 
-## Configuration Integration
+# Implementation details
 
-We can just set it up like this at the start.
+Each instrumentation will get its own transform engine, since each different
+package will probably have its own input output formats, and hence transform
+matchers and actions, and therefore configurations and processing strategies.
 
-```typescript
-// During SDK initialization
-TuskDrift.initialize({
-  httpConfig: {
-    filters: [
-      // Inbound request filters
-      {
-        matcher: {
-          direction: "inbound",
-          method: "POST",
-          pathPattern: "/api/auth/*",
-          jsonPath: "$.password"
-        },
-        transform: { type: "redact" }
-      }
-    ]
-  },
-  pgConfig: {
-    filters: [
-      // Database query filters
-      {
-        matcher: {
-          direction: "outbound",
-          jsonPath: "$.query"
-        },
-        transform: {
-          type: "replace",
-          replaceWith: "SELECT * FROM users WHERE id = ?"
-        }
-      }
-    ]
-  }
-});
-```
-
-We could choose to keep this configuration method in the future.
-Or, we can migrate to a JSON file most likely.
+Furthermore we can't just apply transforms at export time because the spans and
+traces might be exported in different batches.
+Hence we have to do this during span creation.
+Right now this is mainly for span dropping, because outbound spans should be
+marked as dropped instead of disappearing, so that tests can still run for the
+parent trace.
+However incoming traces will be dropped entirely, since there's no way to test
+further.
+Kind of like opting a whole endpoint out of recording.
 
 # Some things to think about
 
