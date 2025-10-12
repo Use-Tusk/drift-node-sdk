@@ -34,7 +34,8 @@
     "clean": "rm -rf dist",
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
-    "test": "ava --workerThreads false"
+    "test": "ava --workerThreads false",
+    "test:docker": "docker compose -f docker-compose.test.yml up -d --wait"
   },
   "keywords": [
     "instrumentation",
@@ -67,7 +68,7 @@
     "ioredis": "^5.8.1",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.0.0",
-    "mysql2": "^3.15.1",
+    "mysql2": "^3.15.2",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
     "prettier": "^3.2.4",
