@@ -514,7 +514,7 @@ export class HttpTransformEngine {
           }
         }
       } else {
-        // Input bodies are base64-encoded strings
+        // Input bodies can be either objects or base64-encoded strings
         const inputTarget = target as HttpServerInputValue;
         if (typeof inputTarget.body === "string") {
           try {
@@ -524,6 +524,17 @@ export class HttpTransformEngine {
           } catch (error) {
             // If not valid base64, treat as plain string
             inputTarget.body = Buffer.from(actionFunction(inputTarget.body)).toString("base64");
+          }
+        } else if (typeof inputTarget.body === "object") {
+          // Body is a plain object - transform it directly
+          const bodyStr = JSON.stringify(inputTarget.body);
+          const transformed = actionFunction(bodyStr);
+          // Replace with transformed value (could be string or parsed back)
+          try {
+            inputTarget.body = JSON.parse(transformed);
+          } catch {
+            // If transformed value is not JSON, store as-is
+            inputTarget.body = transformed as any;
           }
         }
       }
