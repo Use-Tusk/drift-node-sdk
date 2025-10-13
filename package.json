@@ -72,6 +72,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.0.0",
     "mysql2": "^3.15.1",
+    "next": "^15.5.4",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
     "prettier": "^3.2.4",

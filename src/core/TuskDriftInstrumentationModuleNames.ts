@@ -10,4 +10,5 @@ export const TuskDriftInstrumentationModuleNames = [
   "mysql2",
   "ioredis",
   "@grpc/grpc-js",
+  // "next",
 ];
