@@ -284,7 +284,6 @@ export class TuskDriftCore {
       prefix: "TuskDrift",
     });
 
-    logger.debug("SSK INIT CALLED");
     this.samplingRate = this.config.recording?.sampling_rate ?? 1;
     this.initParams = initParams;
 
