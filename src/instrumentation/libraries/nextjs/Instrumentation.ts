@@ -30,23 +30,18 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
     this.tuskDrift = TuskDriftCore.getInstance();
     logger.debug(`[NextjsInstrumentation] Constructor called with mode: ${this.mode}`);
 
-    // Patch already-loaded Next.js modules
-    // Next.js instrumentation hook runs after Next.js server has loaded,
+    // Almost always, Next.js instrumentation hook runs after Next.js server has loaded,
     // so we need to patch existing modules in require.cache
-
-    // SOHAN-TODO: check if we are in the correct mode
     this._patchLoadedModules();
   }
 
   init(): TdInstrumentationNodeModule[] {
     logger.debug(`[NextjsInstrumentation] Initializing in ${this.mode} mode`);
     return [
-      // Try base-server
       new TdInstrumentationNodeModule({
         name: "next/dist/server/base-server",
         supportedVersions: ["*"],
         patch: (moduleExports) => {
-          logger.debug(`[NextjsInstrumentation] PATCH CALLBACK CALLED for base-server`);
           return this._patchBaseServer(moduleExports);
         },
       }),
@@ -57,19 +52,15 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
     logger.debug(`[NextjsInstrumentation] Checking for already-loaded Next.js modules`);
 
     // Search require.cache directly for Next.js server modules
-    // We can't use require.resolve() because it resolves relative to drift-node-sdk, not the app
-    // SOHAN-TODO: only check for this module
-    const modulePatterns = ["/next/dist/server/base-server.js"];
+    const pattern = "/next/dist/server/base-server.js";
 
     let patchedCount = 0;
     for (const [modulePath, cached] of Object.entries(require.cache)) {
-      for (const pattern of modulePatterns) {
-        if (modulePath.includes(pattern) && cached && cached.exports) {
-          logger.debug(`[NextjsInstrumentation] Found ${pattern} at ${modulePath}, patching now`);
-          this._patchBaseServer(cached.exports);
-          patchedCount++;
-          break; // Only patch each module once
-        }
+      if (modulePath.includes(pattern) && cached && cached.exports) {
+        logger.debug(`[NextjsInstrumentation] Found ${pattern} at ${modulePath}, patching now`);
+        this._patchBaseServer(cached.exports);
+        patchedCount++;
+        break; // Only patch each module once
       }
     }
 
