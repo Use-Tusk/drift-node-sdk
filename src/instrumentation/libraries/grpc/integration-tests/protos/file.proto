@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package file;
+
+service FileService {
+  rpc UploadFile (UploadFileRequest) returns (UploadFileResponse) {}
+  rpc DownloadFile (DownloadFileRequest) returns (DownloadFileResponse) {}
+}
+
+message UploadFileRequest {
+  string filename = 1;
+  bytes content = 2;
+  string content_type = 3;
+}
+
+message UploadFileResponse {
+  string file_id = 1;
+  int32 size = 2;
+  bytes thumbnail = 3; // Binary thumbnail data
+  string message = 4;
+}
+
+message DownloadFileRequest {
+  string file_id = 1;
+}
+
+message DownloadFileResponse {
+  string filename = 1;
+  bytes content = 2;
+  string content_type = 3;
+  int32 size = 4;
+}

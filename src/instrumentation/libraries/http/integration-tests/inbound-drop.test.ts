@@ -1,7 +1,7 @@
 process.env.TUSK_DRIFT_MODE = "RECORD";
 
 import { TuskDrift } from "../../../../core/TuskDrift";
-import { TransformConfigs } from "../HttpTransformEngine";
+import { TransformConfigs } from "../../types";
 
 const transforms: TransformConfigs = {
   http: [
@@ -9,7 +9,7 @@ const transforms: TransformConfigs = {
       matcher: {
         direction: "inbound",
         pathPattern: "/admin/.*",
-        fullBody: "",
+        fullBody: true,
       },
       action: { type: "drop" },
     },

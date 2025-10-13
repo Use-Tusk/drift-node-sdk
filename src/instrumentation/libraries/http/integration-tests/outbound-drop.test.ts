@@ -1,7 +1,7 @@
 process.env.TUSK_DRIFT_MODE = "RECORD";
 
 import { TuskDrift } from "../../../../core/TuskDrift";
-import { TransformConfigs } from "../HttpTransformEngine";
+import { TransformConfigs } from "../../types";
 
 const transforms: TransformConfigs = {
   http: [
@@ -10,7 +10,7 @@ const transforms: TransformConfigs = {
         direction: "outbound",
         host: "127\\.0\\.0\\.1",
         pathPattern: "/api/sensitive",
-        fullBody: "",
+        fullBody: true,
       },
       action: { type: "drop" },
     },
@@ -91,26 +91,24 @@ test("should drop outbound span data but keep span present when calling dropped 
   t.truthy(outboundSpans.length > 0, "Outbound spans not captured in test environment");
 
   // Since the span is dropped, we can't identify it by path (which is dropped)
-  // Instead, look for a span with empty inputValue and transformMetadata indicating drop
+  // Instead, look for a span with drop action in transform metadata
   const droppedSpan = outboundSpans.find((span) => {
-    const hasEmptyInput = JSON.stringify(span.inputValue) === "{}";
     const hasDropAction = span.transformMetadata?.actions?.some((action) => action.type === "drop");
-    return hasEmptyInput && hasDropAction;
+    return hasDropAction;
   });
 
   t.truthy(droppedSpan, "Could not find dropped outbound span");
 
-  // Span should exist but with empty input/output values
-  t.is(
-    JSON.stringify(droppedSpan!.inputValue),
-    "{}",
-    `Expected empty inputValue, got ${JSON.stringify(droppedSpan!.inputValue)}`,
-  );
-  t.is(
-    JSON.stringify(droppedSpan!.outputValue),
-    "{}",
-    `Expected empty outputValue, got ${JSON.stringify(droppedSpan!.outputValue)}`,
-  );
+  // Span should exist but with empty/cleared input/output values
+  const inputValue = droppedSpan!.inputValue as any;
+  t.is(inputValue.method, "", "Expected method to be empty string");
+  t.deepEqual(inputValue.headers, {}, "Expected headers to be empty object");
+  t.is(inputValue.path, undefined, "Expected path to be undefined");
+  t.is(inputValue.body, undefined, "Expected body to be undefined");
+
+  const outputValue = droppedSpan!.outputValue as any;
+  t.deepEqual(outputValue.headers, {}, "Expected headers to be empty object");
+  t.is(outputValue.body, undefined, "Expected body to be undefined");
 
   // Should have transformMetadata indicating it was dropped
   t.truthy(droppedSpan!.transformMetadata, "Expected transformMetadata to be defined");

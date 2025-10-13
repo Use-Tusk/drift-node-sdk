@@ -1,6 +1,7 @@
 import test from "ava";
 import { SpanKind } from "@opentelemetry/api";
-import { HttpTransformEngine, TransformConfigs, HttpSpanData } from "./HttpTransformEngine";
+import { HttpTransformEngine, HttpSpanData } from "./HttpTransformEngine";
+import { TransformConfigs } from "../types";
 import {
   HttpClientInputValue,
   HttpServerInputValue,
@@ -55,7 +56,7 @@ const dropConfig: TransformConfigs = {
         direction: "outbound",
         method: ["POST"],
         host: "api.stripe.com",
-        fullBody: "",
+        fullBody: true,
       },
       action: {
         type: "drop",
@@ -219,8 +220,20 @@ test("drops outbound spans that match the Stripe policy", (t) => {
   t.truthy(transformed);
   const span = transformed as HttpSpanData;
 
-  t.deepEqual(span.inputValue, {});
-  t.deepEqual(span.outputValue, {});
+  // Verify dropped span has empty values but maintains structure
+  const inputValue = span.inputValue as HttpClientInputValue;
+  t.is(inputValue.method, "");
+  t.is(inputValue.protocol, "https");
+  t.deepEqual(inputValue.headers, {});
+
+  const outputValue = span.outputValue as HttpClientOutputValue;
+  t.is(outputValue.httpVersion, "1.0");
+  t.is(outputValue.httpVersionMajor, 1);
+  t.is(outputValue.httpVersionMinor, 0);
+  t.is(outputValue.complete, true);
+  t.is(outputValue.readable, true);
+  t.deepEqual(outputValue.headers, {});
+
   t.is(span.transformMetadata?.actions.length, 1);
   t.is(span.transformMetadata?.actions[0].type, "drop");
   t.is(span.transformMetadata?.actions[0].field, "entire_span");
@@ -251,7 +264,7 @@ test("identifies inbound requests that should be dropped", (t) => {
           direction: "inbound",
           method: ["POST"],
           pathPattern: "/api/auth/login",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "drop" },
       },
@@ -289,7 +302,7 @@ test("correctly matches outbound spans using hostname field", (t) => {
         matcher: {
           direction: "outbound",
           host: "api\\.stripe\\.com",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
@@ -309,7 +322,7 @@ test("correctly matches inbound spans by extracting hostname from URL", (t) => {
         matcher: {
           direction: "inbound",
           host: "localhost",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
@@ -329,7 +342,7 @@ test("correctly matches outbound spans using path field", (t) => {
         matcher: {
           direction: "outbound",
           pathPattern: "/v1/charges",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
@@ -349,7 +362,7 @@ test("correctly matches inbound spans using url field", (t) => {
         matcher: {
           direction: "inbound",
           pathPattern: "/api/auth/login",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
@@ -598,7 +611,7 @@ test("transforms URL path in inbound server request", (t) => {
       {
         matcher: {
           direction: "inbound",
-          urlPath: "",
+          urlPath: true,
         },
         action: {
           type: "replace",
@@ -622,7 +635,7 @@ test("transforms URL path in outbound client request", (t) => {
       {
         matcher: {
           direction: "outbound",
-          urlPath: "",
+          urlPath: true,
         },
         action: {
           type: "replace",
@@ -822,7 +835,7 @@ test("extracts hostname from inbound server URL for host matching", (t) => {
         matcher: {
           direction: "inbound",
           host: "api\\.example\\.com",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
@@ -848,7 +861,7 @@ test("handles malformed URLs gracefully in hostname extraction", (t) => {
         matcher: {
           direction: "inbound",
           host: "api\\.example\\.com",
-          fullBody: "",
+          fullBody: true,
         },
         action: { type: "replace", replaceWith: "[REDACTED]" },
       },
