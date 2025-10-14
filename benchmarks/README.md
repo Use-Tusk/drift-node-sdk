@@ -54,21 +54,20 @@ npm test benchmarks/bench/sdk-active.bench.ts
 **SDK Active with Transforms**
 ```
 npm test benchmarks/bench/sdk-active-with-transforms.bench.ts
-
-┌─────────┬───────────────────────────────────────────────┬─────────────────────┬─────────────────────┬────────────────────────┬────────────────────────┬─────────┐
-│ (index) │ Task name                                     │ Latency avg (ns)    │ Latency med (ns)    │ Throughput avg (ops/s) │ Throughput med (ops/s) │ Samples │
-├─────────┼───────────────────────────────────────────────┼─────────────────────┼─────────────────────┼────────────────────────┼────────────────────────┼─────────┤
-│ 0       │ 'High Throughput: GET /api/simple'            │ '159993 ± 8.61%'    │ '78875 ± 4208.0'    │ '12794 ± 0.11%'        │ '12678 ± 654'          │ 62503   │
-│ 1       │ 'High Throughput: POST /api/simple-post'      │ '202520 ± 9.46%'    │ '99750 ± 3000.0'    │ '9824 ± 0.10%'         │ '10025 ± 306'          │ 49625   │
-│ 2       │ 'High CPU: POST /api/compute-hash'            │ '624002 ± 8.78%'    │ '403291 ± 5666.0'   │ '2453 ± 0.16%'         │ '2480 ± 35'            │ 16040   │
-│ 3       │ 'Large Payload: GET /api/small (100KB)'       │ '1139663 ± 28.98%'  │ '380750 ± 17125'    │ '2569 ± 0.25%'         │ '2626 ± 119'           │ 9048    │
-│ 4       │ 'Large Payload: POST /api/small-post (100KB)' │ '2818801 ± 35.52%'  │ '1327688 ± 39728'   │ '741 ± 0.46%'          │ '753 ± 22'             │ 3584    │
-│ 5       │ 'Large Payload: GET /api/medium (1MB)'        │ '8111852 ± 76.75%'  │ '3246084 ± 63834'   │ '288 ± 0.85%'          │ '308 ± 6'              │ 1233    │
-│ 6       │ 'Large Payload: POST /api/medium-post (1MB)'  │ '24268117 ± 60.06%' │ '10779500 ± 204333' │ '88 ± 1.20%'           │ '93 ± 2'               │ 460     │
-│ 7       │ 'Large Payload: GET /api/large (2MB)'         │ '17172781 ± 82.41%' │ '6345541 ± 163562'  │ '147 ± 1.16%'          │ '158 ± 4'              │ 584     │
-│ 8       │ 'Large Payload: POST /api/large-post (2MB)'   │ '41597293 ± 54.13%' │ '21129459 ± 806293' │ '46 ± 1.54%'           │ '47 ± 2'               │ 275     │
-│ 9       │ 'Transform endpoints'                         │ '223005 ± 9.52%'    │ '113625 ± 5292.0'   │ '8675 ± 0.11%'         │ '8801 ± 409'           │ 45056   │
-└─────────┴───────────────────────────────────────────────┴─────────────────────┴─────────────────────┴────────────────────────┴────────────────────────┴─────────┘
+┌─────────┬───────────────────────────────────────────────┬─────────────────────┬──────────────────────┬────────────────────────┬────────────────────────┬─────────┐
+│ (index) │ Task name                                     │ Latency avg (ns)    │ Latency med (ns)     │ Throughput avg (ops/s) │ Throughput med (ops/s) │ Samples │
+├─────────┼───────────────────────────────────────────────┼─────────────────────┼──────────────────────┼────────────────────────┼────────────────────────┼─────────┤
+│ 0       │ 'High Throughput: GET /api/simple'            │ '174630 ± 8.98%'    │ '86083 ± 6291.0'     │ '11770 ± 0.11%'        │ '11617 ± 825'          │ 57264   │
+│ 1       │ 'High Throughput: POST /api/simple-post'      │ '219200 ± 9.85%'    │ '109042 ± 4417.0'    │ '9057 ± 0.11%'         │ '9171 ± 373'           │ 45771   │
+│ 2       │ 'High CPU: POST /api/compute-hash'            │ '631806 ± 7.91%'    │ '414584 ± 10834'     │ '2353 ± 0.18%'         │ '2412 ± 63'            │ 15872   │
+│ 3       │ 'Large Payload: GET /api/small (100KB)'       │ '1132649 ± 29.25%'  │ '382583 ± 17374'     │ '2554 ± 0.27%'         │ '2614 ± 120'           │ 8829    │
+│ 4       │ 'Large Payload: POST /api/small-post (100KB)' │ '2725766 ± 34.63%'  │ '1313709 ± 51458'    │ '750 ± 0.48%'          │ '761 ± 30'             │ 3669    │
+│ 5       │ 'Large Payload: GET /api/medium (1MB)'        │ '9189942 ± 69.27%'  │ '3277479 ± 99917'    │ '285 ± 0.82%'          │ '305 ± 9'              │ 1326    │
+│ 6       │ 'Large Payload: POST /api/medium-post (1MB)'  │ '21941087 ± 54.06%' │ '10767125 ± 219458'  │ '88 ± 1.07%'           │ '93 ± 2'               │ 527     │
+│ 7       │ 'Large Payload: GET /api/large (2MB)'         │ '17271959 ± 82.99%' │ '6351667 ± 157500'   │ '147 ± 1.14%'          │ '157 ± 4'              │ 579     │
+│ 8       │ 'Large Payload: POST /api/large-post (2MB)'   │ '40803303 ± 54.09%' │ '21069146 ± 1396813' │ '47 ± 1.56%'           │ '47 ± 3'               │ 284     │
+│ 9       │ 'Transform endpoints'                         │ '212848 ± 9.88%'    │ '103000 ± 4209.0'    │ '9529 ± 0.10%'         │ '9709 ± 401'           │ 47104   │
+└─────────┴───────────────────────────────────────────────┴─────────────────────┴──────────────────────┴────────────────────────┴────────────────────────┴─────────┘
 ```
 
 ## Performance Analysis
@@ -92,16 +91,16 @@ npm test benchmarks/bench/sdk-active-with-transforms.bench.ts
 
 | Endpoint | Latency Change | Throughput Change |
 |----------|---------------|------------------|
-| High Throughput: GET /api/simple | -7.7% | +7.4% |
-| High Throughput: POST /api/simple-post | -5.9% | +6.6% |
-| High CPU: POST /api/compute-hash | -5.2% | +8.8% |
-| Large Payload: GET /api/small (100KB) | -9.3% | +14.5% |
-| Large Payload: POST /api/small-post (100KB) | -2.3% | +2.1% |
-| Large Payload: GET /api/medium (1MB) | +3.6% | +1.1% |
-| Large Payload: POST /api/medium-post (1MB) | -2.9% | +0.0% |
-| Large Payload: GET /api/large (2MB) | +0.4% | +0.0% |
-| Large Payload: POST /api/large-post (2MB) | -2.5% | +2.2% |
-| Transform endpoints | +1.6% | -5.4% |
+| High Throughput: GET /api/simple | +0.7% | -1.2% |
+| High Throughput: POST /api/simple-post | +1.8% | -1.7% |
+| High CPU: POST /api/compute-hash | -4.0% | +4.3% |
+| Large Payload: GET /api/small (100KB) | -9.9% | +13.8% |
+| Large Payload: POST /api/small-post (100KB) | -5.6% | +3.3% |
+| Large Payload: GET /api/medium (1MB) | +17.3% | +0.0% |
+| Large Payload: POST /api/medium-post (1MB) | -12.2% | +0.0% |
+| Large Payload: GET /api/large (2MB) | +1.0% | +0.0% |
+| Large Payload: POST /api/large-post (2MB) | -4.4% | +4.4% |
+| Transform endpoints | -3.0% | +3.9% |
 
 `/api/simple` models a non-CPU bound workload. All it does is return "hello
 world" with the current timestamp.
@@ -117,11 +116,4 @@ This test is also a little unfair because we're exporting to filesystem
 instead of network which is orders of magnitudes faster.
 
 Seems like with or without transforms is around the same impact, within the
-error margins.
-
-The results... don't look too good... not only do we cause a huge hit to latency
-we also increase the variance by a huge margin which will negatively impact tail
-latency.
-
-Profiling is the next step to find out what's causing this, but I can come up
-with two probable culprits: hashing and base64.
+error margins. Problem is the error margins are too huge.

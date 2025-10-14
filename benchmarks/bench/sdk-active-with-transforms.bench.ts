@@ -26,7 +26,7 @@ TuskDrift.initialize({
   env: "benchmark",
   logLevel: "info",
   transforms: {
-    http: [
+    fetch: [
       {
         matcher: {
           direction: "inbound" as const,
