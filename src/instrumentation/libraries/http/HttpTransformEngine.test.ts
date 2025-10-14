@@ -79,10 +79,10 @@ const exampleServerSpanData: HttpSpanData = {
       "user-agent": "test-client",
     },
     httpVersion: "1.1",
-    body: {
+    body: Buffer.from(JSON.stringify({
       username: "john@example.com",
       password: "secretPassword123",
-    },
+    })).toString("base64"),
     bodySize: 100,
   } as HttpServerInputValue,
   outputValue: {
@@ -112,7 +112,7 @@ const stripeClientSpanData: HttpSpanData = {
       "content-type": "application/json",
     },
     protocol: "https",
-    body: {
+    body: Buffer.from(JSON.stringify({
       amount: 1000,
       currency: "usd",
       source: {
@@ -123,7 +123,7 @@ const stripeClientSpanData: HttpSpanData = {
           cvc: "123",
         },
       },
-    },
+    })).toString("base64"),
     bodySize: 200,
   } as HttpClientInputValue,
   outputValue: {
@@ -159,12 +159,12 @@ const multiTransformServerSpan: HttpSpanData = {
       "X-API-Key": "secret-api-key",
     },
     httpVersion: "1.1",
-    body: {
+    body: Buffer.from(JSON.stringify({
       user: {
         password: "userPassword",
         email: "user@example.com",
       },
-    },
+    })).toString("base64"),
     bodySize: 150,
   } as HttpServerInputValue,
 };
@@ -206,7 +206,9 @@ test("redacts sensitive fields on inbound login spans", (t) => {
   t.truthy(transformed);
   const span = transformed as HttpSpanData;
 
-  t.regex((span.inputValue as HttpServerInputValue).body.password, /^PWD_[0-9a-f]{12}\.\.\.$/);
+  const decodedBody = Buffer.from((span.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  const parsedBody = JSON.parse(decodedBody);
+  t.regex(parsedBody.password, /^PWD_[0-9a-f]{12}\.\.\.$/);
   t.is(span.transformMetadata?.actions.length, 1);
   t.is(span.transformMetadata?.actions[0].type, "redact");
   t.is(span.transformMetadata?.actions[0].field, "jsonPath:$.password");
@@ -249,7 +251,9 @@ test("applies multiple transforms to a single span", (t) => {
   const inputValue = span.inputValue as HttpServerInputValue;
   t.is(inputValue.url, "http://localhost:3000/api/user/lookup?ssn=XXXXXXXXXXX&email=user%40example.com");
   t.is(inputValue.target, "/api/user/lookup?ssn=XXXXXXXXXXX&email=user%40example.com");
-  t.is(inputValue.body.user.password, "HIDDEN");
+  const decodedBody = Buffer.from(inputValue.body, "base64").toString("utf-8");
+  const parsedBody = JSON.parse(decodedBody);
+  t.is(parsedBody.user.password, "HIDDEN");
   t.is(span.transformMetadata?.actions.length, 2);
   const actionTypes = span.transformMetadata!.actions.map((a) => ({ type: a.type, field: a.field }));
   t.true(actionTypes.some((a) => a.type === "mask" && a.field === "queryParam:ssn"));
@@ -332,7 +336,8 @@ test("correctly matches inbound spans by extracting hostname from URL", (t) => {
   const engine = new HttpTransformEngine(inboundHostConfig);
   const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-  t.is((result.inputValue as HttpServerInputValue).body, "[REDACTED]");
+  const decodedBody = Buffer.from((result.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  t.is(decodedBody, "[REDACTED]");
 });
 
 test("correctly matches outbound spans using path field", (t) => {
@@ -372,7 +377,8 @@ test("correctly matches inbound spans using url field", (t) => {
   const engine = new HttpTransformEngine(inboundPathConfig);
   const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-  t.is((result.inputValue as HttpServerInputValue).body, "[REDACTED]");
+  const decodedBody = Buffer.from((result.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  t.is(decodedBody, "[REDACTED]");
 });
 
 // edge cases and error handling
@@ -410,10 +416,10 @@ test("handles spans with missing body", (t) => {
   const spanWithoutBody = cloneSpan(exampleServerSpanData);
   spanWithoutBody.inputValue = {
     ...(spanWithoutBody.inputValue as HttpServerInputValue),
-    body: undefined,
+    body: "",
   };
 
-  const result = engine.applyTransforms(spanWithoutBody as any);
+  const result = engine.applyTransforms(spanWithoutBody);
   t.is(result.transformMetadata, undefined);
 });
 
@@ -458,7 +464,9 @@ test("applies mask transform with custom mask character", (t) => {
   const engine = new HttpTransformEngine(maskConfig);
   const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-  t.is((result.inputValue as HttpServerInputValue).body.password, "#################");
+  const decodedBody = Buffer.from((result.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  const parsedBody = JSON.parse(decodedBody);
+  t.is(parsedBody.password, "#################");
 });
 
 test("applies redact transform with custom hash prefix", (t) => {
@@ -477,7 +485,9 @@ test("applies redact transform with custom hash prefix", (t) => {
   const engine = new HttpTransformEngine(redactConfig);
   const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-  t.regex((result.inputValue as HttpServerInputValue).body.password, /^HIDDEN_[0-9a-f]{12}\.\.\.$/);
+  const decodedBody = Buffer.from((result.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  const parsedBody = JSON.parse(decodedBody);
+  t.regex(parsedBody.password, /^HIDDEN_[0-9a-f]{12}\.\.\.$/);
 });
 
 test("applies replace transform", (t) => {
@@ -499,7 +509,9 @@ test("applies replace transform", (t) => {
   const engine = new HttpTransformEngine(replaceConfig);
   const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-  t.is((result.inputValue as HttpServerInputValue).body.username, "anonymous@example.com");
+  const decodedBody = Buffer.from((result.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  const parsedBody = JSON.parse(decodedBody);
+  t.is(parsedBody.username, "anonymous@example.com");
 });
 
 // matcher combinations
@@ -520,7 +532,9 @@ test("matches spans by method only", (t) => {
   const engine = new HttpTransformEngine(methodOnlyConfig);
   const result = engine.applyTransforms(cloneSpan(exampleServerSpanData));
 
-  t.regex((result.inputValue as HttpServerInputValue).body.password, /^REDACTED_[0-9a-f]{12}\.\.\.$/);
+  const decodedBody = Buffer.from((result.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  const parsedBody = JSON.parse(decodedBody);
+  t.regex(parsedBody.password, /^REDACTED_[0-9a-f]{12}\.\.\.$/);
 });
 
 test("matches multiple methods when array is provided", (t) => {
@@ -540,7 +554,9 @@ test("matches multiple methods when array is provided", (t) => {
   const engine = new HttpTransformEngine(multiMethodConfig);
 
   const postResult = engine.applyTransforms(cloneSpan(exampleServerSpanData));
-  t.is((postResult.inputValue as HttpServerInputValue).body.username, "ARRAY_MATCHED");
+  let decodedBody = Buffer.from((postResult.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  let parsedBody = JSON.parse(decodedBody);
+  t.is(parsedBody.username, "ARRAY_MATCHED");
 
   const putSpan = cloneSpan(exampleServerSpanData);
   putSpan.inputValue = {
@@ -548,7 +564,9 @@ test("matches multiple methods when array is provided", (t) => {
     method: "PUT",
   };
   const putResult = engine.applyTransforms(putSpan);
-  t.is((putResult.inputValue as HttpServerInputValue).body.username, "ARRAY_MATCHED");
+  decodedBody = Buffer.from((putResult.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  parsedBody = JSON.parse(decodedBody);
+  t.is(parsedBody.username, "ARRAY_MATCHED");
 
   const getSpan = cloneSpan(exampleServerSpanData);
   getSpan.inputValue = {
@@ -556,7 +574,9 @@ test("matches multiple methods when array is provided", (t) => {
     method: "GET",
   };
   const getResult = engine.applyTransforms(getSpan);
-  t.is((getResult.inputValue as HttpServerInputValue).body.username, "john@example.com");
+  decodedBody = Buffer.from((getResult.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  parsedBody = JSON.parse(decodedBody);
+  t.is(parsedBody.username, "john@example.com");
   t.is(getResult.transformMetadata, undefined);
 });
 
@@ -578,7 +598,9 @@ test("does not match when method doesn't match", (t) => {
   const mismatchSpan = cloneSpan(exampleServerSpanData);
   const result = engine.applyTransforms(mismatchSpan);
 
-  t.is((result.inputValue as HttpServerInputValue).body.password, "secretPassword123");
+  const decodedBody = Buffer.from((result.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  const parsedBody = JSON.parse(decodedBody);
+  t.is(parsedBody.password, "secretPassword123");
   t.is(result.transformMetadata, undefined);
 });
 
@@ -600,7 +622,9 @@ test("does not match when direction doesn't match", (t) => {
   const outboundMismatchSpan = cloneSpan(exampleServerSpanData);
   const result = engine.applyTransforms(outboundMismatchSpan);
 
-  t.is((result.inputValue as HttpServerInputValue).body.password, "secretPassword123");
+  const decodedBody = Buffer.from((result.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  const parsedBody = JSON.parse(decodedBody);
+  t.is(parsedBody.password, "secretPassword123");
   t.is(result.transformMetadata, undefined);
 });
 
@@ -851,7 +875,8 @@ test("extracts hostname from inbound server URL for host matching", (t) => {
   const engine = new HttpTransformEngine(hostConfig);
   const result = engine.applyTransforms(spanWithApiHost);
 
-  t.is((result.inputValue as HttpServerInputValue).body, "[REDACTED]");
+  const decodedBody = Buffer.from((result.inputValue as HttpServerInputValue).body, "base64").toString("utf-8");
+  t.is(decodedBody, "[REDACTED]");
 });
 
 test("handles malformed URLs gracefully in hostname extraction", (t) => {
