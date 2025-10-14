@@ -1,0 +1,23 @@
+{
+  "name": "cjs-grpc-e2e-test",
+  "version": "1.0.0",
+  "description": "E2E tests for gRPC instrumentation (CommonJS)",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "node dist/index.js"
+  },
+  "dependencies": {
+    "@use-tusk/drift-node-sdk": "file:/sdk",
+    "@grpc/grpc-js": "^1.9.0",
+    "@grpc/proto-loader": "^0.7.0",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/express": "^4.17.21",
+    "typescript": "^5.0.0"
+  }
+}
