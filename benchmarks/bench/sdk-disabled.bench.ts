@@ -27,141 +27,46 @@ test.after.always(async () => {
   }
 });
 
-test.serial("High Throughput", async (t) => {
+test.serial("SDK Disabled", async (t) => {
   const bench = new Bench({ time: 10000, warmupTime: 1000, warmupIterations: 100 });
 
-  bench.add("fetch /api/simple", async () => {
+  bench.add("High Throughput: GET /api/simple", async () => {
     const response = await fetch(`${serverUrl}/api/simple`);
     await response.json();
   });
 
-  await bench.run();
-  console.log("\n=== High Throughput ===");
-  console.table(bench.table());
-  t.pass();
-});
-
-test.serial("High CPU", async (t) => {
-  const bench = new Bench({ time: 10000, warmupTime: 1000, warmupIterations: 20 });
-
-  const requestBody = { data: "sensitive-data-to-hash", iterations: 1000 };
-
-  bench.add("POST /api/compute-hash", async () => {
+  bench.add("High CPU: POST /api/compute-hash", async () => {
     const response = await fetch(`${serverUrl}/api/compute-hash`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({ data: "sensitive-data-to-hash", iterations: 1000 }),
     });
     await response.json();
   });
 
-  await bench.run();
-  console.log("\n=== High CPU ===");
-  console.table(bench.table());
-  t.pass();
-});
-
-test.serial("Large Payload - Medium (100KB)", async (t) => {
-  const bench = new Bench({ time: 10000, warmupTime: 1000, warmupIterations: 10 });
-
-  bench.add("GET /api/medium (100KB)", async () => {
+  bench.add("Large Payload: GET /api/medium (100KB)", async () => {
     const response = await fetch(`${serverUrl}/api/medium`);
     await response.json();
   });
 
-  await bench.run();
-  console.log("\n=== Large Payload - Medium (100KB) ===");
-  console.table(bench.table());
-  t.pass();
-});
-
-test.serial("Large Payload - Large (1MB)", async (t) => {
-  const bench = new Bench({ time: 10000, warmupTime: 1000, warmupIterations: 10 });
-
-  bench.add("GET /api/large (1MB)", async () => {
+  bench.add("Large Payload: GET /api/large (1MB)", async () => {
     const response = await fetch(`${serverUrl}/api/large`);
     await response.json();
   });
 
-  await bench.run();
-  console.log("\n=== Large Payload - Large (1MB) ===");
-  console.table(bench.table());
-  t.pass();
-});
-
-test.serial("Large Payload - POST (1MB)", async (t) => {
-  const bench = new Bench({ time: 10000, warmupTime: 1000, warmupIterations: 5 });
-
   const payloadSize = 1024 * 1024;
-  const payload = { data: "x".repeat(payloadSize), timestamp: Date.now() };
+  const postPayload = { data: "x".repeat(payloadSize), timestamp: Date.now() };
 
-  bench.add("POST /api/large-post (1MB)", async () => {
+  bench.add("Large Payload: POST /api/large-post (1MB)", async () => {
     const response = await fetch(`${serverUrl}/api/large-post`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(postPayload),
     });
     await response.json();
   });
 
-  await bench.run();
-  console.log("\n=== Large Payload - POST (1MB) ===");
-  console.table(bench.table());
-  t.pass();
-});
-
-test.serial("Tail Latency", async (t) => {
-  const bench = new Bench({ time: 15000, warmupTime: 1000, warmupIterations: 50 });
-
-  const endpoints = [
-    { path: "/api/simple", weight: 0.6, method: "GET" as const },
-    { path: "/api/medium", weight: 0.25, method: "GET" as const },
-    { path: "/api/slow", weight: 0.1, method: "GET" as const },
-    {
-      path: "/api/compute-hash",
-      weight: 0.05,
-      method: "POST" as const,
-      body: { data: "test", iterations: 500 },
-    },
-  ];
-
-  function selectEndpoint() {
-    const random = Math.random();
-    let cumulative = 0;
-    for (const endpoint of endpoints) {
-      cumulative += endpoint.weight;
-      if (random <= cumulative) return endpoint;
-    }
-    return endpoints[endpoints.length - 1];
-  }
-
-  bench.add("mixed workload", async () => {
-    const endpoint = selectEndpoint();
-    const url = `${serverUrl}${endpoint.path}`;
-
-    if (endpoint.method === "POST") {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(endpoint.body),
-      });
-      await response.json();
-    } else {
-      const response = await fetch(url);
-      await response.json();
-    }
-  });
-
-  await bench.run();
-  console.log("\n=== Tail Latency ===");
-  console.table(bench.table());
-  t.pass();
-});
-
-test.serial("Transforms", async (t) => {
-  const bench = new Bench({ time: 10000, warmupTime: 1000, warmupIterations: 20 });
-
-  const endpoints = [
+  const transformEndpoints = [
     {
       path: "/api/auth/login",
       method: "POST" as const,
@@ -180,8 +85,8 @@ test.serial("Transforms", async (t) => {
   ];
 
   let endpointIndex = 0;
-  bench.add("transform-triggering endpoints", async () => {
-    const endpoint = endpoints[endpointIndex % endpoints.length];
+  bench.add("Transforms: sensitive endpoints", async () => {
+    const endpoint = transformEndpoints[endpointIndex % transformEndpoints.length];
     endpointIndex++;
 
     const response = await fetch(`${serverUrl}${endpoint.path}`, {
@@ -193,7 +98,6 @@ test.serial("Transforms", async (t) => {
   });
 
   await bench.run();
-  console.log("\n=== Transforms ===");
   console.table(bench.table());
   t.pass();
 });

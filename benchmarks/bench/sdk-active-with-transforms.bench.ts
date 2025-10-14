@@ -8,14 +8,21 @@
 
 process.env.TUSK_DRIFT_MODE = "RECORD";
 
-import { TuskDrift } from "../../src/core/TuskDrift";
-import {
-  InMemorySpanAdapter,
-  registerInMemoryAdapter,
-} from "../../src/core/tracing/adapters/InMemorySpanAdapter";
+import { TuskDrift, TuskDriftCore } from "../../src/core/TuskDrift";
+import { FilesystemSpanAdapter } from "../../src/core/tracing/adapters/FilesystemSpanAdapter";
+import * as path from "path";
+import * as fs from "fs";
 
-const adapter = new InMemorySpanAdapter();
-registerInMemoryAdapter(adapter);
+const BENCHMARK_TRACE_DIR = path.join(__dirname, "..", ".benchmark-traces");
+
+// Clean up any existing benchmark traces
+if (fs.existsSync(BENCHMARK_TRACE_DIR)) {
+  fs.rmSync(BENCHMARK_TRACE_DIR, { recursive: true, force: true });
+}
+
+const adapter = new FilesystemSpanAdapter({
+  baseDirectory: BENCHMARK_TRACE_DIR,
+});
 
 TuskDrift.initialize({
   apiKey: "benchmark-test-key",
@@ -53,6 +60,10 @@ TuskDrift.initialize({
     ],
   },
 });
+
+TuskDriftCore.getInstance().spanExporter?.clearAdapters();
+TuskDriftCore.getInstance().spanExporter?.addAdapter(adapter);
+
 TuskDrift.markAppAsReady();
 
 import test from "ava";
@@ -74,9 +85,13 @@ test.after.always(async () => {
     await server.stop();
     console.log("Test server stopped\n");
   }
+
+  if (fs.existsSync(BENCHMARK_TRACE_DIR)) {
+    fs.rmSync(BENCHMARK_TRACE_DIR, { recursive: true, force: true });
+  }
 });
 
-test.serial("Transforms (with active transform rules)", async (t) => {
+test.serial("SDK Active with Transforms", async (t) => {
   const bench = new Bench({ time: 10000, warmupTime: 1000, warmupIterations: 20 });
 
   const endpoints = [
@@ -98,7 +113,7 @@ test.serial("Transforms (with active transform rules)", async (t) => {
   ];
 
   let endpointIndex = 0;
-  bench.add("transform-triggering endpoints", async () => {
+  bench.add("Transforms: sensitive endpoints (with rules)", async () => {
     const endpoint = endpoints[endpointIndex % endpoints.length];
     endpointIndex++;
 
@@ -111,7 +126,6 @@ test.serial("Transforms (with active transform rules)", async (t) => {
   });
 
   await bench.run();
-  console.log("\n=== Transforms (with active transform rules) ===");
   console.table(bench.table());
   t.pass();
 });

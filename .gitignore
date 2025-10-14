@@ -41,3 +41,6 @@ coverage/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Benchmark traces
+benchmarks/.benchmark-traces/
