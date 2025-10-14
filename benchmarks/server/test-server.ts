@@ -1,6 +1,9 @@
-import express, { Request, Response } from "express";
+import type { Request, Response, Application } from "express";
 import crypto from "crypto";
-import http from "http";
+import type http from "http";
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const express = require("express");
 
 export interface TestServerConfig {
   port?: number;
@@ -8,7 +11,7 @@ export interface TestServerConfig {
 }
 
 export class TestServer {
-  private app: express.Application;
+  private app: Application;
   private server: http.Server | null = null;
   private port: number;
   private host: string;
@@ -34,46 +37,70 @@ export class TestServer {
       res.json({ message: "Hello World", timestamp: Date.now() });
     });
 
+    // Simple POST endpoint - minimal processing with small request body
+    this.app.post("/api/simple-post", (req: Request, res: Response) => {
+      res.json({ message: "Hello World", timestamp: Date.now() });
+    });
+
     // Echo endpoint - returns what you send
     this.app.post("/api/echo", (req: Request, res: Response) => {
       res.json(req.body);
     });
 
-    // Small payload endpoint (1KB)
+    // Small payload endpoint (100KB)
     this.app.get("/api/small", (_req: Request, res: Response) => {
       const data = {
         id: "small-123",
-        data: "x".repeat(1024), // 1KB of data
-        timestamp: Date.now(),
-      };
-      res.json(data);
-    });
-
-    // Medium payload endpoint (100KB)
-    this.app.get("/api/medium", (_req: Request, res: Response) => {
-      const data = {
-        id: "medium-456",
         data: "x".repeat(100 * 1024), // 100KB of data
         timestamp: Date.now(),
       };
       res.json(data);
     });
 
-    // Large payload endpoint (1MB)
-    this.app.get("/api/large", (_req: Request, res: Response) => {
+    // Small POST endpoint - accepts and returns same size payload as GET
+    this.app.post("/api/small-post", (req: Request, res: Response) => {
+      res.json({
+        id: "small-post-123",
+        data: "x".repeat(100 * 1024), // 100KB of data
+        timestamp: Date.now(),
+      });
+    });
+
+    // Medium payload endpoint (1MB)
+    this.app.get("/api/medium", (_req: Request, res: Response) => {
       const data = {
-        id: "large-789",
+        id: "medium-456",
         data: "x".repeat(1024 * 1024), // 1MB of data
         timestamp: Date.now(),
       };
       res.json(data);
     });
 
-    // Large POST endpoint - accepts and returns large payloads
+    // Medium POST endpoint - accepts and returns same size payload as GET
+    this.app.post("/api/medium-post", (req: Request, res: Response) => {
+      res.json({
+        id: "medium-post-456",
+        data: "x".repeat(1024 * 1024), // 1MB of data
+        timestamp: Date.now(),
+      });
+    });
+
+    // Large payload endpoint (2MB)
+    this.app.get("/api/large", (_req: Request, res: Response) => {
+      const data = {
+        id: "large-789",
+        data: "x".repeat(2 * 1024 * 1024), // 2MB of data
+        timestamp: Date.now(),
+      };
+      res.json(data);
+    });
+
+    // Large POST endpoint - accepts and returns same size payload as GET
     this.app.post("/api/large-post", (req: Request, res: Response) => {
       res.json({
-        received: req.body,
-        response: "x".repeat(1024 * 1024), // 1MB response
+        id: "large-post-789",
+        data: "x".repeat(2 * 1024 * 1024), // 2MB of data
+        timestamp: Date.now(),
       });
     });
 
