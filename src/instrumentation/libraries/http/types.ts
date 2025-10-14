@@ -7,7 +7,6 @@ import type {
   ServerResponse,
   IncomingHttpHeaders,
 } from "http";
-import { HttpBodyType } from "./utils";
 
 export type HttpProtocol = "http" | "https";
 
@@ -21,7 +20,6 @@ export interface HttpClientInputValue {
   timeout?: number;
   body?: unknown;
   bodySize?: number;
-  bodyType?: HttpBodyType;
   hasBodyParsingError?: boolean;
   [key: string]: unknown;
 }

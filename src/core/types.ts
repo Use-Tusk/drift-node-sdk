@@ -1,6 +1,7 @@
 import { createContextKey } from "@opentelemetry/api";
 import { StatusCode, PackageType } from "@use-tusk/drift-schemas/core/span";
 import { SpanKind } from "@opentelemetry/api";
+import type { JsonSchema } from "@use-tusk/drift-schemas/core/json_schema";
 
 export const REPLAY_TRACE_ID_CONTEXT_KEY = createContextKey("td.replayTraceId");
 export const SPAN_KIND_CONTEXT_KEY = createContextKey("td.spanKind");
@@ -60,11 +61,12 @@ export type CleanSpanData = {
 
   packageType?: PackageType;
 
-  // keep these as plain JSON for readability
+  // Values are kept as plain JSON for readability
   inputValue: unknown;
   outputValue: unknown;
-  inputSchema: unknown;
-  outputSchema: unknown;
+  // Schemas use the proto JsonSchema type
+  inputSchema: JsonSchema;
+  outputSchema?: JsonSchema; // optional bc replay outbound spans don't have output schemas
 
   inputSchemaHash: string;
   outputSchemaHash: string;
