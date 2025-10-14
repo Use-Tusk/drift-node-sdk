@@ -24,7 +24,7 @@ const adapter = new FilesystemSpanAdapter({
 TuskDrift.initialize({
   apiKey: "benchmark-test-key",
   env: "benchmark",
-  logLevel: "debug",
+  logLevel: "info",
   transforms: {
     http: [
       {
@@ -63,6 +63,6 @@ TuskDriftCore.getInstance().spanExporter?.addAdapter(adapter);
 
 TuskDrift.markAppAsReady();
 
-import main from "./common.bench";
+const common = require("./common.bench.ts");
 
-main();
+common.default();

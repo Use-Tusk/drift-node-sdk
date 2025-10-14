@@ -9,7 +9,6 @@ import { TuskDrift, TuskDriftCore } from "../../src/core/TuskDrift";
 import { FilesystemSpanAdapter } from "../../src/core/tracing/adapters/FilesystemSpanAdapter";
 import * as path from "path";
 import * as fs from "fs";
-import main from "./common.bench";
 
 const BENCHMARK_TRACE_DIR = path.join(__dirname, "..", ".benchmark-traces");
 
@@ -25,7 +24,7 @@ const adapter = new FilesystemSpanAdapter({
 TuskDrift.initialize({
   apiKey: "benchmark-test-key",
   env: "benchmark",
-  logLevel: "debug",
+  logLevel: "info",
 });
 
 TuskDriftCore.getInstance().spanExporter?.clearAdapters();
@@ -33,4 +32,6 @@ TuskDriftCore.getInstance().spanExporter?.addAdapter(adapter);
 
 TuskDrift.markAppAsReady();
 
-main();
+const common = require("./common.bench.ts");
+
+common.default();

@@ -21,6 +21,7 @@ test.after.always(async () => {
 
 function main() {
   test.serial("SDK Active", async (t) => {
+    t.timeout(600_000);
     const bench = new Bench({
       time: 10000,
       warmupTime: 1000,
