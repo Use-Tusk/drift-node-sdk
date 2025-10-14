@@ -106,8 +106,24 @@ export class TdSpanExporter implements SpanExporter {
   export(spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
     logger.debug(`TdSpanExporter.export() called with ${spans.length} span(s)`);
 
+    const filteredSpans = spans.filter((span) => {
+      // Filter out spans exported from Next.js internal telemetry
+      if (span.instrumentationLibrary?.name === "next.js") {
+        return false;
+      }
+      return true;
+    });
+
+    logger.debug(`After filtering: ${filteredSpans.length} span(s) remaining`);
+
     // Transform spans to CleanSpanData
-    const cleanSpans = spans.map((span) => SpanTransformer.transformSpanToCleanJSON(span));
+    let cleanSpans;
+    try {
+      cleanSpans = filteredSpans.map((span) => SpanTransformer.transformSpanToCleanJSON(span));
+    } catch (error) {
+      logger.error("Error transforming spans to CleanSpanData", error);
+      throw error;
+    }
 
     if (this.adapters.length === 0) {
       logger.debug("No adapters configured");

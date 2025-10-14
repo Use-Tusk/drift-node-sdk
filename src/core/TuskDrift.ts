@@ -16,6 +16,7 @@ import {
   Mysql2Instrumentation,
   IORedisInstrumentation,
   GrpcInstrumentation,
+  NextjsInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
 import { trace, Tracer } from "@opentelemetry/api";
@@ -222,6 +223,11 @@ export class TuskDriftCore {
       enabled: true,
       mode: this.mode,
     });
+
+    new NextjsInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
   }
 
   private initializeTracing({ baseDirectory }: { baseDirectory: string }): void {
@@ -272,6 +278,12 @@ export class TuskDriftCore {
   }
 
   initialize(initParams: InitParams): void {
+    // Initialize logging with provided level or default to 'silent'
+    initializeGlobalLogger({
+      logLevel: initParams.logLevel || "silent",
+      prefix: "TuskDrift",
+    });
+
     this.samplingRate = this.config.recording?.sampling_rate ?? 1;
     this.initParams = initParams;
 
@@ -282,12 +294,6 @@ export class TuskDriftCore {
       );
       this.initParams.env = nodeEnv;
     }
-
-    // Initialize logging with provided level or default to 'silent'
-    initializeGlobalLogger({
-      logLevel: initParams.logLevel || "silent",
-      prefix: "TuskDrift",
-    });
 
     if (this.initialized) {
       logger.debug("Already initialized, skipping...");
