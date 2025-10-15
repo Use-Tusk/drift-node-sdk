@@ -357,15 +357,19 @@ test.serial("should capture spans for pool queries", async (t) => {
   // 2. mysql2.poolConnection.query - the actual query execution
   t.true(mysql2Spans.length >= 2, "Expected at least 2 spans for pool.query");
 
-  const getConnectionSpan = mysql2Spans.find((s: CleanSpanData) => s.name === "mysql2.pool.getConnection");
+  const getConnectionSpan = mysql2Spans.find(
+    (s: CleanSpanData) => s.name === "mysql2.pool.getConnection",
+  );
   t.truthy(getConnectionSpan, "Should have pool.getConnection span");
 
-  const poolConnectionQuerySpan = mysql2Spans.find(
-    (s: CleanSpanData) => s.name === "mysql2.poolConnection.query",
+  const connectionQuerySpan = mysql2Spans.find(
+    (s: CleanSpanData) => s.name === "mysql2.connection.query",
   );
-  t.truthy(poolConnectionQuerySpan, "Should have poolConnection.query span");
+  t.truthy(connectionQuerySpan, "Should have connection.query span");
   t.true(
-    (poolConnectionQuerySpan?.inputValue as Mysql2InputValue)?.sql?.includes("SELECT * FROM test_users"),
+    (connectionQuerySpan?.inputValue as Mysql2InputValue)?.sql?.includes(
+      "SELECT * FROM test_users",
+    ),
   );
 });
 
@@ -378,17 +382,20 @@ test.serial("should capture spans for pool.getConnection", async (t) => {
           return;
         }
 
-        poolConnection.query("SELECT COUNT(*) as count FROM test_users", (err: any, results: any) => {
-          poolConnection.release();
+        poolConnection.query(
+          "SELECT COUNT(*) as count FROM test_users",
+          (err: any, results: any) => {
+            poolConnection.release();
 
-          if (err) {
-            reject(err);
-            return;
-          }
+            if (err) {
+              reject(err);
+              return;
+            }
 
-          t.true(parseInt(results[0].count) >= 2);
-          resolve();
-        });
+            t.true(parseInt(results[0].count) >= 2);
+            resolve();
+          },
+        );
       });
     });
   });
@@ -487,19 +494,16 @@ test.serial("should handle all query() overload variations", async (t) => {
 });
 
 test.serial("should capture spans even for failed queries", async (t) => {
-  const error = await t.throwsAsync(
-    async () => {
-      await new Promise<void>((resolve, reject) => {
-        withRootSpan(() => {
-          connection.query("SELECT * FROM nonexistent_table", (err: any) => {
-            if (err) reject(err);
-            else resolve();
-          });
+  const error = await t.throwsAsync(async () => {
+    await new Promise<void>((resolve, reject) => {
+      withRootSpan(() => {
+        connection.query("SELECT * FROM nonexistent_table", (err: any) => {
+          if (err) reject(err);
+          else resolve();
         });
       });
-    },
-    undefined,
-  );
+    });
+  }, undefined);
 
   t.truthy(error);
   const message = error instanceof Error ? error.message : String(error);
@@ -517,18 +521,20 @@ test.serial("should capture spans even for failed queries", async (t) => {
 });
 
 test.serial("should handle concurrent queries", async (t) => {
-  const queries = Array.from({ length: 5 }, (_, i) =>
-    new Promise<any>((resolve, reject) => {
-      withRootSpan(() => {
-        connection.query(
-          `SELECT ${i} as query_number, name FROM test_users LIMIT 1`,
-          (err: any, results: any) => {
-            if (err) reject(err);
-            else resolve(results);
-          },
-        );
-      });
-    }),
+  const queries = Array.from(
+    { length: 5 },
+    (_, i) =>
+      new Promise<any>((resolve, reject) => {
+        withRootSpan(() => {
+          connection.query(
+            `SELECT ${i} as query_number, name FROM test_users LIMIT 1`,
+            (err: any, results: any) => {
+              if (err) reject(err);
+              else resolve(results);
+            },
+          );
+        });
+      }),
   );
 
   const results = await Promise.all(queries);
