@@ -124,8 +124,8 @@ echo "Step 7: Cleaning up docker containers..."
 docker-compose down
 
 # Step 8: Clean up traces and logs
-# echo "Step 8: Cleaning up traces and logs..."
-# cleanup_tusk_files
+echo "Step 8: Cleaning up traces and logs..."
+cleanup_tusk_files
 
 echo "MySQL2 E2E test run complete."
 
