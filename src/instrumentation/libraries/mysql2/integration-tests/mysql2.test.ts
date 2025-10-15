@@ -410,12 +410,12 @@ test.serial("should capture spans for pool.getConnection", async (t) => {
   );
   t.true(getConnectionSpans.length > 0);
 
-  const poolConnectionQuerySpans = spans.filter(
+  const connectionSpans = spans.filter(
     (input: CleanSpanData) =>
       input.instrumentationName === "Mysql2Instrumentation" &&
-      (input.inputValue as Mysql2InputValue)?.clientType === "poolConnection",
+      (input.inputValue as Mysql2InputValue)?.clientType === "connection",
   );
-  t.true(poolConnectionQuerySpans.length > 0);
+  t.true(connectionSpans.length > 0);
 });
 
 test.serial("should handle all query() overload variations", async (t) => {
