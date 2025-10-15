@@ -12,7 +12,7 @@ The Node.js Tusk Drift SDK enables fast and deterministic API testing by capturi
 
 ## Documentation
 
-For comprehensive guides and API reference, visit our [full documentation](https://docs.usetusk.ai/automated-tests/installation#setup).
+For comprehensive guides and API reference, visit our [full documentation](https://docs.usetusk.ai/api-tests/installation#setup).
 
 ## Requirements
 
