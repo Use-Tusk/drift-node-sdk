@@ -22,7 +22,10 @@ import { logger } from "../../../core/utils/logger";
 import { TdMysql2ConnectionMock } from "./mocks/TdMysql2ConnectionMock";
 import { TdMysql2QueryMock } from "./mocks/TdMysql2QueryMock";
 
-const SUPPORTED_VERSIONS = [">=3.0.0 <4.0.0"];
+// Version ranges for mysql2
+const COMPLETE_SUPPORTED_VERSIONS = ">=2.3.3 <4.0.0";
+const V2_3_3_TO_3_11_4 = ">=2.3.3 <3.11.5";
+const V3_11_5_TO_4_0 = ">=3.11.5 <4.0.0";
 
 export class Mysql2Instrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "Mysql2Instrumentation";
@@ -39,31 +42,59 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     return [
       new TdInstrumentationNodeModule({
         name: "mysql2",
-        supportedVersions: SUPPORTED_VERSIONS,
+        supportedVersions: [COMPLETE_SUPPORTED_VERSIONS],
         files: [
+          // For v2.3.3-3.11.4: lib/connection.js with prototypes AND class wrapping
           new TdInstrumentationNodeModuleFile({
             name: "mysql2/lib/connection.js",
-            supportedVersions: SUPPORTED_VERSIONS,
-            patch: (moduleExports: any) => this._patchConnection(moduleExports),
+            supportedVersions: [V2_3_3_TO_3_11_4],
+            patch: (moduleExports: any) => this._patchConnectionV2(moduleExports),
           }),
+          // For v3.11.5+: lib/base/connection.js with prototypes only
+          new TdInstrumentationNodeModuleFile({
+            name: "mysql2/lib/base/connection.js",
+            supportedVersions: [V3_11_5_TO_4_0],
+            patch: (moduleExports: any) => this._patchBaseConnection(moduleExports),
+          }),
+          // For v3.11.5+: lib/connection.js with class wrapping only
+          new TdInstrumentationNodeModuleFile({
+            name: "mysql2/lib/connection.js",
+            supportedVersions: [V3_11_5_TO_4_0],
+            patch: (moduleExports: any) => this._patchConnectionV3(moduleExports),
+          }),
+          // For v2.3.3-3.11.4: lib/pool.js with prototypes AND class wrapping
           new TdInstrumentationNodeModuleFile({
             name: "mysql2/lib/pool.js",
-            supportedVersions: SUPPORTED_VERSIONS,
-            patch: (moduleExports: any) => this._patchPool(moduleExports),
+            supportedVersions: [V2_3_3_TO_3_11_4],
+            patch: (moduleExports: any) => this._patchPoolV2(moduleExports),
           }),
+          // For v3.11.5+: lib/pool.js with class wrapping only
+          new TdInstrumentationNodeModuleFile({
+            name: "mysql2/lib/pool.js",
+            supportedVersions: [V3_11_5_TO_4_0],
+            patch: (moduleExports: any) => this._patchPoolV3(moduleExports),
+          }),
+          // For v2.3.3-3.11.4: lib/pool_connection.js with class wrapping
           new TdInstrumentationNodeModuleFile({
             name: "mysql2/lib/pool_connection.js",
-            supportedVersions: SUPPORTED_VERSIONS,
-            patch: (moduleExports: any) => this._patchPoolConnection(moduleExports),
+            supportedVersions: [V2_3_3_TO_3_11_4],
+            patch: (moduleExports: any) => this._patchPoolConnectionV2(moduleExports),
           }),
+          // For v3.11.5+: lib/pool_connection.js with class wrapping
+          new TdInstrumentationNodeModuleFile({
+            name: "mysql2/lib/pool_connection.js",
+            supportedVersions: [V3_11_5_TO_4_0],
+            patch: (moduleExports: any) => this._patchPoolConnectionV3(moduleExports),
+          }),
+          // Factory functions (all versions)
           new TdInstrumentationNodeModuleFile({
             name: "mysql2/lib/create_connection.js",
-            supportedVersions: SUPPORTED_VERSIONS,
+            supportedVersions: [COMPLETE_SUPPORTED_VERSIONS],
             patch: (moduleExports: any) => this._patchCreateConnectionFile(moduleExports),
           }),
           new TdInstrumentationNodeModuleFile({
             name: "mysql2/lib/create_pool.js",
-            supportedVersions: SUPPORTED_VERSIONS,
+            supportedVersions: [COMPLETE_SUPPORTED_VERSIONS],
             patch: (moduleExports: any) => this._patchCreatePoolFile(moduleExports),
           }),
         ],
@@ -71,14 +102,88 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     ];
   }
 
-  private _patchConnection(ConnectionClass: any): any {
-    logger.debug(`[Mysql2Instrumentation] Patching Connection class`);
+  private _patchBaseConnection(BaseConnectionClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Patching BaseConnection class`);
+
+    if (this.isModulePatched(BaseConnectionClass)) {
+      logger.debug(`[Mysql2Instrumentation] BaseConnection class already patched, skipping`);
+      return BaseConnectionClass;
+    }
+
+    // Wrap BaseConnection.prototype.query
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.query) {
+      if (!isWrapped(BaseConnectionClass.prototype.query)) {
+        this._wrap(BaseConnectionClass.prototype, "query", this._getQueryPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.query`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.execute (prepared statements)
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.execute) {
+      if (!isWrapped(BaseConnectionClass.prototype.execute)) {
+        this._wrap(BaseConnectionClass.prototype, "execute", this._getExecutePatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.execute`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.connect
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.connect) {
+      if (!isWrapped(BaseConnectionClass.prototype.connect)) {
+        this._wrap(BaseConnectionClass.prototype, "connect", this._getConnectPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.connect`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.ping
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.ping) {
+      if (!isWrapped(BaseConnectionClass.prototype.ping)) {
+        this._wrap(BaseConnectionClass.prototype, "ping", this._getPingPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.ping`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.end
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.end) {
+      if (!isWrapped(BaseConnectionClass.prototype.end)) {
+        this._wrap(BaseConnectionClass.prototype, "end", this._getEndPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.end`);
+      }
+    }
+
+    this.markModuleAsPatched(BaseConnectionClass);
+    logger.debug(`[Mysql2Instrumentation] BaseConnection class patching complete`);
+
+    return BaseConnectionClass;
+  }
+
+  // v2.3.3-3.11.4: Patch prototypes
+  private _patchConnectionV2(ConnectionClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Patching Connection class (v2)`);
 
     if (this.isModulePatched(ConnectionClass)) {
       logger.debug(`[Mysql2Instrumentation] Connection class already patched, skipping`);
       return ConnectionClass;
     }
 
+    // Patch all connection prototype methods
+    this._patchConnectionPrototypes(ConnectionClass);
+
+    this.markModuleAsPatched(ConnectionClass);
+
+    logger.debug(`[Mysql2Instrumentation] Connection class (v2) patching complete`);
+    return ConnectionClass;
+  }
+
+  // v3.11.5+: No patching needed (prototypes patched in base/connection.js)
+  private _patchConnectionV3(ConnectionClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Connection class (v3) - skipping (base patched)`);
+    // For v3.11.5+, lib/connection.js extends base/connection.js
+    // We already patched the prototypes in base/connection.js, so no need to patch again
+    return ConnectionClass;
+  }
+
+  // Helper to patch all connection prototype methods (used by both versions)
+  private _patchConnectionPrototypes(ConnectionClass: any): void {
     // Wrap Connection.prototype.query
     if (ConnectionClass.prototype && ConnectionClass.prototype.query) {
       if (!isWrapped(ConnectionClass.prototype.query)) {
@@ -118,21 +223,46 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         logger.debug(`[Mysql2Instrumentation] Wrapped Connection.prototype.end`);
       }
     }
-
-    this.markModuleAsPatched(ConnectionClass);
-    logger.debug(`[Mysql2Instrumentation] Connection class patching complete`);
-
-    return ConnectionClass;
   }
 
-  private _patchPool(PoolClass: any): any {
-    logger.debug(`[Mysql2Instrumentation] Patching Pool class`);
+  // v2.3.3-3.11.4: Patch prototypes for Pool
+  private _patchPoolV2(PoolClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Patching Pool class (v2)`);
 
     if (this.isModulePatched(PoolClass)) {
       logger.debug(`[Mysql2Instrumentation] Pool class already patched, skipping`);
       return PoolClass;
     }
 
+    // Patch pool prototype methods
+    this._patchPoolPrototypes(PoolClass);
+
+    this.markModuleAsPatched(PoolClass);
+
+    logger.debug(`[Mysql2Instrumentation] Pool class (v2) patching complete`);
+    return PoolClass;
+  }
+
+  // v3.11.5+: Patch prototypes for Pool (there's no base/pool.js)
+  private _patchPoolV3(PoolClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Patching Pool class (v3)`);
+
+    if (this.isModulePatched(PoolClass)) {
+      logger.debug(`[Mysql2Instrumentation] Pool class already patched, skipping`);
+      return PoolClass;
+    }
+
+    // Patch pool prototype methods
+    this._patchPoolPrototypes(PoolClass);
+
+    this.markModuleAsPatched(PoolClass);
+
+    logger.debug(`[Mysql2Instrumentation] Pool class (v3) patching complete`);
+    return PoolClass;
+  }
+
+  // Helper to patch pool prototype methods
+  private _patchPoolPrototypes(PoolClass: any): void {
     // Wrap Pool.prototype.query
     if (PoolClass.prototype && PoolClass.prototype.query) {
       if (!isWrapped(PoolClass.prototype.query)) {
@@ -157,39 +287,32 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       }
     }
 
-    this.markModuleAsPatched(PoolClass);
-    logger.debug(`[Mysql2Instrumentation] Pool class patching complete`);
-
-    return PoolClass;
+    // Wrap Pool.prototype.end
+    if (PoolClass.prototype && PoolClass.prototype.end) {
+      if (!isWrapped(PoolClass.prototype.end)) {
+        this._wrap(PoolClass.prototype, "end", this._getEndPatchFn("pool"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped Pool.prototype.end`);
+      }
+    }
   }
 
-  private _patchPoolConnection(PoolConnectionClass: any): any {
-    logger.debug(`[Mysql2Instrumentation] Patching PoolConnection class`);
+  // v2.3.3-3.11.4: PoolConnection extends Connection, so inherits patched methods
+  private _patchPoolConnectionV2(PoolConnectionClass: any): any {
+    logger.debug(
+      `[Mysql2Instrumentation] PoolConnection class (v2) - skipping (inherits from Connection)`,
+    );
+    // PoolConnection extends Connection, so it inherits the patched methods
+    // No additional patching needed
+    return PoolConnectionClass;
+  }
 
-    if (this.isModulePatched(PoolConnectionClass)) {
-      logger.debug(`[Mysql2Instrumentation] PoolConnection class already patched, skipping`);
-      return PoolConnectionClass;
-    }
-
-    // Wrap PoolConnection.prototype.query with poolConnection client type
-    if (PoolConnectionClass.prototype && PoolConnectionClass.prototype.query) {
-      if (!isWrapped(PoolConnectionClass.prototype.query)) {
-        this._wrap(PoolConnectionClass.prototype, "query", this._getQueryPatchFn("poolConnection"));
-        logger.debug(`[Mysql2Instrumentation] Wrapped PoolConnection.prototype.query`);
-      }
-    }
-
-    // Wrap PoolConnection.prototype.execute (prepared statements)
-    if (PoolConnectionClass.prototype && PoolConnectionClass.prototype.execute) {
-      if (!isWrapped(PoolConnectionClass.prototype.execute)) {
-        this._wrap(PoolConnectionClass.prototype, "execute", this._getExecutePatchFn("poolConnection"));
-        logger.debug(`[Mysql2Instrumentation] Wrapped PoolConnection.prototype.execute`);
-      }
-    }
-
-    this.markModuleAsPatched(PoolConnectionClass);
-    logger.debug(`[Mysql2Instrumentation] PoolConnection class patching complete`);
-
+  // v3.11.5+: PoolConnection extends Connection, so inherits patched methods
+  private _patchPoolConnectionV3(PoolConnectionClass: any): any {
+    logger.debug(
+      `[Mysql2Instrumentation] PoolConnection class (v3) - skipping (inherits from Connection)`,
+    );
+    // PoolConnection extends Connection, so it inherits the patched methods
+    // No additional patching needed
     return PoolConnectionClass;
   }
 
@@ -561,12 +684,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                   isPreAppStart,
                 },
                 (spanInfo) => {
-                  return self._handleSimpleCallbackMethod(
-                    spanInfo,
-                    originalPing,
-                    callback,
-                    this,
-                  );
+                  return self._handleSimpleCallbackMethod(spanInfo, originalPing, callback, this);
                 },
               );
             },
@@ -631,12 +749,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                   isPreAppStart,
                 },
                 (spanInfo) => {
-                  return self._handleSimpleCallbackMethod(
-                    spanInfo,
-                    originalEnd,
-                    callback,
-                    this,
-                  );
+                  return self._handleSimpleCallbackMethod(spanInfo, originalEnd, callback, this);
                 },
               );
             },
@@ -748,8 +861,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     if (typeof firstArg === "string") {
       const config: Mysql2QueryConfig = {
         sql: firstArg,
-        callback:
-          typeof args[args.length - 1] === "function" ? args[args.length - 1] : undefined,
+        callback: typeof args[args.length - 1] === "function" ? args[args.length - 1] : undefined,
       };
       if (Array.isArray(args[1])) {
         config.values = args[1];

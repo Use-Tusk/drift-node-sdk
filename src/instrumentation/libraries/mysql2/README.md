@@ -32,6 +32,7 @@ Records and replays MySQL database operations using the `mysql2` library to ensu
 ## Implementation Details
 
 ### File-Level Patching
+
 Patches internal library files to intercept operations:
 
 - **`mysql2/lib/connection.js`**: Patches `Connection` class prototype
@@ -83,3 +84,7 @@ The instrumentation follows a clean architecture:
    - Delegates to query mock for actual query execution
 
 This separation keeps the instrumentation maintainable and testable.
+
+## Known Limitations
+
+This instrumentation does not patch `changeUser`, `beginTransaction`, `commit`, `rollback`

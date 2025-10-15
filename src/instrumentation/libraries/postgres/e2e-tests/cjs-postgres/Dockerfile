@@ -9,6 +9,8 @@ COPY src/instrumentation/libraries/postgres/e2e-tests/cjs-postgres/tsconfig.json
 # Install dependencies
 RUN npm install
 
+# Add cache-busting argument to force fresh CLI download
+ARG CACHEBUST=1
 # Install Tusk Drift CLI
 RUN curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-drift-cli/main/install.sh | sh
 

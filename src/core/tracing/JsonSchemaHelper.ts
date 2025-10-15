@@ -169,7 +169,7 @@ export class JsonSchemaHelper {
 
   /**
    * Generate schema from data object using standardized types
-   * 
+   *
    * Note: We properties always exists on JsonSchema because proto3 maps cannot be marked optional.
    * The JSON data is a bit inefficient because of this, but the easiest way to handle this is to keep it for now.
    */
@@ -188,7 +188,10 @@ export class JsonSchemaHelper {
       if (Array.isArray(data) && data.length === 0) {
         return { type: JsonSchemaType.ORDERED_LIST, properties: {} };
       }
-      const items = Array.isArray(data) && data.length > 0 ? JsonSchemaHelper.generateSchema(data[0]) : undefined;
+      const items =
+        Array.isArray(data) && data.length > 0
+          ? JsonSchemaHelper.generateSchema(data[0])
+          : undefined;
       if (items !== undefined) {
         return {
           type: JsonSchemaType.ORDERED_LIST,
