@@ -192,6 +192,30 @@ export class TestServer {
       await new Promise((resolve) => setTimeout(resolve, 100));
       res.json({ message: "Slow response", timestamp: Date.now() });
     });
+
+    // High IO, Low CPU endpoint - simulates IO-bound work with minimal CPU usage
+    // Multiple small async operations that await on timers
+    this.app.post("/api/io-bound", async (req: Request, res: Response) => {
+      const jobs = req.body.jobs || 5;
+      const delayMs = req.body.delayMs || 5;
+
+      const results = [];
+      for (let i = 0; i < jobs; i++) {
+        // Simulate an IO operation (database query, file read, external API call, etc.)
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        results.push({
+          jobId: i,
+          timestamp: Date.now(),
+          status: "completed",
+        });
+      }
+
+      res.json({
+        totalJobs: jobs,
+        results,
+        completedAt: Date.now(),
+      });
+    });
   }
 
   async start(): Promise<{ port: number; host: string; url: string }> {
