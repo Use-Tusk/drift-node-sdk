@@ -1,18 +1,18 @@
-import { TuskDrift } from './tdInit';
-import http from 'http';
-import mysql from 'mysql2';
-import { sequelize, User, Product, initializeSequelize } from './sequelizeSetup';
-import { Op, QueryTypes } from 'sequelize';
+import { TuskDrift } from "./tdInit";
+import http from "http";
+import mysql from "mysql2";
+import { sequelize, User, Product, initializeSequelize } from "./sequelizeSetup";
+import { Op, QueryTypes } from "sequelize";
 
 const PORT = process.env.PORT || 3000;
 
 // Database configuration
 const dbConfig = {
-  host: process.env.MYSQL_HOST || 'mysql',
-  port: parseInt(process.env.MYSQL_PORT || '3306'),
-  database: process.env.MYSQL_DB || 'testdb',
-  user: process.env.MYSQL_USER || 'testuser',
-  password: process.env.MYSQL_PASSWORD || 'testpass',
+  host: process.env.MYSQL_HOST || "mysql",
+  port: parseInt(process.env.MYSQL_PORT || "3306"),
+  database: process.env.MYSQL_DB || "testdb",
+  user: process.env.MYSQL_USER || "testuser",
+  password: process.env.MYSQL_PASSWORD || "testpass",
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -52,7 +52,7 @@ async function initializeDatabase() {
       (err) => {
         if (err) reject(err);
         else resolve();
-      }
+      },
     );
   });
 
@@ -68,7 +68,7 @@ async function initializeDatabase() {
       (err) => {
         if (err) reject(err);
         else resolve();
-      }
+      },
     );
   });
 
@@ -85,7 +85,7 @@ async function initializeDatabase() {
       (err) => {
         if (err) reject(err);
         else resolve();
-      }
+      },
     );
   });
 
@@ -98,7 +98,7 @@ async function initializeDatabase() {
         (err) => {
           if (err) reject(err);
           else resolve();
-        }
+        },
       );
     });
   }
@@ -108,192 +108,208 @@ async function initializeDatabase() {
 
 // Create HTTP server with test endpoints
 const server = http.createServer(async (req, res) => {
-  const url = req.url || '/';
-  const method = req.method || 'GET';
+  const url = req.url || "/";
+  const method = req.method || "GET";
 
   console.log(`Received request: ${method} ${url}`);
 
   try {
     // Health check endpoint
-    if (url === '/health' && method === 'GET') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+    if (url === "/health" && method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ success: true }));
       return;
     }
 
     // Test endpoint for connection query
-    if (url === '/test/connection-query' && method === 'GET') {
+    if (url === "/test/connection-query" && method === "GET") {
       connection.query("SELECT * FROM test_users ORDER BY id", (error, results) => {
         if (error) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: false, error: error.message }));
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          data: results,
-          rowCount: Array.isArray(results) ? results.length : 0,
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: results,
+            rowCount: Array.isArray(results) ? results.length : 0,
+          }),
+        );
       });
       return;
     }
 
     // Test endpoint for connection parameterized query
-    if (url === '/test/connection-parameterized' && method === 'POST') {
-      let body = '';
-      req.on('data', chunk => body += chunk);
-      req.on('end', () => {
+    if (url === "/test/connection-parameterized" && method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
         const { userId } = JSON.parse(body);
         connection.query("SELECT * FROM test_users WHERE id = ?", [userId], (error, results) => {
           if (error) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: error.message }));
             return;
           }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            data: results,
-            rowCount: Array.isArray(results) ? results.length : 0,
-          }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: results,
+              rowCount: Array.isArray(results) ? results.length : 0,
+            }),
+          );
         });
       });
       return;
     }
 
     // Test endpoint for connection execute (prepared statements)
-    if (url === '/test/connection-execute' && method === 'GET') {
+    if (url === "/test/connection-execute" && method === "GET") {
       connection.execute("SELECT * FROM test_users ORDER BY id", (error, results) => {
         if (error) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: false, error: error.message }));
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          data: results,
-          rowCount: Array.isArray(results) ? results.length : 0,
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: results,
+            rowCount: Array.isArray(results) ? results.length : 0,
+          }),
+        );
       });
       return;
     }
 
     // Test endpoint for connection execute with params
-    if (url === '/test/connection-execute-params' && method === 'POST') {
-      let body = '';
-      req.on('data', chunk => body += chunk);
-      req.on('end', () => {
+    if (url === "/test/connection-execute-params" && method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
         const { userId } = JSON.parse(body);
         connection.execute("SELECT * FROM test_users WHERE id = ?", [userId], (error, results) => {
           if (error) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: error.message }));
             return;
           }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            data: results,
-            rowCount: Array.isArray(results) ? results.length : 0,
-          }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: results,
+              rowCount: Array.isArray(results) ? results.length : 0,
+            }),
+          );
         });
       });
       return;
     }
 
     // Pool test endpoint
-    if (url === '/test/pool-query' && method === 'GET') {
+    if (url === "/test/pool-query" && method === "GET") {
       pool.query("SELECT * FROM test_users ORDER BY id LIMIT 5", (error, results) => {
         if (error) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: false, error: error.message }));
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          data: results,
-          rowCount: Array.isArray(results) ? results.length : 0,
-          queryType: "pool",
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: results,
+            rowCount: Array.isArray(results) ? results.length : 0,
+            queryType: "pool",
+          }),
+        );
       });
       return;
     }
 
     // Pool parameterized query
-    if (url === '/test/pool-parameterized' && method === 'POST') {
-      let body = '';
-      req.on('data', chunk => body += chunk);
-      req.on('end', () => {
+    if (url === "/test/pool-parameterized" && method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
         const { userId } = JSON.parse(body);
         pool.query("SELECT * FROM test_users WHERE id = ?", [userId], (error, results) => {
           if (error) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: error.message }));
             return;
           }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            data: results,
-            rowCount: Array.isArray(results) ? results.length : 0,
-            queryType: "pool-parameterized",
-          }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: results,
+              rowCount: Array.isArray(results) ? results.length : 0,
+              queryType: "pool-parameterized",
+            }),
+          );
         });
       });
       return;
     }
 
     // Pool execute test
-    if (url === '/test/pool-execute' && method === 'GET') {
+    if (url === "/test/pool-execute" && method === "GET") {
       pool.execute("SELECT * FROM test_users ORDER BY id", (error, results) => {
         if (error) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: false, error: error.message }));
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          data: results,
-          rowCount: Array.isArray(results) ? results.length : 0,
-          queryType: "pool-execute",
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: results,
+            rowCount: Array.isArray(results) ? results.length : 0,
+            queryType: "pool-execute",
+          }),
+        );
       });
       return;
     }
 
     // Pool execute with params
-    if (url === '/test/pool-execute-params' && method === 'POST') {
-      let body = '';
-      req.on('data', chunk => body += chunk);
-      req.on('end', () => {
+    if (url === "/test/pool-execute-params" && method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
         const { userId } = JSON.parse(body);
         pool.execute("SELECT * FROM test_users WHERE id = ?", [userId], (error, results) => {
           if (error) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: error.message }));
             return;
           }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            data: results,
-            rowCount: Array.isArray(results) ? results.length : 0,
-            queryType: "pool-execute-params",
-          }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: results,
+              rowCount: Array.isArray(results) ? results.length : 0,
+              queryType: "pool-execute-params",
+            }),
+          );
         });
       });
       return;
     }
 
     // Pool getConnection test
-    if (url === '/test/pool-getConnection' && method === 'GET') {
+    if (url === "/test/pool-getConnection" && method === "GET") {
       pool.getConnection((error, poolConnection) => {
         if (error) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: false, error: error.message }));
           return;
         }
@@ -302,218 +318,242 @@ const server = http.createServer(async (req, res) => {
           poolConnection.release();
 
           if (queryError) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: queryError.message }));
             return;
           }
 
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            data: results,
-            queryType: "pool-getConnection",
-          }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: results,
+              queryType: "pool-getConnection",
+            }),
+          );
         });
       });
       return;
     }
 
     // Connection connect test
-    if (url === '/test/connection-connect' && method === 'GET') {
+    if (url === "/test/connection-connect" && method === "GET") {
       const newConnection = mysql.createConnection(dbConfig);
       newConnection.connect((error) => {
         if (error) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: false, error: error.message }));
           return;
         }
 
         newConnection.end();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true }));
       });
       return;
     }
 
     // Connection ping test
-    if (url === '/test/connection-ping' && method === 'GET') {
+    if (url === "/test/connection-ping" && method === "GET") {
       connection.ping((error) => {
         if (error) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: false, error: error.message }));
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true }));
       });
       return;
     }
 
     // Stream query test
-    if (url === '/test/stream-query' && method === 'GET') {
+    if (url === "/test/stream-query" && method === "GET") {
       const results: any[] = [];
       const query = connection.query("SELECT * FROM large_data ORDER BY id");
 
       query
-        .on('error', (error) => {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+        .on("error", (error) => {
+          res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: false, error: error.message }));
         })
-        .on('result', (row) => {
+        .on("result", (row) => {
           results.push(row);
         })
-        .on('end', () => {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            data: results,
-            rowCount: results.length,
-            queryType: "stream",
-          }));
+        .on("end", () => {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: results,
+              rowCount: results.length,
+              queryType: "stream",
+            }),
+          );
         });
       return;
     }
 
     // Sequelize authenticate test - this triggers internal queries like SELECT VERSION()
-    if (url === '/test/sequelize-authenticate' && method === 'GET') {
+    if (url === "/test/sequelize-authenticate" && method === "GET") {
       try {
         await sequelize.authenticate();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          message: 'Sequelize authentication successful',
-          queryType: 'sequelize-authenticate',
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            message: "Sequelize authentication successful",
+            queryType: "sequelize-authenticate",
+          }),
+        );
       } catch (error) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        }));
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
       return;
     }
 
     // Sequelize findAll test - ORM query
-    if (url === '/test/sequelize-findall' && method === 'GET') {
+    if (url === "/test/sequelize-findall" && method === "GET") {
       try {
         const users = await User.findAll({
-          order: [['id', 'ASC']],
+          order: [["id", "ASC"]],
         });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          data: users,
-          rowCount: users.length,
-          queryType: 'sequelize-findAll',
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: users,
+            rowCount: users.length,
+            queryType: "sequelize-findAll",
+          }),
+        );
       } catch (error) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        }));
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
       return;
     }
 
     // Sequelize findOne test - parameterized ORM query
-    if (url === '/test/sequelize-findone' && method === 'POST') {
+    if (url === "/test/sequelize-findone" && method === "POST") {
       try {
-        let body = '';
-        req.on('data', chunk => body += chunk);
-        await new Promise<void>((resolve) => req.on('end', () => resolve()));
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        await new Promise<void>((resolve) => req.on("end", () => resolve()));
 
         const { userId } = JSON.parse(body);
         const user = await User.findOne({
           where: { id: userId },
         });
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          data: user,
-          queryType: 'sequelize-findOne',
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: user,
+            queryType: "sequelize-findOne",
+          }),
+        );
       } catch (error) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        }));
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
       return;
     }
 
     // Sequelize complex query with joins and aggregations
-    if (url === '/test/sequelize-complex' && method === 'GET') {
+    if (url === "/test/sequelize-complex" && method === "GET") {
       try {
         // This will trigger multiple internal queries
         const [users, products] = await Promise.all([
           User.findAll({
-            attributes: ['id', 'name', 'email'],
+            attributes: ["id", "name", "email"],
             limit: 5,
           }),
           Product.findAll({
-            attributes: ['id', 'name', 'price', 'stock'],
+            attributes: ["id", "name", "price", "stock"],
             where: {
               stock: {
                 [Op.gt]: 0,
               },
             },
-            order: [['price', 'DESC']],
+            order: [["price", "DESC"]],
           }),
         ]);
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          data: {
-            users,
-            products,
-          },
-          queryType: 'sequelize-complex',
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: {
+              users,
+              products,
+            },
+            queryType: "sequelize-complex",
+          }),
+        );
       } catch (error) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        }));
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
       return;
     }
 
     // Sequelize raw query test
-    if (url === '/test/sequelize-raw' && method === 'GET') {
+    if (url === "/test/sequelize-raw" && method === "GET") {
       try {
         const results = await sequelize.query(
-          'SELECT * FROM test_users WHERE id <= ? ORDER BY id',
+          "SELECT * FROM test_users WHERE id <= ? ORDER BY id",
           {
             replacements: [3],
             type: QueryTypes.SELECT,
-          }
+          },
         );
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          data: results,
-          rowCount: Array.isArray(results) ? results.length : 0,
-          queryType: 'sequelize-raw',
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: results,
+            rowCount: Array.isArray(results) ? results.length : 0,
+            queryType: "sequelize-raw",
+          }),
+        );
       } catch (error) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        }));
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
       return;
     }
 
     // Sequelize transaction test - this will create multiple queries
-    if (url === '/test/sequelize-transaction' && method === 'POST') {
+    if (url === "/test/sequelize-transaction" && method === "POST") {
       try {
         const result = await sequelize.transaction(async (t) => {
           // Multiple queries within a transaction
@@ -530,32 +570,38 @@ const server = http.createServer(async (req, res) => {
           return { user, products };
         });
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          data: result,
-          queryType: 'sequelize-transaction',
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: result,
+            queryType: "sequelize-transaction",
+          }),
+        );
       } catch (error) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        }));
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
       return;
     }
 
     // 404 for unknown routes
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Not found' }));
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Not found" }));
   } catch (error) {
-    console.error('Error handling request:', error);
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    }));
+    console.error("Error handling request:", error);
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
   }
 });
 
@@ -567,26 +613,28 @@ server.listen(PORT, async () => {
     TuskDrift.markAppAsReady();
     console.log(`MySQL2 integration test server running on port ${PORT}`);
     console.log(`Test mode: ${process.env.TUSK_DRIFT_MODE}`);
-    console.log('Available endpoints:');
-    console.log('  GET  /health - Health check');
-    console.log('  GET  /test/connection-query - Test connection query');
-    console.log('  POST /test/connection-parameterized - Test connection parameterized query');
-    console.log('  GET  /test/connection-execute - Test connection execute (prepared statement)');
-    console.log('  POST /test/connection-execute-params - Test connection execute with params');
-    console.log('  GET  /test/pool-query - Test pool query');
-    console.log('  POST /test/pool-parameterized - Test pool parameterized query');
-    console.log('  GET  /test/pool-execute - Test pool execute (prepared statement)');
-    console.log('  POST /test/pool-execute-params - Test pool execute with params');
-    console.log('  GET  /test/pool-getConnection - Test pool getConnection');
-    console.log('  GET  /test/connection-connect - Test connection connect');
-    console.log('  GET  /test/connection-ping - Test connection ping');
-    console.log('  GET  /test/stream-query - Test stream query');
-    console.log('  GET  /test/sequelize-authenticate - Test Sequelize authenticate (triggers internal queries)');
-    console.log('  GET  /test/sequelize-findall - Test Sequelize findAll');
-    console.log('  POST /test/sequelize-findone - Test Sequelize findOne');
-    console.log('  GET  /test/sequelize-complex - Test Sequelize complex queries');
-    console.log('  GET  /test/sequelize-raw - Test Sequelize raw query');
-    console.log('  POST /test/sequelize-transaction - Test Sequelize transaction');
+    console.log("Available endpoints:");
+    console.log("  GET  /health - Health check");
+    console.log("  GET  /test/connection-query - Test connection query");
+    console.log("  POST /test/connection-parameterized - Test connection parameterized query");
+    console.log("  GET  /test/connection-execute - Test connection execute (prepared statement)");
+    console.log("  POST /test/connection-execute-params - Test connection execute with params");
+    console.log("  GET  /test/pool-query - Test pool query");
+    console.log("  POST /test/pool-parameterized - Test pool parameterized query");
+    console.log("  GET  /test/pool-execute - Test pool execute (prepared statement)");
+    console.log("  POST /test/pool-execute-params - Test pool execute with params");
+    console.log("  GET  /test/pool-getConnection - Test pool getConnection");
+    console.log("  GET  /test/connection-connect - Test connection connect");
+    console.log("  GET  /test/connection-ping - Test connection ping");
+    console.log("  GET  /test/stream-query - Test stream query");
+    console.log(
+      "  GET  /test/sequelize-authenticate - Test Sequelize authenticate (triggers internal queries)",
+    );
+    console.log("  GET  /test/sequelize-findall - Test Sequelize findAll");
+    console.log("  POST /test/sequelize-findone - Test Sequelize findOne");
+    console.log("  GET  /test/sequelize-complex - Test Sequelize complex queries");
+    console.log("  GET  /test/sequelize-raw - Test Sequelize raw query");
+    console.log("  POST /test/sequelize-transaction - Test Sequelize transaction");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

@@ -42,6 +42,11 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         supportedVersions: SUPPORTED_VERSIONS,
         files: [
           new TdInstrumentationNodeModuleFile({
+            name: "mysql2/lib/base/connection.js",
+            supportedVersions: SUPPORTED_VERSIONS,
+            patch: (moduleExports: any) => this._patchBaseConnection(moduleExports),
+          }),
+          new TdInstrumentationNodeModuleFile({
             name: "mysql2/lib/connection.js",
             supportedVersions: SUPPORTED_VERSIONS,
             patch: (moduleExports: any) => this._patchConnection(moduleExports),
@@ -69,6 +74,60 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         ],
       }),
     ];
+  }
+
+  private _patchBaseConnection(BaseConnectionClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Patching BaseConnection class`);
+
+    if (this.isModulePatched(BaseConnectionClass)) {
+      logger.debug(`[Mysql2Instrumentation] BaseConnection class already patched, skipping`);
+      return BaseConnectionClass;
+    }
+
+    // Wrap BaseConnection.prototype.query
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.query) {
+      if (!isWrapped(BaseConnectionClass.prototype.query)) {
+        this._wrap(BaseConnectionClass.prototype, "query", this._getQueryPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.query`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.execute (prepared statements)
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.execute) {
+      if (!isWrapped(BaseConnectionClass.prototype.execute)) {
+        this._wrap(BaseConnectionClass.prototype, "execute", this._getExecutePatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.execute`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.connect
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.connect) {
+      if (!isWrapped(BaseConnectionClass.prototype.connect)) {
+        this._wrap(BaseConnectionClass.prototype, "connect", this._getConnectPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.connect`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.ping
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.ping) {
+      if (!isWrapped(BaseConnectionClass.prototype.ping)) {
+        this._wrap(BaseConnectionClass.prototype, "ping", this._getPingPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.ping`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.end
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.end) {
+      if (!isWrapped(BaseConnectionClass.prototype.end)) {
+        this._wrap(BaseConnectionClass.prototype, "end", this._getEndPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.end`);
+      }
+    }
+
+    this.markModuleAsPatched(BaseConnectionClass);
+    logger.debug(`[Mysql2Instrumentation] BaseConnection class patching complete`);
+
+    return BaseConnectionClass;
   }
 
   private _patchConnection(ConnectionClass: any): any {

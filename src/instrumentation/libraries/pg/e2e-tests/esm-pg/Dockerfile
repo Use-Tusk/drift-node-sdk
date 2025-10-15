@@ -9,6 +9,8 @@ COPY src/instrumentation/libraries/pg/e2e-tests/esm-pg/tsconfig.json ./
 # Install dependencies
 RUN npm install
 
+# Add cache-busting argument to force fresh CLI download
+ARG CACHEBUST=1
 # Install Tusk Drift CLI
 RUN curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-drift-cli/main/install.sh | sh
 
