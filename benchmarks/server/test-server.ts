@@ -1,6 +1,6 @@
 import type { Request, Response, Application } from "express";
-import crypto from "crypto";
-import type http from "http";
+import * as crypto from "crypto";
+import type { Server } from "http";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const express = require("express");
@@ -12,7 +12,7 @@ export interface TestServerConfig {
 
 export class TestServer {
   private app: Application;
-  private server: http.Server | null = null;
+  private server: Server | null = null;
   private port: number;
   private host: string;
 
