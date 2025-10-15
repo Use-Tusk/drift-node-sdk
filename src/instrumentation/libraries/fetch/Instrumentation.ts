@@ -4,7 +4,7 @@ import { SpanInfo, SpanUtils } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
 import { getDecodedType, httpBodyEncoder } from "../http/utils";
-import { isTuskDriftIngestionUrl, TUSK_SKIP_HEADER } from "../../core/utils";
+import { captureStackTrace, isTuskDriftIngestionUrl, TUSK_SKIP_HEADER } from "../../core/utils";
 import { findMockResponseAsync } from "../../core/utils/mockResponseUtils";
 import { handleReplayMode, handleRecordMode } from "../../core/utils/modeUtils";
 import { FetchInputValue, FetchOutputValue, FetchInstrumentationConfig } from "./types";
@@ -61,7 +61,8 @@ export class FetchInstrumentation extends TdInstrumentationBase {
       input: string | URL | Request,
       init?: RequestInit,
     ): Promise<Response> {
-      return self._handleFetchRequest(input, init);
+      const stackTrace = captureStackTrace(["FetchInstrumentation"]);
+      return self._handleFetchRequest(input, init, stackTrace);
     } as typeof globalThis.fetch;
 
     logger.debug("Global fetch patching complete");
@@ -70,6 +71,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
   private async _handleFetchRequest(
     input: string | URL | Request,
     init?: RequestInit,
+    stackTrace?: string,
   ): Promise<Response> {
     // Parse request details
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -119,7 +121,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
               isPreAppStart: false,
             },
             (spanInfo) => {
-              return this._handleReplayFetch(inputValue, spanInfo);
+              return this._handleReplayFetch(inputValue, spanInfo, stackTrace);
             },
           );
         },
@@ -243,6 +245,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
   private async _handleReplayFetch(
     inputValue: FetchInputValue,
     spanInfo: SpanInfo,
+    stackTrace?: string,
   ): Promise<Response> {
     const mockData = await findMockResponseAsync({
       mockRequestData: {
@@ -255,6 +258,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
         submoduleName: inputValue.method,
         inputValue,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
       inputValueSchemaMerges: {

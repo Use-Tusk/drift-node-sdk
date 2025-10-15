@@ -99,6 +99,7 @@ export type CleanSpanData = {
   };
   // sdk-specific
   isUsed?: boolean;
+  stackTrace?: string;
 };
 
 export type MockRequestData = {
@@ -111,6 +112,7 @@ export type MockRequestData = {
   submoduleName: string;
   inputValue: unknown;
   kind: SpanKind;
+  stackTrace?: string;
 };
 
 export type MetadataObject = {
