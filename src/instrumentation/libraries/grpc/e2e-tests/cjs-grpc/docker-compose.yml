@@ -7,8 +7,8 @@ services:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/grpc/e2e-tests/cjs-grpc/Dockerfile
     ports:
-      - "3000:3000"
-      - "50051:50051"
+      - "${APP_PORT:-3000}:3000"
+      - "${GRPC_PORT:-50051}:50051"
     environment:
       - PORT=3000
       - GRPC_SERVER_ADDRESS=localhost:50051

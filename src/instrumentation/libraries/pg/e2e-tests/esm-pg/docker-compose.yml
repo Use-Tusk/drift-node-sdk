@@ -8,8 +8,6 @@ services:
       - POSTGRES_DB=testdb
       - POSTGRES_USER=testuser
       - POSTGRES_PASSWORD=testpass
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
       interval: 5s
@@ -22,7 +20,7 @@ services:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/pg/e2e-tests/esm-pg/Dockerfile
     ports:
-      - "3000:3000"
+      - "${APP_PORT:-3000}:3000"
     environment:
       - PORT=3000
       - POSTGRES_HOST=postgres

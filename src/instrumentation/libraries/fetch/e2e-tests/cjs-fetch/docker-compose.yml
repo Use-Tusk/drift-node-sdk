@@ -7,7 +7,7 @@ services:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/fetch/e2e-tests/cjs-fetch/Dockerfile
     ports:
-      - "3000:3000"
+      - "${APP_PORT:-3000}:3000"
     environment:
       - PORT=3000
     volumes:

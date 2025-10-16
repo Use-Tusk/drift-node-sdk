@@ -4,8 +4,6 @@ services:
   redis:
     image: redis:7-alpine
     platform: linux/arm64
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -18,7 +16,7 @@ services:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/ioredis/e2e-tests/cjs-ioredis/Dockerfile
     ports:
-      - "3000:3000"
+      - "${APP_PORT:-3000}:3000"
     environment:
       - PORT=3000
       - REDIS_HOST=redis

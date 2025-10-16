@@ -9,8 +9,6 @@ services:
       - MYSQL_USER=testuser
       - MYSQL_PASSWORD=testpass
       - MYSQL_ROOT_PASSWORD=rootpass
-    ports:
-      - "3308:3306"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "testuser", "-ptestpass"]
       interval: 5s
@@ -23,7 +21,7 @@ services:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/mysql2/e2e-tests/esm-mysql2/Dockerfile
     ports:
-      - "3001:3000"
+      - "${APP_PORT:-3000}:3000"
     environment:
       - PORT=3000
       - MYSQL_HOST=mysql
