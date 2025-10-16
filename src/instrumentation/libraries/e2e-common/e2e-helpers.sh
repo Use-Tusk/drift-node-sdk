@@ -119,6 +119,13 @@ run_all_e2e_tests() {
   echo "========================================"
   echo ""
 
+  # Save current buildx builder and switch to default for parallel builds
+  local ORIGINAL_BUILDER=$(docker buildx inspect 2>/dev/null | grep "^Name:" | awk '{print $2}' || echo "")
+  if [ -n "$ORIGINAL_BUILDER" ]; then
+    echo "Switching to default Docker builder for parallel builds..."
+    docker buildx use default 2>/dev/null || true
+  fi
+
   # Track results
   declare -a TEST_RESULTS
   declare -a TEST_PORTS
@@ -158,8 +165,9 @@ run_all_e2e_tests() {
     chmod +x "$RUN_SCRIPT"
 
     # Run test in background and capture output
+    # Use script command to allocate a pseudo-TTY for docker compose exec commands
     local OUTPUT_FILE="$TEMP_DIR/${TEST_DIR}.log"
-    (cd "$E2E_TESTS_DIR/$TEST_DIR" && ./run.sh "$TEST_PORT" > "$OUTPUT_FILE" 2>&1) &
+    (cd "$E2E_TESTS_DIR/$TEST_DIR" && script -q "$OUTPUT_FILE" ./run.sh "$TEST_PORT" > /dev/null 2>&1) &
     local PID=$!
 
     TEST_RESULTS+=("$TEST_DIR")
@@ -234,6 +242,12 @@ run_all_e2e_tests() {
 
   echo "========================================"
   echo ""
+
+  # Restore original buildx builder if it was changed
+  if [ -n "$ORIGINAL_BUILDER" ] && [ "$ORIGINAL_BUILDER" != "default" ]; then
+    echo "Restoring original Docker builder: $ORIGINAL_BUILDER"
+    docker buildx use "$ORIGINAL_BUILDER" 2>/dev/null || true
+  fi
 
   return $OVERALL_EXIT_CODE
 }

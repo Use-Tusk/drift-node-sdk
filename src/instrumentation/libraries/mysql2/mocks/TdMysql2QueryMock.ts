@@ -52,6 +52,7 @@ export class TdMysql2QueryMock {
   /**
    * Handle query - always returns an EventEmitter (like mysql2 does)
    * This handles both callback and streaming modes
+   * The EventEmitter is also thenable (has a .then() method) to support await/Promise usage
    */
   private _handleQuery(
     queryConfig: Mysql2QueryConfig,
@@ -61,6 +62,23 @@ export class TdMysql2QueryMock {
     submoduleName: string,
   ): EventEmitter {
     const emitter = new EventEmitter();
+
+    // Store rows and fields for Promise resolution
+    let storedRows: any = null;
+    let storedFields: any = null;
+
+    // Make the emitter thenable so it can be awaited
+    // This is how mysql2's Query object works - it's an EventEmitter that can also be awaited
+    (emitter as any).then = function(onResolve?: (value: any) => any, onReject?: (error: any) => any) {
+      return new Promise((resolve, reject) => {
+        emitter.once("end", () => {
+          resolve([storedRows, storedFields]);
+        });
+        emitter.once("error", (error) => {
+          reject(error);
+        });
+      }).then(onResolve, onReject);
+    };
 
     // Fetch mock data asynchronously and emit events
     (async () => {
@@ -84,6 +102,10 @@ export class TdMysql2QueryMock {
 
         // Convert mock data to proper MySQL2 format
         const processedResult = this._convertMysql2Types(mockData.result);
+
+        // Store for Promise resolution
+        storedRows = processedResult.rows;
+        storedFields = processedResult.fields;
 
         // Emit events to simulate query execution
         process.nextTick(() => {
