@@ -167,7 +167,14 @@ run_all_e2e_tests() {
     # Run test in background and capture output
     # Use script command to allocate a pseudo-TTY for docker compose exec commands
     local OUTPUT_FILE="$TEMP_DIR/${TEST_DIR}.log"
-    (cd "$E2E_TESTS_DIR/$TEST_DIR" && script -q "$OUTPUT_FILE" ./run.sh "$TEST_PORT" > /dev/null 2>&1) &
+    # Detect OS for script command compatibility
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      # macOS
+      (cd "$E2E_TESTS_DIR/$TEST_DIR" && script -q "$OUTPUT_FILE" ./run.sh "$TEST_PORT" > /dev/null 2>&1) &
+    else
+      # Linux (GitHub Actions)
+      (cd "$E2E_TESTS_DIR/$TEST_DIR" && script -q -c "./run.sh $TEST_PORT" "$OUTPUT_FILE" > /dev/null 2>&1) &
+    fi
     local PID=$!
 
     TEST_RESULTS+=("$TEST_DIR")

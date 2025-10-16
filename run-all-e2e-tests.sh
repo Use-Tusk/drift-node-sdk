@@ -77,7 +77,14 @@ for i in "${!RUN_ALL_SCRIPTS[@]}"; do
   chmod +x "$SCRIPT"
 
   # Run in background
-  script -q "$OUTPUT_FILE" "$SCRIPT" "$BASE_PORT" > /dev/null 2>&1 &
+  # Detect OS for script command compatibility
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    script -q "$OUTPUT_FILE" "$SCRIPT" "$BASE_PORT" > /dev/null 2>&1 &
+  else
+    # Linux (GitHub Actions)
+    script -q -c "$SCRIPT $BASE_PORT" "$OUTPUT_FILE" > /dev/null 2>&1 &
+  fi
   PID=$!
 
   LIBRARY_PIDS+=("$PID")
