@@ -92,8 +92,10 @@ wait_for_any_job() {
   while true; do
     for pid in "${LIBRARY_PIDS[@]}"; do
       if ! kill -0 "$pid" 2>/dev/null; then
-        # Found a completed PID, now actually wait for it
+        # Found a completed PID, now actually wait for it to fully clean up
         wait "$pid" 2>/dev/null || true
+        # Give the exit code file time to be written and flushed to disk
+        sleep 1
         return 0
       fi
     done
