@@ -1,0 +1,49 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  e2e:
+    name: E2E Tests (SDK + CLI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Install SDK dependencies
+        run: npm install
+
+      - name: Build SDK
+        run: npm run build
+
+      - name: Run all E2E tests
+        env:
+          DOCKER_DEFAULT_PLATFORM: linux/amd64
+        run: ./run-all-e2e-tests.sh 2
+
+      - name: Cleanup Docker resources
+        if: always()
+        run: |
+          # Stop all running containers
+          docker ps -aq | xargs -r docker stop || true
+          docker ps -aq | xargs -r docker rm || true
+          # Clean up volumes
+          docker volume prune -f || true
+          # Clean up networks
+          docker network prune -f || true

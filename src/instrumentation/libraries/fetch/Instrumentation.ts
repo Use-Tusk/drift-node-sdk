@@ -11,7 +11,6 @@ import { FetchInputValue, FetchOutputValue, FetchInstrumentationConfig } from ".
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { EncodingType } from "../../../core/tracing/JsonSchemaHelper";
 import { logger } from "../../../core/utils/logger";
-import { BodyInit } from "undici-types/fetch";
 import { FetchSpanData, FetchTransformEngine } from "./FetchTransformEngine";
 
 /**
@@ -80,7 +79,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
     let encodedBody: any = init?.body;
     try {
       normalizedHeaders = this._normalizeHeaders(headers);
-      encodedBody = init?.body ? (await this._encodeRequestBody(init?.body) as any) : init?.body;
+      encodedBody = init?.body ? ((await this._encodeRequestBody(init?.body)) as any) : init?.body;
     } catch (error) {
       logger.error(`FetchInstrumentation error normalizing headers:`, error);
     }

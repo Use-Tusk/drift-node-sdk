@@ -2,12 +2,11 @@ version: '3.8'
 
 services:
   app:
-    platform: linux/arm64
     build:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/fetch/e2e-tests/esm-fetch/Dockerfile
     ports:
-      - "3000:3000"
+      - "${APP_PORT:-3000}:3000"
     environment:
       - PORT=3000
     volumes:

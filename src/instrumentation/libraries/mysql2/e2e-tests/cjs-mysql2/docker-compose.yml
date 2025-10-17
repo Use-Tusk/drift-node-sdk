@@ -3,14 +3,11 @@ version: '3.8'
 services:
   mysql:
     image: mysql:8.0
-    platform: linux/arm64
     environment:
       - MYSQL_DATABASE=testdb
       - MYSQL_USER=testuser
       - MYSQL_PASSWORD=testpass
       - MYSQL_ROOT_PASSWORD=rootpass
-    ports:
-      - "3307:3306"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "testuser", "-ptestpass"]
       interval: 5s
@@ -18,12 +15,11 @@ services:
       retries: 5
 
   app:
-    platform: linux/arm64
     build:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/mysql2/e2e-tests/cjs-mysql2/Dockerfile
     ports:
-      - "3000:3000"
+      - "${APP_PORT:-3000}:3000"
     environment:
       - PORT=3000
       - MYSQL_HOST=mysql
