@@ -29,6 +29,12 @@ jobs:
       - name: Free up disk space
         run: docker system prune -af
 
+      - name: Install SDK dependencies
+        run: npm install
+
+      - name: Build SDK
+        run: npm run build
+
       - name: Run ioredis E2E test
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
