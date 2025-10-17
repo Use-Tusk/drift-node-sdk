@@ -217,7 +217,15 @@ run_all_e2e_tests() {
     fi
 
     # Wait for specific PID
-    wait "$PID"
+    wait "$PID" 2>/dev/null || true
+
+    # Wait for the exit file to exist (with timeout)
+    local TIMEOUT=10
+    local ELAPSED=0
+    while [ ! -f "$TEMP_DIR/${TEST_DIR}.exit" ] && [ $ELAPSED -lt $TIMEOUT ]; do
+      sleep 0.1
+      ELAPSED=$((ELAPSED + 1))
+    done
 
     # Read the actual exit code from the file
     local EXIT_CODE_FILE="$TEMP_DIR/${TEST_DIR}.exit"
@@ -238,7 +246,11 @@ run_all_e2e_tests() {
     # Show output from the test
     echo ""
     echo "--- Output from $TEST_DIR ---"
-    cat "$OUTPUT_FILE"
+    if [ -f "$OUTPUT_FILE" ]; then
+      cat "$OUTPUT_FILE"
+    else
+      echo "(No log file found)"
+    fi
     echo "--- End of output from $TEST_DIR ---"
     echo ""
   done
