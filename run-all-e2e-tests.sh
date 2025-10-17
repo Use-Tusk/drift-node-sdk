@@ -1,9 +1,27 @@
 #!/bin/bash
 
 # Script to run all E2E tests for all instrumentation libraries
-# This script discovers and runs all run-all.sh scripts in parallel
+# This script discovers and runs all run-all.sh scripts with controlled concurrency
+#
+# Usage: ./run-all-e2e-tests.sh [MAX_CONCURRENT]
+#   MAX_CONCURRENT: Number of tests to run concurrently (default: unlimited/all in parallel)
+#
+# Examples:
+#   ./run-all-e2e-tests.sh     # Run all tests in parallel
+#   ./run-all-e2e-tests.sh 2   # Run 2 tests concurrently
+#   ./run-all-e2e-tests.sh 1   # Run tests sequentially
 
 set -e
+
+# Parse arguments
+MAX_CONCURRENT=${1:-0}  # 0 means unlimited (all in parallel)
+
+# Validate MAX_CONCURRENT is a number
+if ! [[ "$MAX_CONCURRENT" =~ ^[0-9]+$ ]]; then
+  echo "Error: MAX_CONCURRENT must be a positive integer"
+  echo "Usage: $0 [MAX_CONCURRENT]"
+  exit 1
+fi
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -36,6 +54,11 @@ echo "========================================"
 echo "Running E2E Tests for All Libraries"
 echo "========================================"
 echo "Found $NUM_LIBRARIES libraries: ${LIBRARY_NAMES[*]}"
+if [ $MAX_CONCURRENT -eq 0 ]; then
+  echo "Concurrency: Unlimited (all in parallel)"
+else
+  echo "Concurrency: $MAX_CONCURRENT at a time"
+fi
 echo ""
 echo "Base port allocation:"
 for i in "${!LIBRARY_NAMES[@]}"; do
@@ -62,12 +85,34 @@ declare -a LIBRARY_PIDS
 declare -a LIBRARY_PORTS
 declare -a LIBRARY_EXIT_CODES
 
-# Launch all library tests in parallel
+# Function to wait for any background job to complete
+wait_for_any_job() {
+  # Poll running jobs until one completes
+  while true; do
+    for pid in "${LIBRARY_PIDS[@]}"; do
+      if ! kill -0 "$pid" 2>/dev/null; then
+        # This PID has completed
+        return 0
+      fi
+    done
+    sleep 0.1
+  done
+}
+
+# Launch all library tests with controlled concurrency
+RUNNING_COUNT=0
 for i in "${!RUN_ALL_SCRIPTS[@]}"; do
   SCRIPT="${RUN_ALL_SCRIPTS[$i]}"
   LIBRARY="${LIBRARY_NAMES[$i]}"
   BASE_PORT=$((3000 + i * 10))
   OUTPUT_FILE="$TEMP_DIR/${LIBRARY}.log"
+
+  # If we have a concurrency limit and reached it, wait for a job to complete
+  if [ $MAX_CONCURRENT -gt 0 ] && [ $RUNNING_COUNT -ge $MAX_CONCURRENT ]; then
+    echo "Concurrency limit ($MAX_CONCURRENT) reached. Waiting for a test to complete..."
+    wait_for_any_job
+    RUNNING_COUNT=$((RUNNING_COUNT - 1))
+  fi
 
   echo "========================================="
   echo "[$((i + 1))/$NUM_LIBRARIES] Starting $LIBRARY tests on base port $BASE_PORT..."
@@ -86,6 +131,7 @@ for i in "${!RUN_ALL_SCRIPTS[@]}"; do
 
   LIBRARY_PIDS+=("$PID")
   LIBRARY_PORTS+=("$BASE_PORT")
+  RUNNING_COUNT=$((RUNNING_COUNT + 1))
 
   echo "Started in background (PID: $PID)"
   echo ""
