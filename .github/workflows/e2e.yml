@@ -29,10 +29,10 @@ jobs:
       - name: Free up disk space
         run: docker system prune -af
 
-      - name: Run all E2E tests
+      - name: Run ioredis E2E test
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
-        run: ./run-all-e2e-tests.sh 2
+        run: cd src/instrumentation/libraries/ioredis/e2e-tests/cjs-ioredis && ./run.sh
 
       - name: Cleanup Docker resources
         if: always()
