@@ -11,7 +11,7 @@ jobs:
   e2e:
     name: E2E Tests (SDK + CLI)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,9 +26,6 @@ jobs:
         with:
           driver: docker
 
-      - name: Free up disk space
-        run: docker system prune -af
-
       - name: Install SDK dependencies
         run: npm install
 
@@ -38,7 +35,7 @@ jobs:
       - name: Run all E2E tests
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
-        run: ./run-all-e2e-tests.sh
+        run: ./run-all-e2e-tests.sh 2
 
       - name: Cleanup Docker resources
         if: always()
