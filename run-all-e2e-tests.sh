@@ -87,11 +87,13 @@ declare -a LIBRARY_EXIT_CODES
 
 # Function to wait for any background job to complete
 wait_for_any_job() {
-  # Poll running jobs until one completes
+  # Wait for any job and return its PID
+  local pid
   while true; do
     for pid in "${LIBRARY_PIDS[@]}"; do
       if ! kill -0 "$pid" 2>/dev/null; then
-        # This PID has completed
+        # Found a completed PID, now actually wait for it
+        wait "$pid" 2>/dev/null || true
         return 0
       fi
     done
