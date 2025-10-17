@@ -61,6 +61,10 @@ Having issues?
 - Read our [troubleshooting doc](docs/troubleshooting.md)
 - Create an issue or reach us at [support@usetusk.ai](mailto:support@usetusk.ai).
 
+## Community
+
+Join our open source community on [Slack](https://join.slack.com/t/tusk-community/shared_invite/zt-3fve1s7ie-NAAUn~UpHsf1m_2tdoGjsQ).
+
 ## Contributing
 
 We appreciate feedback and contributions. See [CONTRIBUTING.md](/CONTRIBUTING.md).
