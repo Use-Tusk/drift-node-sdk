@@ -1093,7 +1093,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
    * Creates a patched Connection class that intercepts the constructor
    * to handle connection event recording/replay.
    *
-   * Based on Hypertest's approach - we wrap the Connection constructor to:
+   * Wrap the Connection constructor to:
    * - In RECORD mode: listen for 'connect'/'error' events and record them
    * - In REPLAY mode: create a MockConnection that fakes the connection and emits recorded events
    */
