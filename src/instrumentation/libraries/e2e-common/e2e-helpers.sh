@@ -12,8 +12,15 @@ NC='\033[0m' # No Color
 # Clean up traces and logs
 cleanup_tusk_files() {
   echo "Cleaning up traces and logs..."
-  rm -rf .tusk/traces/*
-  rm -rf .tusk/logs/*
+  if [ -n "$CI" ]; then
+    # In CI, use sudo since files are owned by root from Docker
+    sudo rm -rf .tusk/traces/* 2>/dev/null || true
+    sudo rm -rf .tusk/logs/* 2>/dev/null || true
+  else
+    # Locally, use regular rm
+    rm -rf .tusk/traces/* 2>/dev/null || true
+    rm -rf .tusk/logs/* 2>/dev/null || true
+  fi
   echo "Cleanup complete."
 }
 
