@@ -27,14 +27,11 @@ jobs:
           driver: docker
 
       - name: Free up disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          docker system prune -af
+        run: docker system prune -af
 
       - name: Run all E2E tests
+        env:
+          DOCKER_DEFAULT_PLATFORM: linux/amd64
         run: ./run-all-e2e-tests.sh
 
       - name: Cleanup Docker resources
