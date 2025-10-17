@@ -107,7 +107,6 @@ for i in "${!RUN_ALL_SCRIPTS[@]}"; do
   SCRIPT="${RUN_ALL_SCRIPTS[$i]}"
   LIBRARY="${LIBRARY_NAMES[$i]}"
   BASE_PORT=$((3000 + i * 10))
-  OUTPUT_FILE="$TEMP_DIR/${LIBRARY}.log"
 
   # If we have a concurrency limit and reached it, wait for a job to complete
   if [ $MAX_CONCURRENT -gt 0 ] && [ $RUNNING_COUNT -ge $MAX_CONCURRENT ]; then
@@ -123,12 +122,9 @@ for i in "${!RUN_ALL_SCRIPTS[@]}"; do
   # Make script executable
   chmod +x "$SCRIPT"
 
-  # Run in background
-  EXIT_CODE_FILE="$TEMP_DIR/${LIBRARY}.exit"
-
-  # Run without script command to properly capture exit codes
+  # Run in background - expand all variables immediately to avoid scope issues in CI
   # Disable 'set -e' in subshell to ensure exit code is always written
-  (set +e; "$SCRIPT" "$BASE_PORT" > "$OUTPUT_FILE" 2>&1; EXIT=$?; echo $EXIT > "$EXIT_CODE_FILE"; exit $EXIT) &
+  (set +e; "$SCRIPT" "$BASE_PORT" > "$TEMP_DIR/${LIBRARY}.log" 2>&1; EXIT=$?; echo "$EXIT" > "$TEMP_DIR/${LIBRARY}.exit"; exit $EXIT) &
   PID=$!
 
   LIBRARY_PIDS+=("$PID")
@@ -150,16 +146,14 @@ for i in "${!LIBRARY_PIDS[@]}"; do
   PID="${LIBRARY_PIDS[$i]}"
   LIBRARY="${LIBRARY_NAMES[$i]}"
   BASE_PORT="${LIBRARY_PORTS[$i]}"
-  OUTPUT_FILE="$TEMP_DIR/${LIBRARY}.log"
 
   # Wait for specific PID
   wait "$PID"
 
   # Read the actual exit code from the file
-  EXIT_CODE_FILE="$TEMP_DIR/${LIBRARY}.exit"
   ACTUAL_EXIT_CODE=1
-  if [ -f "$EXIT_CODE_FILE" ]; then
-    ACTUAL_EXIT_CODE=$(cat "$EXIT_CODE_FILE")
+  if [ -f "$TEMP_DIR/${LIBRARY}.exit" ]; then
+    ACTUAL_EXIT_CODE=$(cat "$TEMP_DIR/${LIBRARY}.exit")
   fi
 
   LIBRARY_EXIT_CODES+=($ACTUAL_EXIT_CODE)
@@ -174,7 +168,7 @@ for i in "${!LIBRARY_PIDS[@]}"; do
   # Show output from the library tests
   echo ""
   echo "--- Output from $LIBRARY ---"
-  cat "$OUTPUT_FILE"
+  cat "$TEMP_DIR/${LIBRARY}.log"
   echo "--- End of output from $LIBRARY ---"
   echo ""
 done
