@@ -1186,11 +1186,11 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                     // Clone the args and use fake host/port to prevent actual connection
                     const clonedArgs = JSON.parse(JSON.stringify(mockConnectionArgs));
                     if (clonedArgs[0] && clonedArgs[0].config) {
-                      clonedArgs[0].config.host = "127.127.127.127";
+                      clonedArgs[0].config.host = "127.0.0.1";
                       clonedArgs[0].config.port = 127;
                     } else if (clonedArgs[0]) {
                       // Direct config object
-                      clonedArgs[0].host = "127.127.127.127";
+                      clonedArgs[0].host = "127.0.0.1";
                       clonedArgs[0].port = 127;
                     }
 

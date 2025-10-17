@@ -104,6 +104,15 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/s
 echo "  - POST /test/sequelize-transaction"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/test/sequelize-transaction > /dev/null
 
+echo "  - GET /test/promise-connection-query"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/promise-connection-query > /dev/null
+
+echo "  - GET /test/promise-pool-query"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/promise-pool-query > /dev/null
+
+echo "  - GET /test/promise-pool-getconnection"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/promise-pool-getconnection > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 4: Wait before stopping server
