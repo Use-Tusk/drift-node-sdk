@@ -35,10 +35,10 @@ jobs:
       - name: Build SDK
         run: npm run build
 
-      - name: Run ioredis E2E test
+      - name: Run all E2E tests
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
-        run: cd src/instrumentation/libraries/ioredis/e2e-tests/cjs-ioredis && ./run.sh
+        run: ./run-all-e2e-tests.sh
 
       - name: Cleanup Docker resources
         if: always()

@@ -60,33 +60,6 @@ sleep 8
 echo "Initial server output:"
 docker compose -p $PROJECT_NAME exec -T app cat /tmp/server.log 2>/dev/null || echo "  (no output yet)"
 
-# Wait for server to be ready
-echo "Checking if server is ready..."
-MAX_RETRIES=30
-RETRY_COUNT=0
-until docker compose -p $PROJECT_NAME exec -T app curl -f -s http://localhost:3000/health > /dev/null 2>&1; do
-  RETRY_COUNT=$((RETRY_COUNT + 1))
-  if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-    echo "ERROR: Server failed to start after $MAX_RETRIES attempts"
-    echo ""
-    echo "=== Server log from /tmp/server.log ==="
-    docker compose -p $PROJECT_NAME exec -T app cat /tmp/server.log 2>/dev/null || echo "  (no log file found)"
-    echo ""
-    echo "=== Container logs ==="
-    docker compose -p $PROJECT_NAME logs app 2>&1
-    echo ""
-    echo "=== Container status ==="
-    docker compose -p $PROJECT_NAME ps 2>&1
-    echo ""
-    echo "=== Checking if app process is running ==="
-    docker compose -p $PROJECT_NAME exec -T app ps aux 2>&1 || echo "  (could not list processes)"
-    exit 1
-  fi
-  echo "  Server not ready yet, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
-  sleep 2
-done
-echo "Server is ready!"
-
 # Step 3: Hit all endpoints
 echo "Step 3: Hitting all ioredis endpoints..."
 
