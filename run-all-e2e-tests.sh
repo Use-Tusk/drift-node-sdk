@@ -80,7 +80,8 @@ for i in "${!RUN_ALL_SCRIPTS[@]}"; do
   EXIT_CODE_FILE="$TEMP_DIR/${LIBRARY}.exit"
 
   # Run without script command to properly capture exit codes
-  ({ "$SCRIPT" "$BASE_PORT" > "$OUTPUT_FILE" 2>&1; echo $? > "$EXIT_CODE_FILE"; }) &
+  # Disable 'set -e' in subshell to ensure exit code is always written
+  (set +e; "$SCRIPT" "$BASE_PORT" > "$OUTPUT_FILE" 2>&1; EXIT=$?; echo $EXIT > "$EXIT_CODE_FILE"; exit $EXIT) &
   PID=$!
 
   LIBRARY_PIDS+=("$PID")

@@ -180,8 +180,8 @@ run_all_e2e_tests() {
     local EXIT_CODE_FILE="$TEMP_DIR/${TEST_DIR}.exit"
 
     # Run without script command to properly capture exit codes
-    # Redirect all output to log file and save exit code to separate file
-    (cd "$E2E_TESTS_DIR/$TEST_DIR" && { ./run.sh "$TEST_PORT" > "$OUTPUT_FILE" 2>&1; echo $? > "$EXIT_CODE_FILE"; }) &
+    # Disable 'set -e' in subshell to ensure exit code is always written
+    (set +e; cd "$E2E_TESTS_DIR/$TEST_DIR" && ./run.sh "$TEST_PORT" > "$OUTPUT_FILE" 2>&1; EXIT=$?; echo $EXIT > "$EXIT_CODE_FILE"; exit $EXIT) &
     local PID=$!
 
     TEST_RESULTS+=("$TEST_DIR")
