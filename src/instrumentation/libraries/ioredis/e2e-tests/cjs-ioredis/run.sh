@@ -36,9 +36,21 @@ until docker compose -p $PROJECT_NAME exec -T redis redis-cli ping > /dev/null 2
 done
 echo "Redis is ready!"
 
-# Step 2: Start server in RECORD mode
-echo "Step 2: Starting server in RECORD mode..."
-docker compose -p $PROJECT_NAME exec -d -T -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev > /tmp/server.log 2>&1"
+# Step 2: Check app directory structure
+echo "Step 2a: Checking app directory structure..."
+echo "Contents of /app:"
+docker compose -p $PROJECT_NAME exec -T app ls -la /app
+echo ""
+echo "Contents of /app/src:"
+docker compose -p $PROJECT_NAME exec -T app ls -la /app/src || echo "  (src directory not found)"
+echo ""
+echo "Package.json scripts:"
+docker compose -p $PROJECT_NAME exec -T app cat /app/package.json | grep -A 10 '"scripts"' || echo "  (could not read package.json)"
+echo ""
+
+# Step 2b: Start server in RECORD mode
+echo "Step 2b: Starting server in RECORD mode..."
+docker compose -p $PROJECT_NAME exec -d -T -e TUSK_DRIFT_MODE=RECORD app sh -c "cd /app && npm run build >> /tmp/server.log 2>&1 && npm run dev >> /tmp/server.log 2>&1"
 
 # Wait for server to start
 echo "Waiting for server to start..."
