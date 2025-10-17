@@ -84,7 +84,7 @@ trap "rm -rf $TEMP_DIR" EXIT
 declare -a LIBRARY_PIDS
 declare -a LIBRARY_PORTS
 declare -a LIBRARY_EXIT_CODES
-declare -A COMPLETED_PIDS  # Track which PIDs have already been waited on
+declare -a COMPLETED_PIDS  # Track which PIDs have already been waited on
 
 # Function to wait for any background job to complete
 wait_for_any_job() {
