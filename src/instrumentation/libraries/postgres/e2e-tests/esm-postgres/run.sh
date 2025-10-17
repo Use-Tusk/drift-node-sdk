@@ -22,7 +22,7 @@ cleanup_tusk_files
 
 # Step 1: Start docker containers (postgres + app)
 echo "Step 1: Starting docker containers..."
-docker compose -p $PROJECT_NAME up -d --build
+docker compose -p $PROJECT_NAME up -d --build --quiet-pull
 
 # Wait for containers to be ready
 echo "Waiting for containers to be ready..."
@@ -48,34 +48,34 @@ sleep 10
 echo "Step 3: Hitting all Postgres + Drizzle endpoints..."
 
 echo "  - GET /health"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/health > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/health > /dev/null
 
 echo "  - GET /cache/all"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/cache/all > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/cache/all > /dev/null
 
 echo "  - GET /cache/sample"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/cache/sample > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/cache/sample > /dev/null
 
 echo "  - GET /cache/raw"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/cache/raw > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/cache/raw > /dev/null
 
 echo "  - POST /cache/execute-raw"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST http://localhost:3000/cache/execute-raw > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/cache/execute-raw > /dev/null
 
 echo "  - POST /cache/insert"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST -H "Content-Type: application/json" -d '{"key":"test_insert","value":"test_value"}' http://localhost:3000/cache/insert > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"key":"test_insert","value":"test_value"}' http://localhost:3000/cache/insert > /dev/null
 
 echo "  - PUT /cache/update"
-docker compose -p $PROJECT_NAME exec app curl -s -X PUT -H "Content-Type: application/json" -d '{"key":"test_key_1","value":"updated_value"}' http://localhost:3000/cache/update > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X PUT -H "Content-Type: application/json" -d '{"key":"test_key_1","value":"updated_value"}' http://localhost:3000/cache/update > /dev/null
 
 echo "  - DELETE /cache/delete"
-docker compose -p $PROJECT_NAME exec app curl -s -X DELETE -H "Content-Type: application/json" -d '{"key":"test_insert"}' http://localhost:3000/cache/delete > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X DELETE -H "Content-Type: application/json" -d '{"key":"test_insert"}' http://localhost:3000/cache/delete > /dev/null
 
 echo "  - GET /users/by-email"
-docker compose -p $PROJECT_NAME exec app curl -s "http://localhost:3000/users/by-email?email=alice@example.com" > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s "http://localhost:3000/users/by-email?email=alice@example.com" > /dev/null
 
 echo "  - POST /users/insert"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST -H "Content-Type: application/json" -d '{"name":"Test User","email":"testuser@example.com"}' http://localhost:3000/users/insert > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"name":"Test User","email":"testuser@example.com"}' http://localhost:3000/users/insert > /dev/null
 
 echo "All endpoints hit successfully."
 
@@ -85,7 +85,7 @@ sleep 3
 
 # Stop the server process
 echo "Stopping server..."
-docker compose -p $PROJECT_NAME exec app pkill -f "node" || true
+docker compose -p $PROJECT_NAME exec -T app pkill -f "node" || true
 sleep 2
 
 # Step 5: Run tests using tusk CLI

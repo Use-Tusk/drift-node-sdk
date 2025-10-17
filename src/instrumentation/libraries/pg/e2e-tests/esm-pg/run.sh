@@ -22,7 +22,7 @@ cleanup_tusk_files
 
 # Step 1: Start docker containers (postgres + app)
 echo "Step 1: Starting docker containers..."
-docker compose -p $PROJECT_NAME up -d --build
+docker compose -p $PROJECT_NAME up -d --build --quiet-pull
 
 # Wait for containers to be ready
 echo "Waiting for containers to be ready..."
@@ -48,34 +48,34 @@ sleep 8
 echo "Step 3: Hitting all PostgreSQL endpoints..."
 
 echo "  - GET /health"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/health > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/health > /dev/null
 
 echo "  - GET /test/basic-query"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/basic-query > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/basic-query > /dev/null
 
 echo "  - POST /test/parameterized-query"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/parameterized-query > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/parameterized-query > /dev/null
 
 echo "  - GET /test/client-query"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/client-query > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/client-query > /dev/null
 
 echo "  - GET /test/client-connect"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/client-connect > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/client-connect > /dev/null
 
 echo "  - GET /test/client-close"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/client-close > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/client-close > /dev/null
 
 echo "  - GET /test/pool-query"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/pool-query > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-query > /dev/null
 
 echo "  - POST /test/pool-parameterized"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/pool-parameterized > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/pool-parameterized > /dev/null
 
 echo "  - GET /test/pool-connect"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/pool-connect > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-connect > /dev/null
 
 echo "  - GET /test/pool-transaction"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/pool-transaction > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-transaction > /dev/null
 
 echo "All endpoints hit successfully."
 
@@ -85,7 +85,7 @@ sleep 3
 
 # Stop the server process
 echo "Stopping server..."
-docker compose -p $PROJECT_NAME exec app pkill -f "node" || true
+docker compose -p $PROJECT_NAME exec -T app pkill -f "node" || true
 sleep 2
 
 # Step 5: Run tests using tusk CLI

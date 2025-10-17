@@ -71,15 +71,26 @@ check_tcp_instrumentation_warning() {
   FIRST_LOG_FILE=$($DOCKER_COMPOSE_CMD exec -T app ls -1 .tusk/logs 2>/dev/null | head -n 1)
   if [ -n "$FIRST_LOG_FILE" ]; then
     if $DOCKER_COMPOSE_CMD exec -T app grep -q "\[TcpInstrumentation\] TCP called from inbound request context, likely unpatched dependency" .tusk/logs/"$FIRST_LOG_FILE" 2>/dev/null; then
-      echo -e "${RED}✗ WARNING: Found TCP instrumentation warning in logs!${NC}"
+      echo -e "${RED}✗ ERROR: Found TCP instrumentation warning in logs!${NC}"
       echo -e "${RED}  This indicates an unpatched dependency is making TCP calls.${NC}"
       EXIT_CODE=1
     else
       echo -e "${GREEN}✓ No TCP instrumentation warnings found.${NC}"
     fi
   else
-    echo -e "${YELLOW}⚠ No log files found, skipping TCP warning check.${NC}"
+    echo -e "${RED}✗ ERROR: No log files found, skipping TCP warning check.${NC}"
+    EXIT_CODE=1
   fi
+
+  echo "Checking for traces files..."
+  FIRST_TRACE_FILE=$($DOCKER_COMPOSE_CMD exec -T app ls -1 .tusk/traces 2>/dev/null | head -n 1)
+  if [ -n "$FIRST_TRACE_FILE" ]; then
+    echo -e "${GREEN}✓ Found trace files.${NC}"
+  else
+    echo -e "${RED}✗ ERROR: No traces found!${NC}"
+    EXIT_CODE=1
+  fi
+
 }
 
 # Run all E2E tests in a library's e2e-tests directory

@@ -22,7 +22,7 @@ cleanup_tusk_files
 
 # Step 1: Start docker containers (mysql + app)
 echo "Step 1: Starting docker containers..."
-docker compose -p $PROJECT_NAME up -d --build
+docker compose -p $PROJECT_NAME up -d --build --quiet-pull
 
 # Wait for containers to be ready
 echo "Waiting for containers to be ready..."
@@ -48,61 +48,61 @@ sleep 8
 echo "Step 3: Hitting all MySQL2 endpoints..."
 
 echo "  - GET /health"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/health > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/health > /dev/null
 
 echo "  - GET /test/connection-query"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/connection-query > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/connection-query > /dev/null
 
 echo "  - POST /test/connection-parameterized"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/connection-parameterized > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/connection-parameterized > /dev/null
 
 echo "  - GET /test/connection-execute"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/connection-execute > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/connection-execute > /dev/null
 
 echo "  - POST /test/connection-execute-params"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/connection-execute-params > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/connection-execute-params > /dev/null
 
 echo "  - GET /test/pool-query"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/pool-query > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-query > /dev/null
 
 echo "  - POST /test/pool-parameterized"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/pool-parameterized > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/pool-parameterized > /dev/null
 
 echo "  - GET /test/pool-execute"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/pool-execute > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-execute > /dev/null
 
 echo "  - POST /test/pool-execute-params"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/pool-execute-params > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/pool-execute-params > /dev/null
 
 echo "  - GET /test/pool-getConnection"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/pool-getConnection > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-getConnection > /dev/null
 
 echo "  - GET /test/connection-connect"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/connection-connect > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/connection-connect > /dev/null
 
 echo "  - GET /test/connection-ping"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/connection-ping > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/connection-ping > /dev/null
 
 echo "  - GET /test/stream-query"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/stream-query > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/stream-query > /dev/null
 
 echo "  - GET /test/sequelize-authenticate"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/sequelize-authenticate > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sequelize-authenticate > /dev/null
 
 echo "  - GET /test/sequelize-findall"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/sequelize-findall > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sequelize-findall > /dev/null
 
 echo "  - POST /test/sequelize-findone"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/sequelize-findone > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/sequelize-findone > /dev/null
 
 echo "  - GET /test/sequelize-complex"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/sequelize-complex > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sequelize-complex > /dev/null
 
 echo "  - GET /test/sequelize-raw"
-docker compose -p $PROJECT_NAME exec app curl -s http://localhost:3000/test/sequelize-raw > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sequelize-raw > /dev/null
 
 echo "  - POST /test/sequelize-transaction"
-docker compose -p $PROJECT_NAME exec app curl -s -X POST http://localhost:3000/test/sequelize-transaction > /dev/null
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/test/sequelize-transaction > /dev/null
 
 echo "All endpoints hit successfully."
 
@@ -112,7 +112,7 @@ sleep 3
 
 # Stop the server process
 echo "Stopping server..."
-docker compose -p $PROJECT_NAME exec app pkill -f "node" || true
+docker compose -p $PROJECT_NAME exec -T app pkill -f "node" || true
 sleep 2
 
 # Step 5: Run tests using tusk CLI
