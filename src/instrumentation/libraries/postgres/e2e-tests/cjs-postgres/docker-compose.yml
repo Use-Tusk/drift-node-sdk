@@ -3,7 +3,6 @@ version: '3.8'
 services:
   postgres:
     image: postgres:13
-    platform: linux/arm64
     environment:
       - POSTGRES_DB=testdb
       - POSTGRES_USER=testuser
@@ -15,7 +14,6 @@ services:
       retries: 5
 
   app:
-    platform: linux/arm64
     build:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/postgres/e2e-tests/cjs-postgres/Dockerfile

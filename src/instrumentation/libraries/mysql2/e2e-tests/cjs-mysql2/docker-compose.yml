@@ -3,7 +3,6 @@ version: '3.8'
 services:
   mysql:
     image: mysql:8.0
-    platform: linux/arm64
     environment:
       - MYSQL_DATABASE=testdb
       - MYSQL_USER=testuser
@@ -16,7 +15,6 @@ services:
       retries: 5
 
   app:
-    platform: linux/arm64
     build:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/mysql2/e2e-tests/cjs-mysql2/Dockerfile

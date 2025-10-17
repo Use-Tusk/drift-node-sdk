@@ -3,7 +3,6 @@ version: '3.8'
 services:
   redis:
     image: redis:7-alpine
-    platform: linux/arm64
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -11,7 +10,6 @@ services:
       retries: 5
 
   app:
-    platform: linux/arm64
     build:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/ioredis/e2e-tests/esm-ioredis/Dockerfile

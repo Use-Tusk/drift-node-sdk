@@ -2,7 +2,6 @@ version: '3.8'
 
 services:
   app:
-    platform: linux/arm64
     build:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/grpc/e2e-tests/cjs-grpc/Dockerfile
