@@ -77,14 +77,10 @@ for i in "${!RUN_ALL_SCRIPTS[@]}"; do
   chmod +x "$SCRIPT"
 
   # Run in background
-  # Detect OS for script command compatibility
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
-    script -q "$OUTPUT_FILE" "$SCRIPT" "$BASE_PORT" > /dev/null 2>&1 &
-  else
-    # Linux (GitHub Actions)
-    script -q -c "$SCRIPT $BASE_PORT" "$OUTPUT_FILE" > /dev/null 2>&1 &
-  fi
+  EXIT_CODE_FILE="$TEMP_DIR/${LIBRARY}.exit"
+
+  # Run without script command to properly capture exit codes
+  ("$SCRIPT" "$BASE_PORT" > "$OUTPUT_FILE" 2>&1; echo $? > "$EXIT_CODE_FILE") &
   PID=$!
 
   LIBRARY_PIDS+=("$PID")
@@ -108,14 +104,22 @@ for i in "${!LIBRARY_PIDS[@]}"; do
   OUTPUT_FILE="$TEMP_DIR/${LIBRARY}.log"
 
   # Wait for specific PID
-  if wait "$PID"; then
-    LIBRARY_EXIT_CODES+=(0)
+  wait "$PID"
+
+  # Read the actual exit code from the file
+  EXIT_CODE_FILE="$TEMP_DIR/${LIBRARY}.exit"
+  ACTUAL_EXIT_CODE=1
+  if [ -f "$EXIT_CODE_FILE" ]; then
+    ACTUAL_EXIT_CODE=$(cat "$EXIT_CODE_FILE")
+  fi
+
+  LIBRARY_EXIT_CODES+=($ACTUAL_EXIT_CODE)
+
+  if [ $ACTUAL_EXIT_CODE -eq 0 ]; then
     echo -e "${GREEN}✓${NC} $LIBRARY (base port $BASE_PORT) completed successfully"
   else
-    EXIT_CODE=$?
-    LIBRARY_EXIT_CODES+=($EXIT_CODE)
+    echo -e "${RED}✗${NC} $LIBRARY (base port $BASE_PORT) failed with exit code $ACTUAL_EXIT_CODE"
     OVERALL_EXIT_CODE=1
-    echo -e "${RED}✗${NC} $LIBRARY (base port $BASE_PORT) failed with exit code $EXIT_CODE"
   fi
 
   # Show output from the library tests

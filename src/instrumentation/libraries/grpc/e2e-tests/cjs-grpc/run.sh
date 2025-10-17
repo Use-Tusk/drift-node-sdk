@@ -32,7 +32,7 @@ sleep 5
 
 # Step 2: Start server in RECORD mode
 echo "Step 2: Starting server in RECORD mode..."
-docker compose -p $PROJECT_NAME exec -d -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
+docker compose -p $PROJECT_NAME exec -d -T -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
 
 # Wait for server to start (gRPC server needs a bit more time)
 echo "Waiting for server to start..."

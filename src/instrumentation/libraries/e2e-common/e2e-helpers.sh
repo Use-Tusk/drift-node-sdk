@@ -176,16 +176,12 @@ run_all_e2e_tests() {
     chmod +x "$RUN_SCRIPT"
 
     # Run test in background and capture output
-    # Use script command to allocate a pseudo-TTY for docker compose exec commands
     local OUTPUT_FILE="$TEMP_DIR/${TEST_DIR}.log"
-    # Detect OS for script command compatibility
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      # macOS
-      (cd "$E2E_TESTS_DIR/$TEST_DIR" && script -q "$OUTPUT_FILE" ./run.sh "$TEST_PORT" > /dev/null 2>&1) &
-    else
-      # Linux (GitHub Actions)
-      (cd "$E2E_TESTS_DIR/$TEST_DIR" && script -q -c "./run.sh $TEST_PORT" "$OUTPUT_FILE" > /dev/null 2>&1) &
-    fi
+    local EXIT_CODE_FILE="$TEMP_DIR/${TEST_DIR}.exit"
+
+    # Run without script command to properly capture exit codes
+    # Redirect all output to log file and save exit code to separate file
+    (cd "$E2E_TESTS_DIR/$TEST_DIR" && ./run.sh "$TEST_PORT" > "$OUTPUT_FILE" 2>&1; echo $? > "$EXIT_CODE_FILE") &
     local PID=$!
 
     TEST_RESULTS+=("$TEST_DIR")
@@ -214,13 +210,22 @@ run_all_e2e_tests() {
     fi
 
     # Wait for specific PID
-    if wait "$PID"; then
-      TEST_EXIT_CODES+=(0)
+    wait "$PID"
+
+    # Read the actual exit code from the file
+    local EXIT_CODE_FILE="$TEMP_DIR/${TEST_DIR}.exit"
+    local ACTUAL_EXIT_CODE=1
+    if [ -f "$EXIT_CODE_FILE" ]; then
+      ACTUAL_EXIT_CODE=$(cat "$EXIT_CODE_FILE")
+    fi
+
+    TEST_EXIT_CODES+=($ACTUAL_EXIT_CODE)
+
+    if [ $ACTUAL_EXIT_CODE -eq 0 ]; then
       echo -e "${GREEN}✓${NC} $TEST_DIR (port $TEST_PORT) completed successfully"
     else
-      TEST_EXIT_CODES+=($?)
+      echo -e "${RED}✗${NC} $TEST_DIR (port $TEST_PORT) failed with exit code $ACTUAL_EXIT_CODE"
       OVERALL_EXIT_CODE=1
-      echo -e "${RED}✗${NC} $TEST_DIR (port $TEST_PORT) failed"
     fi
 
     # Show output from the test
