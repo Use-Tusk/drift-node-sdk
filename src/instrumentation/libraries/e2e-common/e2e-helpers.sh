@@ -181,7 +181,7 @@ run_all_e2e_tests() {
 
     # Run without script command to properly capture exit codes
     # Redirect all output to log file and save exit code to separate file
-    (cd "$E2E_TESTS_DIR/$TEST_DIR" && ./run.sh "$TEST_PORT" > "$OUTPUT_FILE" 2>&1; echo $? > "$EXIT_CODE_FILE") &
+    (cd "$E2E_TESTS_DIR/$TEST_DIR" && { ./run.sh "$TEST_PORT" > "$OUTPUT_FILE" 2>&1; echo $? > "$EXIT_CODE_FILE"; }) &
     local PID=$!
 
     TEST_RESULTS+=("$TEST_DIR")
