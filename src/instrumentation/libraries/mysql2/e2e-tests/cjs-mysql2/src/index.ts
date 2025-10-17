@@ -1,6 +1,7 @@
 import { TuskDrift } from "./tdInit";
 import http from "http";
 import mysql from "mysql2";
+import mysqlPromise from "mysql2/promise";
 import { sequelize, User, Product, initializeSequelize } from "./sequelizeSetup";
 import { Op, QueryTypes } from "sequelize";
 
@@ -20,6 +21,7 @@ const dbConfig = {
 
 let connection: mysql.Connection;
 let pool: mysql.Pool;
+let promisePool: mysqlPromise.Pool;
 
 async function initializeDatabase() {
   console.log(`Connecting to database: ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`);
@@ -37,6 +39,9 @@ async function initializeDatabase() {
 
   // Initialize pool
   pool = mysql.createPool(dbConfig);
+
+  // Initialize promise pool
+  promisePool = mysqlPromise.createPool(dbConfig);
 
   // Create test tables
   await new Promise<void>((resolve, reject) => {
@@ -590,6 +595,87 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Promise API test - uses mysql2/promise
+    if (url === "/test/promise-connection-query" && method === "GET") {
+      try {
+        const promiseConnection = await mysqlPromise.createConnection(dbConfig);
+        const [rows] = await promiseConnection.query("SELECT * FROM test_users ORDER BY id LIMIT 3");
+        await promiseConnection.end();
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: rows,
+            rowCount: Array.isArray(rows) ? rows.length : 0,
+            queryType: "promise-connection",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      return;
+    }
+
+    // Promise Pool API test - uses mysql2/promise with pool
+    if (url === "/test/promise-pool-query" && method === "GET") {
+      try {
+        const [rows] = await promisePool.query("SELECT * FROM test_users ORDER BY id LIMIT 5");
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: rows,
+            rowCount: Array.isArray(rows) ? rows.length : 0,
+            queryType: "promise-pool",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      return;
+    }
+
+    // Promise Pool getConnection test - uses mysql2/promise pool.getConnection()
+    if (url === "/test/promise-pool-getconnection" && method === "GET") {
+      try {
+        const connection = await promisePool.getConnection();
+        const [rows] = await connection.query("SELECT COUNT(*) as total FROM test_users");
+        connection.release();
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: rows,
+            queryType: "promise-pool-getconnection",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
@@ -635,6 +721,9 @@ server.listen(PORT, async () => {
     console.log("  GET  /test/sequelize-complex - Test Sequelize complex queries");
     console.log("  GET  /test/sequelize-raw - Test Sequelize raw query");
     console.log("  POST /test/sequelize-transaction - Test Sequelize transaction");
+    console.log("  GET  /test/promise-connection-query - Test mysql2/promise connection query");
+    console.log("  GET  /test/promise-pool-query - Test mysql2/promise pool query");
+    console.log("  GET  /test/promise-pool-getconnection - Test mysql2/promise pool.getConnection()");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
@@ -647,6 +736,7 @@ async function shutdown() {
   try {
     connection.end();
     pool.end();
+    await promisePool.end();
     await sequelize.close();
   } catch (error) {
     console.error("Error during shutdown:", error);
