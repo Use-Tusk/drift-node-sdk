@@ -84,6 +84,7 @@ trap "rm -rf $TEMP_DIR" EXIT
 declare -a LIBRARY_PIDS
 declare -a LIBRARY_PORTS
 declare -a LIBRARY_EXIT_CODES
+declare -A COMPLETED_PIDS  # Track which PIDs have already been waited on
 
 # Function to wait for any background job to complete
 wait_for_any_job() {
@@ -91,9 +92,16 @@ wait_for_any_job() {
   local pid
   while true; do
     for pid in "${LIBRARY_PIDS[@]}"; do
+      # Skip if already waited on this PID
+      if [ "${COMPLETED_PIDS[$pid]}" = "1" ]; then
+        continue
+      fi
+
       if ! kill -0 "$pid" 2>/dev/null; then
         # Found a completed PID, now actually wait for it to fully clean up
         wait "$pid" 2>/dev/null || true
+        # Mark this PID as completed so we don't wait on it again
+        COMPLETED_PIDS[$pid]=1
         # Give the exit code file time to be written and flushed to disk
         sleep 1
         return 0
@@ -149,8 +157,19 @@ for i in "${!LIBRARY_PIDS[@]}"; do
   LIBRARY="${LIBRARY_NAMES[$i]}"
   BASE_PORT="${LIBRARY_PORTS[$i]}"
 
-  # Wait for specific PID
-  wait "$PID"
+  # Wait for specific PID only if we haven't already waited on it
+  if [ "${COMPLETED_PIDS[$PID]}" != "1" ]; then
+    wait "$PID" 2>/dev/null || true
+    COMPLETED_PIDS[$PID]=1
+  fi
+
+  # Wait for the exit file to exist (with timeout)
+  TIMEOUT=10
+  ELAPSED=0
+  while [ ! -f "$TEMP_DIR/${LIBRARY}.exit" ] && [ $ELAPSED -lt $TIMEOUT ]; do
+    sleep 0.1
+    ELAPSED=$((ELAPSED + 1))
+  done
 
   # Read the actual exit code from the file
   ACTUAL_EXIT_CODE=1
@@ -170,7 +189,11 @@ for i in "${!LIBRARY_PIDS[@]}"; do
   # Show output from the library tests
   echo ""
   echo "--- Output from $LIBRARY ---"
-  cat "$TEMP_DIR/${LIBRARY}.log"
+  if [ -f "$TEMP_DIR/${LIBRARY}.log" ]; then
+    cat "$TEMP_DIR/${LIBRARY}.log"
+  else
+    echo "(No log file found)"
+  fi
   echo "--- End of output from $LIBRARY ---"
   echo ""
 done
