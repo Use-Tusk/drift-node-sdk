@@ -323,7 +323,7 @@ export class JsonSchemaHelper {
 
           decodedData[key] = decodedValue;
         } catch (error) {
-          logger.warn(`[JsonSchemaHelper] Failed to decode ${key}:`, error);
+          logger.debug(`[JsonSchemaHelper] Failed to decode ${key}:`, error);
           // Keep original value if decoding fails
           decodedData[key] = data[key];
         }

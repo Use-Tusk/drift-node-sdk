@@ -21,12 +21,12 @@ export function wrap<T = any>(
   wrapper: (original: T) => T,
 ): T | void {
   if (typeof target[propertyName] !== "function") {
-    logger.warn(`Cannot wrap non-function property: ${propertyName}`);
+    logger.debug(`Cannot wrap non-function property: ${propertyName}`);
     return;
   }
 
   if (isWrapped(target[propertyName])) {
-    logger.warn(`Property ${propertyName} is already wrapped`);
+    logger.debug(`Property ${propertyName} is already wrapped`);
     return;
   }
 
@@ -34,7 +34,7 @@ export function wrap<T = any>(
   const wrapped = wrapper(original);
 
   if (typeof wrapped !== "function") {
-    logger.warn(`Wrapper must return a function for property: ${propertyName}`);
+    logger.debug(`Wrapper must return a function for property: ${propertyName}`);
     return;
   }
 

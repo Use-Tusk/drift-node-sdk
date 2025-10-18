@@ -71,7 +71,7 @@ export class SpanTransformer {
       try {
         transformMetadata = JSON.parse(transformMetadataString);
       } catch (error) {
-        logger.warn("Failed to parse transform metadata", error);
+        logger.warn("[SpanTransformer] Failed to parse transform metadata", error);
       }
     }
 
