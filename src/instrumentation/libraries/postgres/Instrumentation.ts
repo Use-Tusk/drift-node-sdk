@@ -3,7 +3,7 @@ import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrument
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
-import { wrap } from "../../core/utils";
+import { captureStackTrace, wrap } from "../../core/utils";
 import { findMockResponseAsync } from "../../core/utils/mockResponseUtils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
 import {
@@ -369,6 +369,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     // Handle replay mode (only if app is ready)
     if (this.mode === TuskDriftMode.REPLAY) {
+      const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
+
       return handleReplayMode({
         replayModeHandler: () => {
           return SpanUtils.createAndExecuteSpan(
@@ -390,6 +392,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                 spanInfo,
                 submodule: "query",
                 name: "postgres.query",
+                stackTrace,
               });
             },
           );
@@ -451,6 +454,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     };
 
     if (this.mode === TuskDriftMode.REPLAY) {
+      const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
+
       return handleReplayMode({
         replayModeHandler: () => {
           return this._createPendingQueryWrapper(() => {
@@ -473,6 +478,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   spanInfo,
                   submodule: "unsafe",
                   name: "postgres.unsafe",
+                  stackTrace,
                 });
               },
             );
@@ -532,6 +538,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     };
 
     if (this.mode === TuskDriftMode.REPLAY) {
+      const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
+
       return handleReplayMode({
         replayModeHandler: () => {
           return SpanUtils.createAndExecuteSpan(
@@ -548,7 +556,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               isPreAppStart: false,
             },
             (spanInfo) => {
-              return this._handleReplayBeginTransaction(spanInfo, options);
+              return this._handleReplayBeginTransaction(spanInfo, options, stackTrace);
             },
           );
         },
@@ -681,7 +689,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     return promise; // Return the original promise
   }
 
-  private async _handleReplayBeginTransaction(spanInfo: SpanInfo, options?: string): Promise<any> {
+  private async _handleReplayBeginTransaction(spanInfo: SpanInfo, options?: string, stackTrace?: string): Promise<any> {
     logger.debug(`[PostgresInstrumentation] Replaying Postgres transaction`);
 
     // Find mock data for the transaction
@@ -698,6 +706,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: "transaction",
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });
@@ -792,11 +801,13 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     spanInfo,
     submodule,
     name,
+    stackTrace,
   }: {
     inputValue: PostgresClientInputValue;
     spanInfo: SpanInfo;
     submodule: string;
     name: string;
+    stackTrace?: string;
   }): Promise<PostgresRow[] | undefined> {
     logger.debug(`[PostgresInstrumentation] Replaying Postgres sql query`);
 
@@ -810,6 +821,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: submodule,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });
@@ -853,11 +865,13 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     spanInfo,
     submodule,
     name,
+    stackTrace,
   }: {
     inputValue: PostgresClientInputValue;
     spanInfo: SpanInfo;
     submodule: string;
     name: string;
+    stackTrace?: string;
   }): Promise<PostgresConvertedResult | undefined> {
     logger.debug(`[PostgresInstrumentation] Replaying Postgres unsafe query`);
 
@@ -871,6 +885,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: submodule,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });

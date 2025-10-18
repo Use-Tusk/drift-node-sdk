@@ -30,6 +30,7 @@ export class TdMysql2QueryMock {
     inputValue: Mysql2InputValue,
     spanInfo: SpanInfo,
     submoduleName: string = "query",
+    stackTrace?: string,
   ): any {
     logger.debug(`[Mysql2Instrumentation] Replaying MySQL2 query`);
 
@@ -46,6 +47,7 @@ export class TdMysql2QueryMock {
       spanInfo,
       spanName,
       submoduleName,
+      stackTrace,
     );
   }
 
@@ -60,6 +62,7 @@ export class TdMysql2QueryMock {
     spanInfo: SpanInfo,
     spanName: string,
     submoduleName: string,
+    stackTrace?: string,
   ): EventEmitter {
     const emitter = new EventEmitter();
 
@@ -83,7 +86,7 @@ export class TdMysql2QueryMock {
     // Fetch mock data asynchronously and emit events
     (async () => {
       try {
-        const mockData = await this._fetchMockData(inputValue, spanInfo, spanName, submoduleName);
+        const mockData = await this._fetchMockData(inputValue, spanInfo, spanName, submoduleName, stackTrace);
 
         if (!mockData) {
           const sql = queryConfig.sql || inputValue.sql || "UNKNOWN_QUERY";
@@ -154,6 +157,7 @@ export class TdMysql2QueryMock {
     spanInfo: SpanInfo,
     spanName: string,
     submoduleName: string,
+    stackTrace?: string,
   ) {
     return await findMockResponseAsync({
       mockRequestData: {
@@ -165,6 +169,7 @@ export class TdMysql2QueryMock {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: submoduleName,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });

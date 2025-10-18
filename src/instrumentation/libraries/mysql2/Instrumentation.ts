@@ -21,6 +21,7 @@ import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils/logger";
 import { TdMysql2ConnectionMock } from "./mocks/TdMysql2ConnectionMock";
 import { TdMysql2QueryMock } from "./mocks/TdMysql2QueryMock";
+import { captureStackTrace } from "src/instrumentation/core/utils";
 
 // Version ranges for mysql2
 const COMPLETE_SUPPORTED_VERSIONS = ">=2.3.3 <4.0.0";
@@ -343,6 +344,8 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
 
         // Handle replay mode (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["Mysql2Instrumentation"]);
+
           return handleReplayMode({
             replayModeHandler: () => {
               const spanName = `mysql2.${clientType}.query`;
@@ -360,7 +363,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self.handleReplayQuery(queryConfig, inputValue, spanInfo, "query");
+                  return self.handleReplayQuery(queryConfig, inputValue, spanInfo, "query", stackTrace);
                 },
               );
             },
@@ -432,6 +435,8 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
 
         // Handle replay mode (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["Mysql2Instrumentation"]);
+
           return handleReplayMode({
             replayModeHandler: () => {
               const spanName = `mysql2.${clientType}.execute`;
@@ -449,7 +454,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self.handleReplayQuery(queryConfig, inputValue, spanInfo, "execute");
+                  return self.handleReplayQuery(queryConfig, inputValue, spanInfo, "execute", stackTrace);
                 },
               );
             },
@@ -996,8 +1001,9 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     inputValue: Mysql2InputValue,
     spanInfo: SpanInfo,
     submoduleName: string = "query",
+    stackTrace?: string,
   ): any {
-    return this.queryMock.handleReplayQuery(queryConfig, inputValue, spanInfo, submoduleName);
+    return this.queryMock.handleReplayQuery(queryConfig, inputValue, spanInfo, submoduleName, stackTrace);
   }
 
   private _handleRecordPoolGetConnectionInSpan(
