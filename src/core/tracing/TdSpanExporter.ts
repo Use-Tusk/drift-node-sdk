@@ -106,9 +106,11 @@ export class TdSpanExporter implements SpanExporter {
   export(spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
     logger.debug(`TdSpanExporter.export() called with ${spans.length} span(s)`);
 
+    const spanNamesToIgnore = ["next.js", "@google-cloud/firestore"];
+
     const filteredSpans = spans.filter((span) => {
       // Filter out spans exported from Next.js internal telemetry
-      if (span.instrumentationLibrary?.name === "next.js") {
+      if (spanNamesToIgnore.includes(span.instrumentationLibrary?.name || "")) {
         return false;
       }
       return true;
@@ -121,7 +123,7 @@ export class TdSpanExporter implements SpanExporter {
     try {
       cleanSpans = filteredSpans.map((span) => SpanTransformer.transformSpanToCleanJSON(span));
     } catch (error) {
-      logger.error("Error transforming spans to CleanSpanData", error);
+      logger.error("Error transforming spans to CleanSpanData", error, filteredSpans);
       throw error;
     }
 

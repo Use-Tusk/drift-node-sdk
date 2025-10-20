@@ -135,6 +135,8 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
                 return originalHandleRequest.call(this, req, res, parsedUrl);
               }
 
+              logger.debug(`[NextjsInstrumentation] Setting replay trace id`, replayTraceId);
+
               // Set env vars for current trace
               const envVars = self.replayHooks.extractEnvVarsFromHeaders(req);
               if (envVars) {

@@ -29,6 +29,8 @@ export class TcpInstrumentation extends TdInstrumentationBase {
   constructor(config: TcpInstrumentationConfig = {}) {
     super("tcp", config);
     this.mode = config.mode || TuskDriftMode.DISABLED;
+
+    this._patchLoadedModules();
   }
 
   init(): TdInstrumentationNodeModule[] {
@@ -39,6 +41,45 @@ export class TcpInstrumentation extends TdInstrumentationBase {
         patch: (moduleExports: any) => this._patchNetModule(moduleExports),
       }),
     ];
+  }
+
+  private _patchLoadedModules(): void {
+    // Check if we're in a Next.js environment
+    const isNextJs =
+      process.env.NEXT_RUNTIME !== undefined ||
+      typeof (global as any).__NEXT_DATA__ !== "undefined";
+
+    if (isNextJs) {
+      // Why this is needed for Next.js:
+      // 1. Next.js's instrumentation hook (instrumentation.ts) runs DURING or AFTER framework initialization
+      // 2. By that time, database clients (pg, mysql2, etc.) may have already loaded their dependencies
+      // 3. Built-in modules like 'net' don't appear in require.cache like npm packages do
+      // 4. The net module may never get loaded naturally if:
+      //    - Database connections are lazy-loaded (only created when first needed)
+      //    - Next.js webpack optimizes away certain requires
+      //    - No database operations occur during startup
+      // 5. By force-loading 'net' here, we trigger the require-in-the-middle hooks immediately
+      // 6. This ensures that when database clients DO require('net'), they get the patched version
+      //
+      // For regular Node.js apps where TuskDrift.initialize() runs before any other imports,
+      // this force-load is redundant but harmless - the hooks would catch net naturally.
+      logger.debug(
+        `[TcpInstrumentation] Next.js environment detected - force-loading net module to ensure patching`,
+      );
+
+      try {
+        // This will trigger the require-in-the-middle hook which calls _onRequire -> _patchNetModule
+        require("net");
+        logger.debug(`[TcpInstrumentation] net module force-loaded`);
+      } catch (err) {
+        logger.error(`[TcpInstrumentation] Error force-loading net module:`, err);
+      }
+    } else {
+      // Regular Node.js environment - hooks will catch net when it's first required
+      logger.debug(
+        `[TcpInstrumentation] Regular Node.js environment - hooks will catch net module on first require`,
+      );
+    }
   }
 
   private _patchNetModule(netModule: any): any {

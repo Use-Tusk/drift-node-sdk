@@ -177,6 +177,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           // Set replay trace context (replaces previous replayHooks-only call)
           const replayTraceId = this.replayHooks.extractTraceIdFromHeaders(req);
           if (!replayTraceId) {
+            logger.debug(`[HttpInstrumentation] No trace id found in headers`, req.headers);
             // No trace context; proceed without span
             return originalHandler.call(this);
           }
