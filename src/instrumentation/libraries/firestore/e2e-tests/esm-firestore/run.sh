@@ -8,13 +8,13 @@ APP_PORT=${1:-3000}
 export APP_PORT
 
 # Generate unique docker compose project name
-PROJECT_NAME="firestore-cjs-${APP_PORT}"
+PROJECT_NAME="firestore-esm-${APP_PORT}"
 
 # Source common E2E helpers
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../../e2e-common/e2e-helpers.sh"
 
-echo "Starting Firestore E2E test run on port ${APP_PORT}..."
+echo "Starting Firestore ESM E2E test run on port ${APP_PORT}..."
 
 # Check for required environment variables
 if [ -z "$FIREBASE_PROJECT_ID" ]; then
@@ -116,6 +116,6 @@ docker compose -p $PROJECT_NAME down
 echo "Step 8: Cleaning up traces and logs..."
 cleanup_tusk_files
 
-echo "Firestore E2E test run complete."
+echo "Firestore ESM E2E test run complete."
 
 exit $EXIT_CODE

@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: ../../../../../..
+      dockerfile: src/instrumentation/libraries/firestore/e2e-tests/esm-firestore/Dockerfile
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    env_file:
+      - ../../../../../../.env
+    environment:
+      - PORT=3000
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+      - FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}
+    volumes:
+      # Mount SDK source for hot reload (this is what package.json expects)
+      - ../../../../../..:/sdk:ro
+      # Mount .tusk folder to persist traces
+      - ./.tusk:/app/.tusk
+      # Mount app source for development
+      - ./src:/app/src
+    working_dir: /app
+    # Keep container running without starting the app
+    # The CLI will control starting/stopping the app
+    command: tail -f /dev/null

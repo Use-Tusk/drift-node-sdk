@@ -212,40 +212,35 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
     originalGet: Function,
     context: any,
   ): Promise<any> {
+    const snapshot = await originalGet.call(context);
+
+    // Capture document data
+    const documentResult: FirestoreDocumentResult = {
+      id: snapshot.id,
+      path: snapshot.ref.path,
+      exists: snapshot.exists,
+      data: snapshot.exists ? snapshot.data() : undefined,
+      createTime: snapshot.createTime
+        ? { seconds: snapshot.createTime.seconds, nanoseconds: snapshot.createTime.nanoseconds }
+        : undefined,
+      updateTime: snapshot.updateTime
+        ? { seconds: snapshot.updateTime.seconds, nanoseconds: snapshot.updateTime.nanoseconds }
+        : undefined,
+      readTime: snapshot.readTime
+        ? { seconds: snapshot.readTime.seconds, nanoseconds: snapshot.readTime.nanoseconds }
+        : undefined,
+    };
+
     try {
-      const snapshot = await originalGet.call(context);
-
-      // Capture document data
-      const documentResult: FirestoreDocumentResult = {
-        id: snapshot.id,
-        path: snapshot.ref.path,
-        exists: snapshot.exists,
-        data: snapshot.exists ? snapshot.data() : undefined,
-        createTime: snapshot.createTime
-          ? { seconds: snapshot.createTime.seconds, nanoseconds: snapshot.createTime.nanoseconds }
-          : undefined,
-        updateTime: snapshot.updateTime
-          ? { seconds: snapshot.updateTime.seconds, nanoseconds: snapshot.updateTime.nanoseconds }
-          : undefined,
-        readTime: snapshot.readTime
-          ? { seconds: snapshot.readTime.seconds, nanoseconds: snapshot.readTime.nanoseconds }
-          : undefined,
-      };
-
       SpanUtils.addSpanAttributes(spanInfo.span, {
         outputValue: documentResult,
       });
       SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-
-      return snapshot;
-    } catch (error: any) {
-      logger.error(`[FirestoreInstrumentation] Error in document.get:`, error);
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: error.message,
-      });
-      throw error;
+    } catch {
+      logger.error(`[FirestoreInstrumentation] Error updating span attributes for document.get`);
     }
+
+    return snapshot;
   }
 
   private async _handleReplayDocumentGet(
@@ -566,33 +561,28 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
     context: any,
     ...args: any[]
   ): Promise<any> {
+    const writeResult = await originalWrite.apply(context, args);
+
+    // Capture write result
+    const result: FirestoreWriteResult = {
+      writeTime: writeResult.writeTime
+        ? {
+            seconds: writeResult.writeTime.seconds,
+            nanoseconds: writeResult.writeTime.nanoseconds,
+          }
+        : undefined,
+    };
+
     try {
-      const writeResult = await originalWrite.apply(context, args);
-
-      // Capture write result
-      const result: FirestoreWriteResult = {
-        writeTime: writeResult.writeTime
-          ? {
-              seconds: writeResult.writeTime.seconds,
-              nanoseconds: writeResult.writeTime.nanoseconds,
-            }
-          : undefined,
-      };
-
       SpanUtils.addSpanAttributes(spanInfo.span, {
         outputValue: result,
       });
       SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-
-      return writeResult;
-    } catch (error: any) {
-      logger.error(`[FirestoreInstrumentation] Error in document write:`, error);
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: error.message,
-      });
-      throw error;
+    } catch {
+      logger.error(`[FirestoreInstrumentation] Error updating span attributes for document.write`);
     }
+
+    return writeResult;
   }
 
   private async _handleReplayDocumentWrite(
@@ -700,38 +690,31 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
     context: any,
     data: any,
   ): Promise<any> {
+    const docRef = await originalAdd.call(context, data);
+
+    // Capture the auto-generated document ID
+    const result = {
+      id: docRef.id,
+      path: docRef.path,
+    };
+
     try {
-      const docRef = await originalAdd.call(context, data);
-
-      // Capture the auto-generated document ID
-      const result = {
-        id: docRef.id,
-        path: docRef.path,
-      };
-
       SpanUtils.addSpanAttributes(spanInfo.span, {
         outputValue: result,
       });
       SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-
-      return docRef;
-    } catch (error: any) {
-      logger.error(`[FirestoreInstrumentation] Error in collection.add:`, error);
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: error.message,
-      });
-      throw error;
+    } catch {
+      logger.error(`[FirestoreInstrumentation] Error updating span attributes for collection.add`);
     }
-  }
 
+    return docRef;
+  }
   private async _handleReplayCollectionAdd(
     spanInfo: SpanInfo,
     inputValue: FirestoreInputValue,
     collectionRef: any,
   ): Promise<any> {
     logger.debug(`[FirestoreInstrumentation] Replaying collection.add`);
-
     const mockData = await findMockResponseAsync({
       mockRequestData: {
         traceId: spanInfo.traceId,
@@ -781,7 +764,8 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
-                () => (documentPath ? originalDoc.call(this, documentPath) : originalDoc.call(this)),
+                () =>
+                  documentPath ? originalDoc.call(this, documentPath) : originalDoc.call(this),
                 {
                   name: "firestore.collection.doc",
                   kind: SpanKind.CLIENT,
@@ -836,7 +820,8 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
             recordModeHandler: ({ isPreAppStart }) => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
-                () => (documentPath ? originalDoc.call(this, documentPath) : originalDoc.call(this)),
+                () =>
+                  documentPath ? originalDoc.call(this, documentPath) : originalDoc.call(this),
                 {
                   name: "firestore.collection.doc",
                   kind: SpanKind.CLIENT,
@@ -856,10 +841,16 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                     id: docRef.id,
                     path: docRef.path,
                   };
-                  SpanUtils.addSpanAttributes(spanInfo.span, {
-                    outputValue: result,
-                  });
-                  SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+                  try {
+                    SpanUtils.addSpanAttributes(spanInfo.span, {
+                      outputValue: result,
+                    });
+                    SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+                  } catch {
+                    logger.error(
+                      `[FirestoreInstrumentation] Error updating span attributes for collection.doc`,
+                    );
+                  }
                   return docRef;
                 },
               );
@@ -946,50 +937,45 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
     originalGet: Function,
     context: any,
   ): Promise<any> {
-    try {
-      const querySnapshot = await originalGet.call(context);
+    const querySnapshot = await originalGet.call(context);
 
-      // Capture query results
-      const queryResult: FirestoreQueryResult = {
-        docs: querySnapshot.docs.map((doc: any) => ({
-          id: doc.id,
-          path: doc.ref.path,
-          exists: doc.exists,
-          data: doc.exists ? doc.data() : undefined,
-          createTime: doc.createTime
-            ? { seconds: doc.createTime.seconds, nanoseconds: doc.createTime.nanoseconds }
-            : undefined,
-          updateTime: doc.updateTime
-            ? { seconds: doc.updateTime.seconds, nanoseconds: doc.updateTime.nanoseconds }
-            : undefined,
-          readTime: doc.readTime
-            ? { seconds: doc.readTime.seconds, nanoseconds: doc.readTime.nanoseconds }
-            : undefined,
-        })),
-        size: querySnapshot.size,
-        empty: querySnapshot.empty,
-        readTime: querySnapshot.readTime
-          ? {
-              seconds: querySnapshot.readTime.seconds,
-              nanoseconds: querySnapshot.readTime.nanoseconds,
-            }
+    // Capture query results
+    const queryResult: FirestoreQueryResult = {
+      docs: querySnapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        path: doc.ref.path,
+        exists: doc.exists,
+        data: doc.exists ? doc.data() : undefined,
+        createTime: doc.createTime
+          ? { seconds: doc.createTime.seconds, nanoseconds: doc.createTime.nanoseconds }
           : undefined,
-      };
+        updateTime: doc.updateTime
+          ? { seconds: doc.updateTime.seconds, nanoseconds: doc.updateTime.nanoseconds }
+          : undefined,
+        readTime: doc.readTime
+          ? { seconds: doc.readTime.seconds, nanoseconds: doc.readTime.nanoseconds }
+          : undefined,
+      })),
+      size: querySnapshot.size,
+      empty: querySnapshot.empty,
+      readTime: querySnapshot.readTime
+        ? {
+            seconds: querySnapshot.readTime.seconds,
+            nanoseconds: querySnapshot.readTime.nanoseconds,
+          }
+        : undefined,
+    };
 
+    try {
       SpanUtils.addSpanAttributes(spanInfo.span, {
         outputValue: queryResult,
       });
       SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-
-      return querySnapshot;
-    } catch (error: any) {
-      logger.error(`[FirestoreInstrumentation] Error in query.get:`, error);
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: error.message,
-      });
-      throw error;
+    } catch {
+      logger.error(`[FirestoreInstrumentation] Error updating span attributes for query.get`);
     }
+
+    return querySnapshot;
   }
 
   private async _handleReplayQueryGet(

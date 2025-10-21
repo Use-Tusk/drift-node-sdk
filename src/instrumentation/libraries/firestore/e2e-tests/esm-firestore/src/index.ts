@@ -1,6 +1,6 @@
-import { TuskDrift } from "./tdInit";
+import { TuskDrift } from "./tdInit.js";
 import express, { Request, Response } from "express";
-import { getDb, closeDb } from "./db/index";
+import { getDb, closeDb } from "./db/index.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;

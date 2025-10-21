@@ -513,19 +513,12 @@ export class TuskDriftCore {
     response?: unknown;
     error?: string;
   } {
-    // Poll for CLI readiness
-    const maxAttempts = 100; // 10 seconds total (100 * 100ms)
-    let attempts = 0;
-
-    while (!this.isConnectedWithCLI && attempts < maxAttempts) {
-      // Use a synchronous sleep
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); // 100ms wait
-      attempts++;
-    }
-
     if (!this.isConnectedWithCLI) {
-      logger.error("Requesting sync mock but CLI is not ready yet (timeout)");
-      throw new Error("Requesting sync mock but CLI is not ready yet (timeout after 10s)");
+      // We cannot await for the CLI to be connected like we do in requestMockAsync since it's a synchronous call
+      // That menas this function will likely throw an error if the first mock requested needs to be sync
+      // This is a limitation of the current implementation and will be fixed in the future
+      logger.error("Requesting sync mock but CLI is not ready yet");
+      throw new Error("Requesting sync mock but CLI is not ready yet");
     }
 
     const mockRequestCore = this.createMockRequestCore(mockRequest);
