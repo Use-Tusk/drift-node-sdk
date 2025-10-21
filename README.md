@@ -23,6 +23,7 @@ Tusk Drift currently supports the following packages and versions:
 - **HTTP/HTTPS**: All versions (Node.js built-in)
 - **GRPC**: `@grpc/grpc-js@1.x` (Outbound requests only)
 - **PG**: `pg@8.x`, `pg-pool@2.x-3.x`
+- **Firestore**: `@google-cloud/firestore@7.x`
 - **Postgres**: `postgres@3.x`
 - **MySQL**: `mysql2@3.x`
 - **IORedis**: `ioredis@4.x-5.x`

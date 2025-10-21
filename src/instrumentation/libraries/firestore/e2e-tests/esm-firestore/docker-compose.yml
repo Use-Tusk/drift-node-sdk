@@ -5,10 +5,11 @@ services:
     build:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/firestore/e2e-tests/esm-firestore/Dockerfile
+      args:
+        - CACHEBUST=${CACHEBUST:-1}
+        - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
     ports:
       - "${APP_PORT:-3000}:3000"
-    env_file:
-      - ../../../../../../.env
     environment:
       - PORT=3000
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}

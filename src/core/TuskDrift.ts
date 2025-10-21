@@ -515,7 +515,7 @@ export class TuskDriftCore {
   } {
     if (!this.isConnectedWithCLI) {
       // We cannot await for the CLI to be connected like we do in requestMockAsync since it's a synchronous call
-      // That menas this function will likely throw an error if the first mock requested needs to be sync
+      // That means this function will likely throw an error if the first mock requested needs to be sync
       // This is a limitation of the current implementation and will be fixed in the future
       logger.error("Requesting sync mock but CLI is not ready yet");
       throw new Error("Requesting sync mock but CLI is not ready yet");

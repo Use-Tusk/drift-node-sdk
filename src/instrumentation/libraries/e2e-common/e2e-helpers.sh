@@ -105,12 +105,14 @@ check_tcp_instrumentation_warning() {
 #   $1: E2E tests directory path
 #   $2: Library name (e.g., "ioredis", "fetch")
 #   $3: Base port (optional, default: 3000)
+#   $4: Run mode (optional, "sequential" or "parallel", default: "parallel")
 # Returns:
 #   Exit code 0 if all tests pass, 1 if any test fails
 run_all_e2e_tests() {
   local E2E_TESTS_DIR="$1"
   local LIBRARY_NAME="$2"
   local BASE_PORT="${3:-3000}"
+  local RUN_MODE="${4:-parallel}"
 
   # Find all test variant directories (cjs-*, esm-*) and filter out non-directories
   local TEST_DIRS=()
@@ -134,12 +136,13 @@ run_all_e2e_tests() {
   echo "Running all E2E tests for: $LIBRARY_NAME"
   echo "Found $NUM_TESTS test variant(s): ${TEST_DIRS[*]}"
   echo "Base port: $BASE_PORT"
+  echo "Run mode: $RUN_MODE"
   echo "========================================"
   echo ""
 
   # Save current buildx builder and switch to default for parallel builds
   local ORIGINAL_BUILDER=$(docker buildx inspect 2>/dev/null | grep "^Name:" | awk '{print $2}' || echo "")
-  if [ -n "$ORIGINAL_BUILDER" ]; then
+  if [ -n "$ORIGINAL_BUILDER" ] && [ "$RUN_MODE" = "parallel" ]; then
     echo "Switching to default Docker builder for parallel builds..."
     docker buildx use default 2>/dev/null || true
   fi
@@ -156,104 +159,148 @@ run_all_e2e_tests() {
   local TEMP_DIR=$(mktemp -d)
   trap "rm -rf $TEMP_DIR" EXIT
 
-  # Launch all tests in parallel
-  for i in "${!TEST_DIRS[@]}"; do
-    local TEST_DIR="${TEST_DIRS[$i]}"
-    local TEST_INDEX=$((i + 1))
-    local RUN_SCRIPT="$E2E_TESTS_DIR/$TEST_DIR/run.sh"
-    local TEST_PORT=$((BASE_PORT + i))
+  if [ "$RUN_MODE" = "sequential" ]; then
+    # Run tests sequentially
+    for i in "${!TEST_DIRS[@]}"; do
+      local TEST_DIR="${TEST_DIRS[$i]}"
+      local TEST_INDEX=$((i + 1))
+      local RUN_SCRIPT="$E2E_TESTS_DIR/$TEST_DIR/run.sh"
+      local TEST_PORT=$((BASE_PORT + i))
 
-    echo ""
-    echo "========================================="
-    echo "[$TEST_INDEX/$NUM_TESTS] Starting $TEST_DIR on port $TEST_PORT..."
-    echo "========================================="
+      echo ""
+      echo "========================================="
+      echo "[$TEST_INDEX/$NUM_TESTS] Running $TEST_DIR on port $TEST_PORT..."
+      echo "========================================="
 
-    # Check if run.sh exists
-    if [ ! -f "$RUN_SCRIPT" ]; then
-      echo -e "${RED}✗ Error: run.sh not found at $RUN_SCRIPT${NC}"
+      # Check if run.sh exists
+      if [ ! -f "$RUN_SCRIPT" ]; then
+        echo -e "${RED}✗ Error: run.sh not found at $RUN_SCRIPT${NC}"
+        TEST_RESULTS+=("$TEST_DIR")
+        TEST_PORTS+=("$TEST_PORT")
+        TEST_EXIT_CODES+=(1)
+        OVERALL_EXIT_CODE=1
+        continue
+      fi
+
+      # Make sure run.sh is executable
+      chmod +x "$RUN_SCRIPT"
+
+      # Run test and capture exit code
+      cd "$E2E_TESTS_DIR/$TEST_DIR" && ./run.sh "$TEST_PORT"
+      local EXIT_CODE=$?
+
       TEST_RESULTS+=("$TEST_DIR")
       TEST_PORTS+=("$TEST_PORT")
-      TEST_EXIT_CODES+=(1)
-      TEST_PIDS+=(0)
-      OVERALL_EXIT_CODE=1
-      continue
-    fi
+      TEST_EXIT_CODES+=($EXIT_CODE)
 
-    # Make sure run.sh is executable
-    chmod +x "$RUN_SCRIPT"
+      if [ $EXIT_CODE -eq 0 ]; then
+        echo -e "${GREEN}✓${NC} $TEST_DIR (port $TEST_PORT) completed successfully"
+      else
+        echo -e "${RED}✗${NC} $TEST_DIR (port $TEST_PORT) failed with exit code $EXIT_CODE"
+        OVERALL_EXIT_CODE=1
+      fi
+      echo ""
+    done
+  else
+    # Launch all tests in parallel
+    for i in "${!TEST_DIRS[@]}"; do
+      local TEST_DIR="${TEST_DIRS[$i]}"
+      local TEST_INDEX=$((i + 1))
+      local RUN_SCRIPT="$E2E_TESTS_DIR/$TEST_DIR/run.sh"
+      local TEST_PORT=$((BASE_PORT + i))
 
-    # Run test in background and capture output
-    local OUTPUT_FILE="$TEMP_DIR/${TEST_DIR}.log"
-    local EXIT_CODE_FILE="$TEMP_DIR/${TEST_DIR}.exit"
+      echo ""
+      echo "========================================="
+      echo "[$TEST_INDEX/$NUM_TESTS] Starting $TEST_DIR on port $TEST_PORT..."
+      echo "========================================="
 
-    # Run without script command to properly capture exit codes
-    # Disable 'set -e' in subshell to ensure exit code is always written
-    (set +e; cd "$E2E_TESTS_DIR/$TEST_DIR" && ./run.sh "$TEST_PORT" > "$OUTPUT_FILE" 2>&1; EXIT=$?; echo $EXIT > "$EXIT_CODE_FILE"; exit $EXIT) &
-    local PID=$!
+      # Check if run.sh exists
+      if [ ! -f "$RUN_SCRIPT" ]; then
+        echo -e "${RED}✗ Error: run.sh not found at $RUN_SCRIPT${NC}"
+        TEST_RESULTS+=("$TEST_DIR")
+        TEST_PORTS+=("$TEST_PORT")
+        TEST_EXIT_CODES+=(1)
+        TEST_PIDS+=(0)
+        OVERALL_EXIT_CODE=1
+        continue
+      fi
 
-    TEST_RESULTS+=("$TEST_DIR")
-    TEST_PORTS+=("$TEST_PORT")
-    TEST_PIDS+=("$PID")
-    echo "Started in background (PID: $PID)"
-  done
+      # Make sure run.sh is executable
+      chmod +x "$RUN_SCRIPT"
 
-  echo ""
-  echo "========================================"
-  echo "Waiting for all tests to complete..."
-  echo "========================================"
-  echo ""
+      # Run test in background and capture output
+      local OUTPUT_FILE="$TEMP_DIR/${TEST_DIR}.log"
+      local EXIT_CODE_FILE="$TEMP_DIR/${TEST_DIR}.exit"
 
-  # Wait for all background jobs and collect exit codes
-  for i in "${!TEST_PIDS[@]}"; do
-    local PID="${TEST_PIDS[$i]}"
-    local TEST_DIR="${TEST_RESULTS[$i]}"
-    local TEST_PORT="${TEST_PORTS[$i]}"
-    local OUTPUT_FILE="$TEMP_DIR/${TEST_DIR}.log"
+      # Run without script command to properly capture exit codes
+      # Disable 'set -e' in subshell to ensure exit code is always written
+      (set +e; cd "$E2E_TESTS_DIR/$TEST_DIR" && ./run.sh "$TEST_PORT" > "$OUTPUT_FILE" 2>&1; EXIT=$?; echo $EXIT > "$EXIT_CODE_FILE"; exit $EXIT) &
+      local PID=$!
 
-    if [ "$PID" -eq 0 ]; then
-      # Test was skipped due to missing run.sh
-      TEST_EXIT_CODES+=(1)
-      continue
-    fi
-
-    # Wait for specific PID
-    wait "$PID" 2>/dev/null || true
-
-    # Wait for the exit file to exist (with timeout)
-    local TIMEOUT=10
-    local ELAPSED=0
-    while [ ! -f "$TEMP_DIR/${TEST_DIR}.exit" ] && [ $ELAPSED -lt $TIMEOUT ]; do
-      sleep 0.1
-      ELAPSED=$((ELAPSED + 1))
+      TEST_RESULTS+=("$TEST_DIR")
+      TEST_PORTS+=("$TEST_PORT")
+      TEST_PIDS+=("$PID")
+      echo "Started in background (PID: $PID)"
     done
 
-    # Read the actual exit code from the file
-    local EXIT_CODE_FILE="$TEMP_DIR/${TEST_DIR}.exit"
-    local ACTUAL_EXIT_CODE=1
-    if [ -f "$EXIT_CODE_FILE" ]; then
-      ACTUAL_EXIT_CODE=$(cat "$EXIT_CODE_FILE")
-    fi
-
-    TEST_EXIT_CODES+=($ACTUAL_EXIT_CODE)
-
-    if [ $ACTUAL_EXIT_CODE -eq 0 ]; then
-      echo -e "${GREEN}✓${NC} $TEST_DIR (port $TEST_PORT) completed successfully"
-    else
-      echo -e "${RED}✗${NC} $TEST_DIR (port $TEST_PORT) failed with exit code $ACTUAL_EXIT_CODE"
-      OVERALL_EXIT_CODE=1
-    fi
-
-    # Show output from the test
     echo ""
-    echo "--- Output from $TEST_DIR ---"
-    if [ -f "$OUTPUT_FILE" ]; then
-      cat "$OUTPUT_FILE"
-    else
-      echo "(No log file found)"
-    fi
-    echo "--- End of output from $TEST_DIR ---"
+    echo "========================================"
+    echo "Waiting for all tests to complete..."
+    echo "========================================"
     echo ""
-  done
+
+    # Wait for all background jobs and collect exit codes
+    for i in "${!TEST_PIDS[@]}"; do
+      local PID="${TEST_PIDS[$i]}"
+      local TEST_DIR="${TEST_RESULTS[$i]}"
+      local TEST_PORT="${TEST_PORTS[$i]}"
+      local OUTPUT_FILE="$TEMP_DIR/${TEST_DIR}.log"
+
+      if [ "$PID" -eq 0 ]; then
+        # Test was skipped due to missing run.sh
+        TEST_EXIT_CODES+=(1)
+        continue
+      fi
+
+      # Wait for specific PID
+      wait "$PID" 2>/dev/null || true
+
+      # Wait for the exit file to exist (with timeout)
+      local TIMEOUT=10
+      local ELAPSED=0
+      while [ ! -f "$TEMP_DIR/${TEST_DIR}.exit" ] && [ $ELAPSED -lt $TIMEOUT ]; do
+        sleep 0.1
+        ELAPSED=$((ELAPSED + 1))
+      done
+
+      # Read the actual exit code from the file
+      local EXIT_CODE_FILE="$TEMP_DIR/${TEST_DIR}.exit"
+      local ACTUAL_EXIT_CODE=1
+      if [ -f "$EXIT_CODE_FILE" ]; then
+        ACTUAL_EXIT_CODE=$(cat "$EXIT_CODE_FILE")
+      fi
+
+      TEST_EXIT_CODES+=($ACTUAL_EXIT_CODE)
+
+      if [ $ACTUAL_EXIT_CODE -eq 0 ]; then
+        echo -e "${GREEN}✓${NC} $TEST_DIR (port $TEST_PORT) completed successfully"
+      else
+        echo -e "${RED}✗${NC} $TEST_DIR (port $TEST_PORT) failed with exit code $ACTUAL_EXIT_CODE"
+        OVERALL_EXIT_CODE=1
+      fi
+
+      # Show output from the test
+      echo ""
+      echo "--- Output from $TEST_DIR ---"
+      if [ -f "$OUTPUT_FILE" ]; then
+        cat "$OUTPUT_FILE"
+      else
+        echo "(No log file found)"
+      fi
+      echo "--- End of output from $TEST_DIR ---"
+      echo ""
+    done
+  fi
 
   # Display summary
   echo ""
@@ -286,7 +333,7 @@ run_all_e2e_tests() {
   echo ""
 
   # Restore original buildx builder if it was changed
-  if [ -n "$ORIGINAL_BUILDER" ] && [ "$ORIGINAL_BUILDER" != "default" ]; then
+  if [ -n "$ORIGINAL_BUILDER" ] && [ "$ORIGINAL_BUILDER" != "default" ] && [ "$RUN_MODE" = "parallel" ]; then
     echo "Restoring original Docker builder: $ORIGINAL_BUILDER"
     docker buildx use "$ORIGINAL_BUILDER" 2>/dev/null || true
   fi

@@ -777,7 +777,10 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  // Find the recorded ID (whether auto-generated or provided)
+                  // doc is a sync function so we need to fetch the mock syncronously
+                  // This function might throw an error if this is the frist mock requested in replay mode
+                  // and the CLI/SDK connection couldn't be awaited
+                  // This is a known limitation that is only relevant in replay mode so not the biggest deal
                   const mockData = findMockResponseSync({
                     mockRequestData: {
                       traceId: spanInfo.traceId,
