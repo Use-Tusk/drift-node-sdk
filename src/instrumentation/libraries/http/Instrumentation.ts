@@ -92,7 +92,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     }
 
     // ESM Support: Detect if this is an ESM module
-    const isESM = (httpModule as any)[Symbol.toStringTag] === 'Module';
+    const isESM = (httpModule as any)[Symbol.toStringTag] === "Module";
 
     if (isESM) {
       // ESM Case: Also set wrapped methods on the default export
@@ -181,6 +181,8 @@ export class HttpInstrumentation extends TdInstrumentationBase {
             // No trace context; proceed without span
             return originalHandler.call(this);
           }
+
+          logger.debug(`[HttpInstrumentation] Setting replay trace id`, replayTraceId);
 
           // Set env vars for current trace
           const envVars = this.replayHooks.extractEnvVarsFromHeaders(req);
@@ -934,7 +936,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           complete: true,
           readable: false,
           // Add error-specific fields
-          errorName: error.name || 'UNKNOWN',
+          errorName: error.name || "UNKNOWN",
           errorMessage: error.message,
         };
 

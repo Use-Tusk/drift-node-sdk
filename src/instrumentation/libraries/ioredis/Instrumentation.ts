@@ -17,9 +17,7 @@ import {
   IORedisOutputValue,
   BufferMetadata,
 } from "./types";
-import {
-  convertValueToJsonable,
-} from "./utils";
+import { convertValueToJsonable } from "./utils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils/logger";
 import { captureStackTrace } from "src/instrumentation/core/utils";
@@ -126,7 +124,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     const actualExports = isESM ? moduleExports.default : moduleExports;
 
     if (!actualExports || !actualExports.prototype) {
-      logger.error(`[IORedisInstrumentation] Invalid Pipeline module exports, cannot patch`);
+      logger.debug(`[IORedisInstrumentation] Invalid Pipeline module exports, cannot patch`);
       return moduleExports;
     }
 
@@ -555,7 +553,10 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     return promise;
   }
 
-  private async _handleReplayConnect(spanInfo: SpanInfo, thisContext: IORedisInterface): Promise<any> {
+  private async _handleReplayConnect(
+    spanInfo: SpanInfo,
+    thisContext: IORedisInterface,
+  ): Promise<any> {
     logger.debug(`[IORedisInstrumentation] Replaying IORedis connect`);
 
     // Connect operations typically don't have meaningful output to replay

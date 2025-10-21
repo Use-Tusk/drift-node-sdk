@@ -6,11 +6,16 @@ WORKDIR /app
 COPY src/instrumentation/libraries/ioredis/e2e-tests/esm-ioredis/package*.json ./
 COPY src/instrumentation/libraries/ioredis/e2e-tests/esm-ioredis/tsconfig.json ./
 
-# Install dependencies
-RUN npm install
+# Add cache-busting argument to force fresh CLI download
+ARG CACHEBUST=1
+ARG TUSK_CLI_VERSION=latest
 
 # Install Tusk Drift CLI
-RUN curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-drift-cli/main/install.sh | sh
+RUN if [ "$TUSK_CLI_VERSION" = "latest" ]; then \
+      curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-drift-cli/main/install.sh | sh; \
+    else \
+      curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-drift-cli/main/install.sh | sh -s -- ${TUSK_CLI_VERSION}; \
+    fi
 
 # Expose the server port
 EXPOSE 3000

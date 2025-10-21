@@ -1,4 +1,4 @@
-# Next.js Initialization
+# Next.js Initialization (Beta)
 
 This guide explains how to set up Tusk Drift in your Next.js application.
 

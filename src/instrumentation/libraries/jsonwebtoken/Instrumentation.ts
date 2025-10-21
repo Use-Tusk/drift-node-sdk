@@ -513,7 +513,7 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
       mockRequestData: {
         traceId: spanInfo.traceId,
         spanId: spanInfo.spanId,
-        name: inputValue.token,
+        name: "jsonwebtoken.verify",
         packageName: "jsonwebtoken",
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: "verify",
@@ -593,7 +593,7 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
       mockRequestData: {
         traceId: spanInfo?.traceId,
         spanId: spanInfo?.spanId,
-        name: JSON.stringify(inputValue.payload),
+        name: "jsonwebtoken.sign",
         packageName: "jsonwebtoken",
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: "sign",

@@ -22,8 +22,12 @@ import { logger } from "../../../core/utils/logger";
 import { TdMysql2ConnectionMock } from "./mocks/TdMysql2ConnectionMock";
 import { TdMysql2QueryMock } from "./mocks/TdMysql2QueryMock";
 import { captureStackTrace } from "src/instrumentation/core/utils";
+import { TdMysql2ConnectionEventMock } from "./mocks/TdMysql2ConnectionEventMock";
 
-const SUPPORTED_VERSIONS = [">=3.0.0 <4.0.0"];
+// Version ranges for mysql2
+const COMPLETE_SUPPORTED_VERSIONS = ">=2.3.3 <4.0.0";
+const V2_3_3_TO_3_11_4 = ">=2.3.3 <3.11.5";
+const V3_11_5_TO_4_0 = ">=3.11.5 <4.0.0";
 
 export class Mysql2Instrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "Mysql2Instrumentation";
@@ -40,46 +44,142 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     return [
       new TdInstrumentationNodeModule({
         name: "mysql2",
-        supportedVersions: SUPPORTED_VERSIONS,
+        supportedVersions: [COMPLETE_SUPPORTED_VERSIONS],
         files: [
+          // For v2.3.3-3.11.4: lib/connection.js with prototypes AND class wrapping
           new TdInstrumentationNodeModuleFile({
             name: "mysql2/lib/connection.js",
-            supportedVersions: SUPPORTED_VERSIONS,
-            patch: (moduleExports: any) => this._patchConnection(moduleExports),
+            supportedVersions: [V2_3_3_TO_3_11_4],
+            patch: (moduleExports: any) => this._patchConnectionV2(moduleExports),
           }),
+          // For v3.11.5+: lib/base/connection.js with prototypes only
+          new TdInstrumentationNodeModuleFile({
+            name: "mysql2/lib/base/connection.js",
+            supportedVersions: [V3_11_5_TO_4_0],
+            patch: (moduleExports: any) => this._patchBaseConnection(moduleExports),
+          }),
+          // For v3.11.5+: lib/connection.js with class wrapping only
+          new TdInstrumentationNodeModuleFile({
+            name: "mysql2/lib/connection.js",
+            supportedVersions: [V3_11_5_TO_4_0],
+            patch: (moduleExports: any) => this._patchConnectionV3(moduleExports),
+          }),
+          // For v2.3.3-3.11.4: lib/pool.js with prototypes AND class wrapping
           new TdInstrumentationNodeModuleFile({
             name: "mysql2/lib/pool.js",
-            supportedVersions: SUPPORTED_VERSIONS,
-            patch: (moduleExports: any) => this._patchPool(moduleExports),
+            supportedVersions: [V2_3_3_TO_3_11_4],
+            patch: (moduleExports: any) => this._patchPoolV2(moduleExports),
           }),
+          // For v3.11.5+: lib/pool.js with class wrapping only
+          new TdInstrumentationNodeModuleFile({
+            name: "mysql2/lib/pool.js",
+            supportedVersions: [V3_11_5_TO_4_0],
+            patch: (moduleExports: any) => this._patchPoolV3(moduleExports),
+          }),
+          // For v2.3.3-3.11.4: lib/pool_connection.js with class wrapping
           new TdInstrumentationNodeModuleFile({
             name: "mysql2/lib/pool_connection.js",
-            supportedVersions: SUPPORTED_VERSIONS,
-            patch: (moduleExports: any) => this._patchPoolConnection(moduleExports),
+            supportedVersions: [V2_3_3_TO_3_11_4],
+            patch: (moduleExports: any) => this._patchPoolConnectionV2(moduleExports),
           }),
+          // For v3.11.5+: lib/pool_connection.js with class wrapping
           new TdInstrumentationNodeModuleFile({
-            name: "mysql2/lib/create_connection.js",
-            supportedVersions: SUPPORTED_VERSIONS,
-            patch: (moduleExports: any) => this._patchCreateConnectionFile(moduleExports),
-          }),
-          new TdInstrumentationNodeModuleFile({
-            name: "mysql2/lib/create_pool.js",
-            supportedVersions: SUPPORTED_VERSIONS,
-            patch: (moduleExports: any) => this._patchCreatePoolFile(moduleExports),
+            name: "mysql2/lib/pool_connection.js",
+            supportedVersions: [V3_11_5_TO_4_0],
+            patch: (moduleExports: any) => this._patchPoolConnectionV3(moduleExports),
           }),
         ],
       }),
     ];
   }
 
-  private _patchConnection(ConnectionClass: any): any {
-    logger.debug(`[Mysql2Instrumentation] Patching Connection class`);
+  private _patchBaseConnection(BaseConnectionClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Patching BaseConnection class`);
+
+    if (this.isModulePatched(BaseConnectionClass)) {
+      logger.debug(`[Mysql2Instrumentation] BaseConnection class already patched, skipping`);
+      return BaseConnectionClass;
+    }
+
+    // Wrap BaseConnection.prototype.query
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.query) {
+      if (!isWrapped(BaseConnectionClass.prototype.query)) {
+        this._wrap(BaseConnectionClass.prototype, "query", this._getQueryPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.query`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.execute (prepared statements)
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.execute) {
+      if (!isWrapped(BaseConnectionClass.prototype.execute)) {
+        this._wrap(BaseConnectionClass.prototype, "execute", this._getExecutePatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.execute`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.connect
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.connect) {
+      if (!isWrapped(BaseConnectionClass.prototype.connect)) {
+        this._wrap(BaseConnectionClass.prototype, "connect", this._getConnectPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.connect`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.ping
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.ping) {
+      if (!isWrapped(BaseConnectionClass.prototype.ping)) {
+        this._wrap(BaseConnectionClass.prototype, "ping", this._getPingPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.ping`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.end
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.end) {
+      if (!isWrapped(BaseConnectionClass.prototype.end)) {
+        this._wrap(BaseConnectionClass.prototype, "end", this._getEndPatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.end`);
+      }
+    }
+
+    this.markModuleAsPatched(BaseConnectionClass);
+    logger.debug(`[Mysql2Instrumentation] BaseConnection class patching complete`);
+
+    return BaseConnectionClass;
+  }
+
+  // v2.3.3-3.11.4: Patch prototypes AND wrap constructor
+  private _patchConnectionV2(ConnectionClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Patching Connection class (v2)`);
 
     if (this.isModulePatched(ConnectionClass)) {
       logger.debug(`[Mysql2Instrumentation] Connection class already patched, skipping`);
       return ConnectionClass;
     }
 
+    // Patch all connection prototype methods
+    this._patchConnectionPrototypes(ConnectionClass);
+
+    // Wrap the Connection constructor to handle connection events
+    const patchedConnectionClass = this._getPatchedConnectionClass(ConnectionClass);
+
+    this.markModuleAsPatched(ConnectionClass);
+
+    logger.debug(`[Mysql2Instrumentation] Connection class (v2) patching complete`);
+    return patchedConnectionClass;
+  }
+
+  // v3.11.5+: Only wrap constructor (prototypes already patched in base/connection.js)
+  private _patchConnectionV3(ConnectionClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Connection class (v3) - wrapping constructor only`);
+    // For v3.11.5+, lib/connection.js extends base/connection.js
+    // We already patched the prototypes in base/connection.js
+    // But we still need to wrap the constructor for connection event handling
+    const patchedConnectionClass = this._getPatchedConnectionClass(ConnectionClass);
+    return patchedConnectionClass;
+  }
+
+  // Helper to patch all connection prototype methods (used by both versions)
+  private _patchConnectionPrototypes(ConnectionClass: any): void {
     // Wrap Connection.prototype.query
     if (ConnectionClass.prototype && ConnectionClass.prototype.query) {
       if (!isWrapped(ConnectionClass.prototype.query)) {
@@ -119,21 +219,46 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         logger.debug(`[Mysql2Instrumentation] Wrapped Connection.prototype.end`);
       }
     }
-
-    this.markModuleAsPatched(ConnectionClass);
-    logger.debug(`[Mysql2Instrumentation] Connection class patching complete`);
-
-    return ConnectionClass;
   }
 
-  private _patchPool(PoolClass: any): any {
-    logger.debug(`[Mysql2Instrumentation] Patching Pool class`);
+  // v2.3.3-3.11.4: Patch prototypes for Pool
+  private _patchPoolV2(PoolClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Patching Pool class (v2)`);
 
     if (this.isModulePatched(PoolClass)) {
       logger.debug(`[Mysql2Instrumentation] Pool class already patched, skipping`);
       return PoolClass;
     }
 
+    // Patch pool prototype methods
+    this._patchPoolPrototypes(PoolClass);
+
+    this.markModuleAsPatched(PoolClass);
+
+    logger.debug(`[Mysql2Instrumentation] Pool class (v2) patching complete`);
+    return PoolClass;
+  }
+
+  // v3.11.5+: Patch prototypes for Pool (there's no base/pool.js)
+  private _patchPoolV3(PoolClass: any): any {
+    logger.debug(`[Mysql2Instrumentation] Patching Pool class (v3)`);
+
+    if (this.isModulePatched(PoolClass)) {
+      logger.debug(`[Mysql2Instrumentation] Pool class already patched, skipping`);
+      return PoolClass;
+    }
+
+    // Patch pool prototype methods
+    this._patchPoolPrototypes(PoolClass);
+
+    this.markModuleAsPatched(PoolClass);
+
+    logger.debug(`[Mysql2Instrumentation] Pool class (v3) patching complete`);
+    return PoolClass;
+  }
+
+  // Helper to patch pool prototype methods
+  private _patchPoolPrototypes(PoolClass: any): void {
     // Wrap Pool.prototype.query
     if (PoolClass.prototype && PoolClass.prototype.query) {
       if (!isWrapped(PoolClass.prototype.query)) {
@@ -158,39 +283,32 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       }
     }
 
-    this.markModuleAsPatched(PoolClass);
-    logger.debug(`[Mysql2Instrumentation] Pool class patching complete`);
-
-    return PoolClass;
+    // Wrap Pool.prototype.end
+    if (PoolClass.prototype && PoolClass.prototype.end) {
+      if (!isWrapped(PoolClass.prototype.end)) {
+        this._wrap(PoolClass.prototype, "end", this._getEndPatchFn("pool"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped Pool.prototype.end`);
+      }
+    }
   }
 
-  private _patchPoolConnection(PoolConnectionClass: any): any {
-    logger.debug(`[Mysql2Instrumentation] Patching PoolConnection class`);
+  // v2.3.3-3.11.4: PoolConnection extends Connection, so inherits patched methods
+  private _patchPoolConnectionV2(PoolConnectionClass: any): any {
+    logger.debug(
+      `[Mysql2Instrumentation] PoolConnection class (v2) - skipping (inherits from Connection)`,
+    );
+    // PoolConnection extends Connection, so it inherits the patched methods
+    // No additional patching needed
+    return PoolConnectionClass;
+  }
 
-    if (this.isModulePatched(PoolConnectionClass)) {
-      logger.debug(`[Mysql2Instrumentation] PoolConnection class already patched, skipping`);
-      return PoolConnectionClass;
-    }
-
-    // Wrap PoolConnection.prototype.query with poolConnection client type
-    if (PoolConnectionClass.prototype && PoolConnectionClass.prototype.query) {
-      if (!isWrapped(PoolConnectionClass.prototype.query)) {
-        this._wrap(PoolConnectionClass.prototype, "query", this._getQueryPatchFn("poolConnection"));
-        logger.debug(`[Mysql2Instrumentation] Wrapped PoolConnection.prototype.query`);
-      }
-    }
-
-    // Wrap PoolConnection.prototype.execute (prepared statements)
-    if (PoolConnectionClass.prototype && PoolConnectionClass.prototype.execute) {
-      if (!isWrapped(PoolConnectionClass.prototype.execute)) {
-        this._wrap(PoolConnectionClass.prototype, "execute", this._getExecutePatchFn("poolConnection"));
-        logger.debug(`[Mysql2Instrumentation] Wrapped PoolConnection.prototype.execute`);
-      }
-    }
-
-    this.markModuleAsPatched(PoolConnectionClass);
-    logger.debug(`[Mysql2Instrumentation] PoolConnection class patching complete`);
-
+  // v3.11.5+: PoolConnection extends Connection, so inherits patched methods
+  private _patchPoolConnectionV3(PoolConnectionClass: any): any {
+    logger.debug(
+      `[Mysql2Instrumentation] PoolConnection class (v3) - skipping (inherits from Connection)`,
+    );
+    // PoolConnection extends Connection, so it inherits the patched methods
+    // No additional patching needed
     return PoolConnectionClass;
   }
 
@@ -566,12 +684,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                   isPreAppStart,
                 },
                 (spanInfo) => {
-                  return self._handleSimpleCallbackMethod(
-                    spanInfo,
-                    originalPing,
-                    callback,
-                    this,
-                  );
+                  return self._handleSimpleCallbackMethod(spanInfo, originalPing, callback, this);
                 },
               );
             },
@@ -636,12 +749,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                   isPreAppStart,
                 },
                 (spanInfo) => {
-                  return self._handleSimpleCallbackMethod(
-                    spanInfo,
-                    originalEnd,
-                    callback,
-                    this,
-                  );
+                  return self._handleSimpleCallbackMethod(spanInfo, originalEnd, callback, this);
                 },
               );
             },
@@ -753,8 +861,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     if (typeof firstArg === "string") {
       const config: Mysql2QueryConfig = {
         sql: firstArg,
-        callback:
-          typeof args[args.length - 1] === "function" ? args[args.length - 1] : undefined,
+        callback: typeof args[args.length - 1] === "function" ? args[args.length - 1] : undefined,
       };
       if (Array.isArray(args[1])) {
         config.values = args[1];
@@ -988,6 +1095,194 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     }
   }
 
+  /**
+   * Creates a patched Connection class that intercepts the constructor
+   * to handle connection event recording/replay.
+   *
+   * Wrap the Connection constructor to:
+   * - In RECORD mode: listen for 'connect'/'error' events and record them
+   * - In REPLAY mode: create a MockConnection that fakes the connection and emits recorded events
+   */
+  private _getPatchedConnectionClass(OriginalConnection: any): any {
+    const self = this;
+
+    // Create the patched constructor function
+    function TdPatchedConnection(this: any, ...args: any[]) {
+      const inputValue = { method: "createConnection" };
+      // RECORD mode: create real connection and record connect/error events
+      if (self.mode === TuskDriftMode.RECORD) {
+        return handleRecordMode({
+          originalFunctionCall: () => new OriginalConnection(...args),
+          recordModeHandler: ({ isPreAppStart }) => {
+            return SpanUtils.createAndExecuteSpan(
+              self.mode,
+              () => new OriginalConnection(...args),
+              {
+                name: `mysql2.connection.create`,
+                kind: SpanKind.CLIENT,
+                submodule: "connectEvent",
+                packageType: PackageType.MYSQL,
+                packageName: "mysql2",
+                instrumentationName: self.INSTRUMENTATION_NAME,
+                inputValue,
+                isPreAppStart,
+              },
+              (spanInfo) => {
+                const connection = new OriginalConnection(...args);
+
+                // Listen for successful connection - record via span
+                connection.on("connect", (connectionObj: any) => {
+                  try {
+                    SpanUtils.addSpanAttributes(spanInfo.span, {
+                      outputValue: { connected: true, connectionObj },
+                    });
+                    SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+                  } catch {
+                    logger.error(`[Mysql2Instrumentation] error adding span attributes:`);
+                  }
+                });
+
+                // Listen for connection errors - record via span
+                connection.on("error", (err: Error) => {
+                  try {
+                    logger.debug(
+                      `[Mysql2Instrumentation] Connection error, recording: ${err.message}`,
+                    );
+                    SpanUtils.endSpan(spanInfo.span, {
+                      code: SpanStatusCode.ERROR,
+                      message: err.message,
+                    });
+                  } catch {
+                    logger.error(`[Mysql2Instrumentation] error ending span`);
+                  }
+                });
+
+                return connection;
+              },
+            );
+          },
+          spanKind: SpanKind.CLIENT,
+        });
+      }
+
+      // REPLAY mode: create mock connection that doesn't actually connect
+      if (self.mode === TuskDriftMode.REPLAY) {
+        return handleReplayMode({
+          replayModeHandler: () => {
+            return SpanUtils.createAndExecuteSpan(
+              self.mode,
+              () => new OriginalConnection(...args),
+              {
+                name: `mysql2.connection.create`,
+                kind: SpanKind.CLIENT,
+                submodule: "connectEvent",
+                packageType: PackageType.MYSQL,
+                packageName: "mysql2",
+                instrumentationName: self.INSTRUMENTATION_NAME,
+                inputValue,
+                isPreAppStart: false,
+              },
+              (spanInfo) => {
+                // Create a mock connection class that extends the original
+                class MockConnection extends OriginalConnection {
+                  private _isConnectOrErrorEmitted = false;
+                  private _connectEventMock: TdMysql2ConnectionEventMock;
+
+                  constructor(...mockConnectionArgs: any[]) {
+                    // Clone the args and use fake host/port to prevent actual connection
+                    const clonedArgs = JSON.parse(JSON.stringify(mockConnectionArgs));
+                    if (clonedArgs[0] && clonedArgs[0].config) {
+                      clonedArgs[0].config.host = "127.0.0.1";
+                      clonedArgs[0].config.port = 127;
+                    } else if (clonedArgs[0]) {
+                      // Direct config object
+                      clonedArgs[0].host = "127.0.0.1";
+                      clonedArgs[0].port = 127;
+                    }
+
+                    // Call parent constructor with fake connection config
+                    super(...clonedArgs);
+
+                    // Get the recorded connection event
+                    this._connectEventMock = new TdMysql2ConnectionEventMock(spanInfo);
+                  }
+
+                  // Override the 'on' method to emit recorded events
+                  on(event: string, listener: Function): any {
+                    if (!this._connectEventMock) {
+                      return super.on(event, listener);
+                    }
+
+                    // Handle 'connect' event - emit recorded connection success
+                    if (event === "connect" && !this._isConnectOrErrorEmitted) {
+                      this._connectEventMock
+                        .getReplayedConnectionEvent(inputValue)
+                        .then(({ output }) => {
+                          if (output !== undefined) {
+                            process.nextTick(() => {
+                              listener.call(this, output);
+                              this._isConnectOrErrorEmitted = true;
+                            });
+                          }
+                        })
+                        .catch((err) => {
+                          logger.error(
+                            `[Mysql2Instrumentation] Error replaying connection event:`,
+                            err,
+                          );
+                        });
+                      return this;
+                    }
+
+                    // Handle 'error' event - just register the listener (connection should succeed in replay)
+                    if (event === "error" && !this._isConnectOrErrorEmitted) {
+                      // In replay mode, we don't expect errors (connection is mocked)
+                      // But register the listener anyway for compatibility
+                      return this;
+                    }
+
+                    // For other events, use the parent handler
+                    return super.on(event, listener);
+                  }
+                }
+
+                const mockConnection = new MockConnection(...args);
+
+                // Add default error listener to prevent unhandled errors
+                mockConnection.addListener("error", (_err: Error) => {
+                  // Silently catch to prevent crashes
+                });
+
+                SpanUtils.addSpanAttributes(spanInfo.span, {
+                  outputValue: { connected: true, mock: true },
+                });
+                SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+
+                return mockConnection;
+              },
+            );
+          },
+        });
+      }
+
+      // Fallback for disabled mode
+      return new OriginalConnection(...args);
+    }
+
+    // Copy static properties from original class
+    const staticProps = Object.getOwnPropertyNames(OriginalConnection).filter(
+      (key) => !["length", "name", "prototype"].includes(key),
+    );
+    for (const staticProp of staticProps) {
+      (TdPatchedConnection as any)[staticProp] = OriginalConnection[staticProp];
+    }
+
+    // Set prototype chain
+    Object.setPrototypeOf(TdPatchedConnection.prototype, OriginalConnection.prototype);
+
+    return TdPatchedConnection;
+  }
+
   private _addOutputAttributesToSpan(
     spanInfo: SpanInfo,
     result?: any,
@@ -1020,152 +1315,6 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     SpanUtils.addSpanAttributes(spanInfo.span, {
       outputValue,
     });
-  }
-
-  private _patchCreateConnectionFile(createConnectionFn: any): any {
-    logger.debug(`[Mysql2Instrumentation] Patching create_connection.js file`);
-
-    // The module exports a single function, but we can't wrap module.exports directly with shimmer
-    // Instead, we need to return a wrapped function
-    const self = this;
-    const wrappedFn = function (this: any, ...args: any[]) {
-      const inputValue = { method: "createConnection" };
-
-      if (self.mode === TuskDriftMode.REPLAY) {
-        return handleReplayMode({
-          replayModeHandler: () => {
-            return SpanUtils.createAndExecuteSpan(
-              self.mode,
-              () => createConnectionFn.apply(this, args),
-              {
-                name: `mysql2.createConnection`,
-                kind: SpanKind.CLIENT,
-                submodule: "createConnection",
-                packageName: "mysql2",
-                packageType: PackageType.MYSQL,
-                instrumentationName: self.INSTRUMENTATION_NAME,
-                inputValue: inputValue,
-                isPreAppStart: false,
-              },
-              (spanInfo) => {
-                const connection = createConnectionFn.apply(this, args);
-                SpanUtils.addSpanAttributes(spanInfo.span, {
-                  outputValue: { created: true },
-                });
-                SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-                return connection;
-              },
-            );
-          },
-        });
-      } else if (self.mode === TuskDriftMode.RECORD) {
-        return handleRecordMode({
-          originalFunctionCall: () => createConnectionFn.apply(this, args),
-          recordModeHandler: ({ isPreAppStart }) => {
-            return SpanUtils.createAndExecuteSpan(
-              self.mode,
-              () => createConnectionFn.apply(this, args),
-              {
-                name: `mysql2.createConnection`,
-                kind: SpanKind.CLIENT,
-                submodule: "createConnection",
-                packageName: "mysql2",
-                packageType: PackageType.MYSQL,
-                instrumentationName: self.INSTRUMENTATION_NAME,
-                inputValue: inputValue,
-                isPreAppStart,
-              },
-              (spanInfo) => {
-                const connection = createConnectionFn.apply(this, args);
-                SpanUtils.addSpanAttributes(spanInfo.span, {
-                  outputValue: { created: true },
-                });
-                SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-                return connection;
-              },
-            );
-          },
-          spanKind: SpanKind.CLIENT,
-        });
-      } else {
-        return createConnectionFn.apply(this, args);
-      }
-    };
-
-    logger.debug(`[Mysql2Instrumentation] Patched create_connection.js file`);
-    return wrappedFn;
-  }
-
-  private _patchCreatePoolFile(createPoolFn: any): any {
-    logger.debug(`[Mysql2Instrumentation] Patching create_pool.js file`);
-
-    const self = this;
-    const wrappedFn = function (this: any, ...args: any[]) {
-      const inputValue = { method: "createPool" };
-
-      if (self.mode === TuskDriftMode.REPLAY) {
-        return handleReplayMode({
-          replayModeHandler: () => {
-            return SpanUtils.createAndExecuteSpan(
-              self.mode,
-              () => createPoolFn.apply(this, args),
-              {
-                name: `mysql2.createPool`,
-                kind: SpanKind.CLIENT,
-                submodule: "createPool",
-                packageName: "mysql2",
-                packageType: PackageType.MYSQL,
-                instrumentationName: self.INSTRUMENTATION_NAME,
-                inputValue: inputValue,
-                isPreAppStart: false,
-              },
-              (spanInfo) => {
-                const pool = createPoolFn.apply(this, args);
-                SpanUtils.addSpanAttributes(spanInfo.span, {
-                  outputValue: { created: true },
-                });
-                SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-                return pool;
-              },
-            );
-          },
-        });
-      } else if (self.mode === TuskDriftMode.RECORD) {
-        return handleRecordMode({
-          originalFunctionCall: () => createPoolFn.apply(this, args),
-          recordModeHandler: ({ isPreAppStart }) => {
-            return SpanUtils.createAndExecuteSpan(
-              self.mode,
-              () => createPoolFn.apply(this, args),
-              {
-                name: `mysql2.createPool`,
-                kind: SpanKind.CLIENT,
-                submodule: "createPool",
-                packageName: "mysql2",
-                packageType: PackageType.MYSQL,
-                instrumentationName: self.INSTRUMENTATION_NAME,
-                inputValue: inputValue,
-                isPreAppStart,
-              },
-              (spanInfo) => {
-                const pool = createPoolFn.apply(this, args);
-                SpanUtils.addSpanAttributes(spanInfo.span, {
-                  outputValue: { created: true },
-                });
-                SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-                return pool;
-              },
-            );
-          },
-          spanKind: SpanKind.CLIENT,
-        });
-      } else {
-        return createPoolFn.apply(this, args);
-      }
-    };
-
-    logger.debug(`[Mysql2Instrumentation] Patched create_pool.js file`);
-    return wrappedFn;
   }
 
   private _wrap(
