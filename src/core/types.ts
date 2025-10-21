@@ -3,6 +3,8 @@ import { StatusCode, PackageType } from "@use-tusk/drift-schemas/core/span";
 import { SpanKind } from "@opentelemetry/api";
 import type { JsonSchema } from "@use-tusk/drift-schemas/core/json_schema";
 
+export const TD_INSTRUMENTATION_LIBRARY_NAME = "tusk-drift-sdk";
+
 export const REPLAY_TRACE_ID_CONTEXT_KEY = createContextKey("td.replayTraceId");
 export const SPAN_KIND_CONTEXT_KEY = createContextKey("td.spanKind");
 export const IS_PRE_APP_START_CONTEXT_KEY = createContextKey("td.isPreAppStart");

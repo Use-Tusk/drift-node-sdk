@@ -27,6 +27,7 @@ import {
   deserializeGrpcPayload,
 } from "./utils";
 import { EventEmitter } from "events";
+import { Readable } from "stream";
 
 const GRPC_MODULE_NAME = "@grpc/grpc-js";
 
@@ -130,6 +131,13 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
 
     // Wrap makeUnaryRequest
     this._wrap(clientPrototype, "makeUnaryRequest", this._getMakeUnaryRequestPatchFn(version));
+
+    // Wrap server streaming requests (used by Firestore queries)
+    this._wrap(
+      clientPrototype,
+      "makeServerStreamRequest",
+      this._getMakeServerStreamRequestPatchFn(version),
+    );
 
     // Wrap waitForReady (for replay mode, we skip the actual wait)
     this._wrap(clientPrototype, "waitForReady", this._getWaitForReadyPatchFn());
@@ -235,6 +243,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
     );
     return (original: Function) => {
       return function makeUnaryRequest(this: any, ...args: any[]) {
+        logger.debug(`[GrpcInstrumentation] makeUnaryRequest called! args length: ${args.length}`);
         const MetadataConstructor = GrpcInstrumentation.metadataStore.get(version) || self.Metadata;
 
         if (!MetadataConstructor) {
@@ -367,6 +376,196 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
         }
       };
     };
+  }
+
+  private _getMakeServerStreamRequestPatchFn(version: string) {
+    const self = this;
+    logger.debug(
+      `[GrpcInstrumentation] _getMakeServerStreamRequestPatchFn called for version: ${version}`,
+    );
+    return (original: Function) => {
+      return function makeServerStreamRequest(this: any, ...args: any[]) {
+        logger.debug(
+          `[GrpcInstrumentation] makeServerStreamRequest called! args length: ${args.length}`,
+        );
+        const MetadataConstructor = GrpcInstrumentation.metadataStore.get(version) || self.Metadata;
+
+        if (!MetadataConstructor) {
+          logger.warn(
+            `[GrpcInstrumentation] Metadata constructor not found for version ${version}`,
+          );
+          return original.apply(this, args);
+        }
+
+        // Parse arguments for server stream request
+        // Signature: (method, serialize, deserialize, argument, metadata?, options?)
+        let parsedParams: {
+          method: string;
+          serialize: Function;
+          deserialize: Function;
+          argument: any;
+          metadata: any;
+          options: any;
+        };
+
+        try {
+          parsedParams = self.extractServerStreamRequestParameters(args, MetadataConstructor);
+        } catch (error) {
+          logger.error(
+            `[GrpcInstrumentation] Error parsing makeServerStreamRequest arguments:`,
+            error,
+          );
+          // Fall back to original function if we can't parse the arguments
+          return original.apply(this, args);
+        }
+
+        const { method: path, argument, metadata, options } = parsedParams;
+
+        let method: string;
+        let service: string;
+        let readableBody: any;
+        let bufferMap: Record<
+          string,
+          {
+            value: string;
+            encoding: string;
+          }
+        >;
+        let jsonableStringMap: Record<string, string>;
+        let readableMetadata: ReadableMetadata;
+
+        try {
+          ({ method, service } = parseGrpcPath(path));
+          ({ readableBody, bufferMap, jsonableStringMap } = serializeGrpcPayload(argument));
+          readableMetadata = serializeGrpcMetadata(metadata);
+        } catch (error) {
+          logger.error(
+            `[GrpcInstrumentation] Error parsing makeServerStreamRequest arguments:`,
+            error,
+          );
+          // Fall back to original function if we can't parse the arguments
+          return original.apply(this, args);
+        }
+
+        const inputMeta: BufferMetadata = {
+          bufferMap,
+          jsonableStringMap,
+        };
+
+        const inputValue: GrpcClientInputValue = {
+          method,
+          service,
+          body: readableBody,
+          metadata: readableMetadata,
+          inputMeta,
+        };
+
+        // Handle replay mode
+        if (self.mode === TuskDriftMode.REPLAY) {
+          return handleReplayMode({
+            replayModeHandler: () => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => original.apply(this, args),
+                {
+                  name: "grpc.client.server_stream",
+                  kind: SpanKind.CLIENT,
+                  submodule: "client",
+                  packageType: PackageType.GRPC,
+                  packageName: GRPC_MODULE_NAME,
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart: false,
+                },
+                (spanInfo) => {
+                  return self._handleReplayServerStreamRequest(
+                    spanInfo,
+                    inputValue,
+                    MetadataConstructor,
+                  );
+                },
+              );
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => original.apply(this, args),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => original.apply(this, args),
+                {
+                  name: "grpc.client.server_stream",
+                  kind: SpanKind.CLIENT,
+                  submodule: "client",
+                  packageType: PackageType.GRPC,
+                  packageName: GRPC_MODULE_NAME,
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart,
+                },
+                (spanInfo) => {
+                  return self._handleRecordServerStreamRequest(
+                    spanInfo,
+                    original,
+                    this,
+                    parsedParams,
+                  );
+                },
+              );
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else {
+          return original.apply(this, args);
+        }
+      };
+    };
+  }
+
+  private extractServerStreamRequestParameters(
+    args: any[],
+    MetadataConstructor: any,
+  ): {
+    method: string;
+    serialize: Function;
+    deserialize: Function;
+    argument: any;
+    metadata: any;
+    options: any;
+  } {
+    // Server stream request signature:
+    // (method, serialize, deserialize, argument, metadata?, options?)
+    const method = args[0];
+    const serialize = args[1];
+    const deserialize = args[2];
+    const argument = args[3];
+
+    // args[4] can be metadata or options
+    // args[5] can be options
+    let metadata: any;
+    let options: any;
+
+    if (args.length === 6) {
+      // Both metadata and options provided
+      metadata = args[4];
+      options = args[5];
+    } else if (args.length === 5) {
+      // Either metadata or options provided
+      // Check if it's a Metadata instance
+      if (args[4] instanceof MetadataConstructor) {
+        metadata = args[4];
+        options = {};
+      } else {
+        metadata = new MetadataConstructor();
+        options = args[4] || {};
+      }
+    } else {
+      metadata = new MetadataConstructor();
+      options = {};
+    }
+
+    return { method, serialize, deserialize, argument, metadata, options };
   }
 
   private _handleRecordUnaryRequest(
@@ -523,104 +722,406 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
     return "error" in result;
   }
 
-  private async _handleReplayUnaryRequest(
+  private _handleReplayUnaryRequest(
     spanInfo: SpanInfo,
     inputValue: GrpcClientInputValue,
     callback: Function,
     MetadataConstructor: any,
     stackTrace?: string,
-  ): Promise<any> {
+  ): any {
     logger.debug(`[GrpcInstrumentation] Replaying gRPC unary request`);
 
-    // Find mock data
-    const mockData = await findMockResponseAsync({
-      mockRequestData: {
-        traceId: spanInfo.traceId,
-        spanId: spanInfo.spanId,
-        name: "grpc.client.unary",
-        inputValue: inputValue,
-        packageName: GRPC_MODULE_NAME,
-        instrumentationName: this.INSTRUMENTATION_NAME,
-        submoduleName: "client",
-        kind: SpanKind.CLIENT,
-        stackTrace,
-      },
-      tuskDrift: this.tuskDrift,
-    });
-
-    if (!mockData) {
-      logger.warn(
-        `[GrpcInstrumentation] No mock data found for gRPC request: ${inputValue.service}/${inputValue.method}`,
-      );
-      const error = new Error("No mock data found");
-      callback(error);
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: "No mock data found",
-      });
-      return;
-    }
-
-    const mockResult: GrpcOutputValue | GrpcErrorOutput = mockData.result;
-
-    let status: any;
-
-    // Check if it's an error response
-    if (this.isGrpcErrorOutput(mockResult)) {
-      const { error, status: errorStatus } = mockResult;
-      status = {
-        code: errorStatus.code,
-        details: errorStatus.details,
-        metadata: deserializeGrpcMetadata(MetadataConstructor, errorStatus.metadata),
-      };
-
-      const errorObj = Object.assign(new Error(error.message), {
-        name: error.name,
-        stack: error.stack,
-        ...status,
-      });
-
-      callback(errorObj);
-    } else {
-      // Success response
-      const { body, status: successStatus, bufferMap, jsonableStringMap } = mockResult;
-      // Use the stored bufferMap and jsonableStringMap from the recorded response
-      const bufferMapToUse = bufferMap || {};
-      const jsonableStringMapToUse = jsonableStringMap || {};
-
-      status = {
-        code: successStatus.code,
-        details: successStatus.details,
-        metadata: deserializeGrpcMetadata(MetadataConstructor, successStatus.metadata),
-      };
-
-      const realResponse = deserializeGrpcPayload(body, bufferMapToUse, jsonableStringMapToUse);
-      callback(null, realResponse);
-    }
-
-    // Create event emitter to simulate gRPC call
+    // Create emitter immediately
     const emitter = Object.assign(new EventEmitter(), {
       cancel() {},
       getPeer: () => "0.0.0.0:0000",
       call: undefined,
     });
 
-    // Emit events on next tick to simulate async behavior
-    process.nextTick(() => {
-      if (mockResult.metadata) {
-        emitter.emit("metadata", deserializeGrpcMetadata(MetadataConstructor, mockResult.metadata));
-      }
-      emitter.emit("status", status);
-    });
+    // Fetch mock data in background
+    findMockResponseAsync({
+      mockRequestData: {
+        traceId: spanInfo.traceId,
+        spanId: spanInfo.spanId,
+        name: "grpc.client.unary",
+        inputValue: inputValue,
+        packageName: GRPC_MODULE_NAME,
+        packageType: PackageType.GRPC,
+        instrumentationName: this.INSTRUMENTATION_NAME,
+        submoduleName: "client",
+        kind: SpanKind.CLIENT,
+        stackTrace,
+      },
+      tuskDrift: this.tuskDrift,
+    })
+      .then((mockData) => {
+        if (!mockData) {
+          logger.warn(
+            `[GrpcInstrumentation] No mock data found for gRPC request: ${inputValue.service}/${inputValue.method}`,
+            inputValue,
+          );
+          const error = new Error("No mock data found");
+          callback(error);
+          SpanUtils.endSpan(spanInfo.span, {
+            code: SpanStatusCode.ERROR,
+          });
+          return;
+        }
 
-    SpanUtils.addSpanAttributes(spanInfo.span, {
-      outputValue: mockResult,
-    });
-    SpanUtils.endSpan(spanInfo.span, {
-      code: mockResult.error ? SpanStatusCode.ERROR : SpanStatusCode.OK,
-    });
+        const mockResult: GrpcOutputValue | GrpcErrorOutput = mockData.result;
+        let status: any;
 
+        // Check if it's an error response
+        if (this.isGrpcErrorOutput(mockResult)) {
+          const { error, status: errorStatus } = mockResult;
+          status = {
+            code: errorStatus.code,
+            details: errorStatus.details,
+            metadata: deserializeGrpcMetadata(MetadataConstructor, errorStatus.metadata),
+          };
+
+          const errorObj = Object.assign(new Error(error.message), {
+            name: error.name,
+            stack: error.stack,
+            ...status,
+          });
+
+          callback(errorObj);
+        } else {
+          // Success response
+          const { body, status: successStatus, bufferMap, jsonableStringMap } = mockResult;
+          const bufferMapToUse = bufferMap || {};
+          const jsonableStringMapToUse = jsonableStringMap || {};
+
+          status = {
+            code: successStatus.code,
+            details: successStatus.details,
+            metadata: deserializeGrpcMetadata(MetadataConstructor, successStatus.metadata),
+          };
+
+          const realResponse = deserializeGrpcPayload(body, bufferMapToUse, jsonableStringMapToUse);
+          callback(null, realResponse);
+        }
+
+        // Emit events
+        process.nextTick(() => {
+          if (mockResult.metadata) {
+            emitter.emit(
+              "metadata",
+              deserializeGrpcMetadata(MetadataConstructor, mockResult.metadata),
+            );
+          }
+          emitter.emit("status", status);
+        });
+
+        SpanUtils.addSpanAttributes(spanInfo.span, {
+          outputValue: mockResult,
+        });
+        SpanUtils.endSpan(spanInfo.span, {
+          code: mockResult.error ? SpanStatusCode.ERROR : SpanStatusCode.OK,
+        });
+      })
+      .catch((error) => {
+        logger.error(`[GrpcInstrumentation] Error fetching mock data:`, error);
+        callback(error);
+        SpanUtils.endSpan(spanInfo.span, {
+          code: SpanStatusCode.ERROR,
+        });
+      });
+
+    // Return emitter immediately (synchronously)
     return emitter;
+  }
+
+  private _handleRecordServerStreamRequest(
+    spanInfo: SpanInfo,
+    original: Function,
+    context: any,
+    parsedParams: {
+      method: string;
+      serialize: Function;
+      deserialize: Function;
+      argument: any;
+      metadata: any;
+      options: any;
+    },
+  ): any {
+    let isStatusEmitted = false;
+    let hasErrorOccurred = false;
+    let isSpanCompleted = false;
+    let streamResponses: any[] = [];
+    let status: {
+      code: number;
+      details: string;
+      metadata: Record<string, any>;
+    };
+    let responseMetadataInitial: any = {};
+    let serviceError: any;
+
+    /**
+     * Completes the span exactly once
+     */
+    const completeSpan = (output: any, statusCode: SpanStatusCode, errorMessage?: string) => {
+      if (isSpanCompleted) {
+        return;
+      }
+      isSpanCompleted = true;
+
+      try {
+        SpanUtils.addSpanAttributes(spanInfo.span, {
+          outputValue: output,
+        });
+        SpanUtils.endSpan(spanInfo.span, {
+          code: statusCode,
+        });
+      } catch (e) {
+        logger.error(`[GrpcInstrumentation] Error completing span:`, e);
+      }
+    };
+
+    // Construct the makeServerStreamRequest call
+    const inputArgs = [
+      parsedParams.method,
+      parsedParams.serialize,
+      parsedParams.deserialize,
+      parsedParams.argument,
+      parsedParams.metadata,
+      parsedParams.options,
+    ];
+
+    const stream = original.apply(context, inputArgs);
+
+    // Listen to data events to collect all streamed responses
+    stream.on("data", (data: any) => {
+      try {
+        const { readableBody, bufferMap, jsonableStringMap } = serializeGrpcPayload(data);
+        streamResponses.push({
+          body: readableBody,
+          bufferMap,
+          jsonableStringMap,
+        });
+      } catch (e) {
+        logger.error(`[GrpcInstrumentation] Error serializing stream data:`, e);
+      }
+    });
+
+    // Listen to metadata event
+    stream.on("metadata", (initialMetadata: any) => {
+      responseMetadataInitial = serializeGrpcMetadata(initialMetadata);
+    });
+
+    // Listen to error event
+    stream.on("error", (err: any) => {
+      serviceError = err;
+      hasErrorOccurred = true;
+    });
+
+    // Listen to status event (emitted when stream completes)
+    stream.on("status", (responseStatus: any) => {
+      status = {
+        code: responseStatus.code,
+        details: responseStatus.details,
+        metadata: serializeGrpcMetadata(responseStatus.metadata),
+      };
+      isStatusEmitted = true;
+
+      // Complete span when status is received
+      if (!hasErrorOccurred && streamResponses.length > 0) {
+        const output: GrpcOutputValue = {
+          body: streamResponses,
+          metadata: responseMetadataInitial,
+          status,
+          bufferMap: {},
+          jsonableStringMap: {},
+        };
+        completeSpan(output, SpanStatusCode.OK);
+      } else if (!hasErrorOccurred && streamResponses.length === 0) {
+        // Empty stream is still successful
+        const output: GrpcOutputValue = {
+          body: [],
+          metadata: responseMetadataInitial,
+          status,
+          bufferMap: {},
+          jsonableStringMap: {},
+        };
+        completeSpan(output, SpanStatusCode.OK);
+      } else if (hasErrorOccurred) {
+        const errorOutput: GrpcErrorOutput = {
+          error: {
+            message: serviceError.message,
+            name: serviceError.name,
+            stack: serviceError.stack,
+          },
+          status,
+          metadata: responseMetadataInitial,
+        };
+        completeSpan(errorOutput, SpanStatusCode.ERROR, serviceError.message);
+      }
+    });
+
+    return stream;
+  }
+
+  private _handleReplayServerStreamRequest(
+    spanInfo: SpanInfo,
+    inputValue: GrpcClientInputValue,
+    MetadataConstructor: any,
+  ): any {
+    logger.debug(`[GrpcInstrumentation] Replaying gRPC server stream request`);
+
+    // Create a Readable stream instead of EventEmitter
+    const stream = new Readable({
+      objectMode: true, // Important for gRPC which streams objects
+      read() {
+        // No-op: data will be pushed asynchronously when mock data arrives
+      },
+    });
+
+    // Add gRPC-specific methods
+    Object.assign(stream, {
+      cancel() {},
+      getPeer: () => "0.0.0.0:0000",
+      call: undefined,
+    });
+
+    // Fetch mock data in background
+    findMockResponseAsync({
+      mockRequestData: {
+        traceId: spanInfo.traceId,
+        spanId: spanInfo.spanId,
+        name: "grpc.client.server_stream",
+        inputValue: inputValue,
+        packageName: GRPC_MODULE_NAME,
+        packageType: PackageType.GRPC,
+        instrumentationName: this.INSTRUMENTATION_NAME,
+        submoduleName: "client",
+        kind: SpanKind.CLIENT,
+      },
+      tuskDrift: this.tuskDrift,
+    })
+      .then((mockData) => {
+        if (!mockData) {
+          logger.warn(
+            `[GrpcInstrumentation] No mock data found for gRPC server stream request: ${inputValue.service}/${inputValue.method}`,
+            inputValue,
+          );
+          const error = new Error("No mock data found");
+
+          process.nextTick(() => {
+            stream.emit("error", error);
+            stream.emit("status", {
+              code: 2, // UNKNOWN
+              details: "No mock data found",
+              metadata: new MetadataConstructor(),
+            });
+            stream.push(null); // Signal end of stream
+          });
+
+          SpanUtils.endSpan(spanInfo.span, {
+            code: SpanStatusCode.ERROR,
+            message: "No mock data found",
+          });
+
+          return;
+        }
+
+        const mockResult: GrpcOutputValue | GrpcErrorOutput = mockData.result;
+
+        // Emit events on next tick to simulate async behavior
+        process.nextTick(() => {
+          if (this.isGrpcErrorOutput(mockResult)) {
+            // Handle error case
+            const { error, status: errorStatus } = mockResult;
+            const status = {
+              code: errorStatus.code,
+              details: errorStatus.details,
+              metadata: deserializeGrpcMetadata(MetadataConstructor, errorStatus.metadata),
+            };
+
+            if (mockResult.metadata) {
+              stream.emit(
+                "metadata",
+                deserializeGrpcMetadata(MetadataConstructor, mockResult.metadata),
+              );
+            }
+
+            const errorObj = Object.assign(new Error(error.message), {
+              name: error.name,
+              stack: error.stack,
+              ...status,
+            });
+
+            stream.emit("error", errorObj);
+            stream.emit("status", status);
+            stream.push(null); // Signal end of stream
+
+            SpanUtils.addSpanAttributes(spanInfo.span, {
+              outputValue: mockResult,
+            });
+            SpanUtils.endSpan(spanInfo.span, {
+              code: SpanStatusCode.ERROR,
+              message: error.message,
+            });
+          } else {
+            // Handle success case - emit data events for each item in the stream
+            const { body, status: successStatus } = mockResult;
+            const status = {
+              code: successStatus.code,
+              details: successStatus.details,
+              metadata: deserializeGrpcMetadata(MetadataConstructor, successStatus.metadata),
+            };
+
+            if (mockResult.metadata) {
+              stream.emit(
+                "metadata",
+                deserializeGrpcMetadata(MetadataConstructor, mockResult.metadata),
+              );
+            }
+
+            // Push data to the readable stream
+            if (Array.isArray(body)) {
+              body.forEach((item: any) => {
+                const bufferMapToUse = item.bufferMap || {};
+                const jsonableStringMapToUse = item.jsonableStringMap || {};
+                const realResponse = deserializeGrpcPayload(
+                  item.body,
+                  bufferMapToUse,
+                  jsonableStringMapToUse,
+                );
+                stream.push(realResponse); // Push to stream instead of emit
+              });
+            }
+
+            stream.push(null); // Signal end of stream (important!)
+            stream.emit("status", status);
+
+            SpanUtils.addSpanAttributes(spanInfo.span, {
+              outputValue: mockResult,
+            });
+            SpanUtils.endSpan(spanInfo.span, {
+              code: SpanStatusCode.OK,
+            });
+          }
+        });
+      })
+      .catch((error) => {
+        logger.error(`[GrpcInstrumentation] Error fetching mock data for server stream:`, error);
+        process.nextTick(() => {
+          stream.emit("error", error);
+          stream.emit("status", {
+            code: 2, // UNKNOWN
+            details: error.message,
+            metadata: new MetadataConstructor(),
+          });
+          stream.push(null); // Signal end of stream
+        });
+        SpanUtils.endSpan(spanInfo.span, {
+          code: SpanStatusCode.ERROR,
+        });
+      });
+
+    // Return stream immediately (synchronously)
+    return stream;
   }
 
   // NOTE: Not using this yet. This is somewhat working, haven't full tested it yet

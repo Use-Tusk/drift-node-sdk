@@ -16,6 +16,7 @@ import {
   Mysql2Instrumentation,
   IORedisInstrumentation,
   GrpcInstrumentation,
+  FirestoreInstrumentation,
   NextjsInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
@@ -23,7 +24,7 @@ import { trace, Tracer } from "@opentelemetry/api";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { ProtobufCommunicator, MockRequestInput } from "./ProtobufCommunicator";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
-import { CleanSpanData } from "./types";
+import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME } from "./types";
 import { TuskDriftInstrumentationModuleNames } from "./TuskDriftInstrumentationModuleNames";
 import { SDK_VERSION } from "../version";
 import {
@@ -220,6 +221,11 @@ export class TuskDriftCore {
     });
 
     new GrpcInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
+
+    new FirestoreInstrumentation({
       enabled: true,
       mode: this.mode,
     });
@@ -502,13 +508,19 @@ export class TuskDriftCore {
     }
   }
 
-  // NOTE: this isn't being used anywhere right now
-  // When we do need to use it, we need to add a check for isConnectedWithCLI similar to requestMockAsync
   requestMockSync(mockRequest: MockRequestInput): {
     found: boolean;
     response?: unknown;
     error?: string;
   } {
+    if (!this.isConnectedWithCLI) {
+      // We cannot await for the CLI to be connected like we do in requestMockAsync since it's a synchronous call
+      // That means this function will likely throw an error if the first mock requested needs to be sync
+      // This is a limitation of the current implementation and will be fixed in the future
+      logger.error("Requesting sync mock but CLI is not ready yet");
+      throw new Error("Requesting sync mock but CLI is not ready yet");
+    }
+
     const mockRequestCore = this.createMockRequestCore(mockRequest);
     if (mockRequestCore) {
       return mockRequestCore;
@@ -574,7 +586,7 @@ export class TuskDriftCore {
   }
 
   getTracer(): Tracer {
-    return trace.getTracer("tusk-drift-sdk", "1.0.0");
+    return trace.getTracer(TD_INSTRUMENTATION_LIBRARY_NAME);
   }
 }
 

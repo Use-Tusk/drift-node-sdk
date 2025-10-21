@@ -117,7 +117,10 @@ export async function findMockResponseAsync({
 
     // Track the latest timestamp for this trace
     if ((mockResponse.response as any)?.timestamp) {
-      DateTracker.updateLatestTimestamp(replayTraceId || "", (mockResponse.response as any).timestamp);
+      DateTracker.updateLatestTimestamp(
+        replayTraceId || "",
+        (mockResponse.response as any).timestamp,
+      );
     }
 
     return {
@@ -171,7 +174,10 @@ export function findMockResponseSync({
 
     // Track the latest timestamp for this trace
     if ((mockResponse.response as any)?.timestamp) {
-      DateTracker.updateLatestTimestamp(replayTraceId || "", (mockResponse.response as any).timestamp);
+      DateTracker.updateLatestTimestamp(
+        replayTraceId || "",
+        (mockResponse.response as any).timestamp,
+      );
     }
 
     return {

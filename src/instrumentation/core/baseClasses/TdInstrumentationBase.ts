@@ -95,9 +95,7 @@ export abstract class TdInstrumentationBase extends TdInstrumentationAbstract {
         return this._onRequire(module, exports, name, baseDir || undefined);
       };
 
-      // Register CommonJS hook (require-in-the-middle)
-      const hookOptions: HookOptions = { internals: true };
-      const cjsHook = new HookRequire([module.name], hookOptions, onRequire);
+      const cjsHook = new HookRequire([module.name], { internals: true }, onRequire);
       this._hooks.push(cjsHook);
 
       // Register ESM hook (import-in-the-middle)
