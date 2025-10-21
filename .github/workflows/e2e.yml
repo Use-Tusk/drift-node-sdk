@@ -31,7 +31,7 @@ jobs:
 
       - name: Build SDK
         run: npm run build
-        
+
       - name: Verify SDK build
         run: |
           ls -la dist/ || (echo "dist folder not found!" && exit 1)
@@ -50,6 +50,8 @@ jobs:
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
           TUSK_CLI_VERSION: ${{ steps.tusk-version.outputs.version }}
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: ./run-all-e2e-tests.sh 2
 
       - name: Cleanup Docker resources

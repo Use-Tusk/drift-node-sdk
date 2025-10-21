@@ -99,7 +99,7 @@ export abstract class TdInstrumentationBase extends TdInstrumentationAbstract {
       this._hooks.push(cjsHook);
 
       // Register ESM hook (import-in-the-middle)
-      const esmHook = new HookImport([module.name], { internals: true }, hookFn);
+      const esmHook = new HookImport([module.name], { internals: false }, hookFn);
       this._hooks.push(esmHook);
     }
   }
