@@ -446,6 +446,17 @@ app.post("/batch/write", async (req: Request, res: Response) => {
     await tempDocRef.set({ temp: true });
     batch.delete(tempDocRef);
 
+    // Add another set operation for a second new product
+    const anotherProductRef = db
+      .collection(PRODUCTS_COLLECTION)
+      .doc(`batch_product_2_${timestamp}`);
+    batch.set(anotherProductRef, {
+      name: `Another Batch Product ${timestamp}`,
+      price: 299.99,
+      inStock: false,
+      createdAt: new Date(),
+    });
+
     // Commit the batch
     const writeResults = await batch.commit();
 
