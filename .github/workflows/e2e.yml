@@ -29,6 +29,14 @@ jobs:
       - name: Install SDK dependencies
         run: npm install
 
+      - name: Build SDK
+        run: npm run build
+        
+      - name: Verify SDK build
+        run: |
+          ls -la dist/ || (echo "dist folder not found!" && exit 1)
+          test -f dist/index.js || (echo "SDK build incomplete!" && exit 1)
+
       - name: Get latest Tusk CLI version
         id: tusk-version
         run: |
