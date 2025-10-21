@@ -29,7 +29,6 @@ export function getDb(): Firestore {
 
       serviceAccount = JSON.parse(unescapedJson);
     } catch (error) {
-      console.error("Failed to parse JSON. First 100 chars:", serviceAccountJson.substring(0, 100));
       console.error("Full JSON:", serviceAccountJson);
       throw new Error("Failed to parse FIREBASE_SERVICE_ACCOUNT JSON: " + error);
     }

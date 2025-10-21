@@ -52,10 +52,7 @@ jobs:
           TUSK_CLI_VERSION: ${{ steps.tusk-version.outputs.version }}
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          cd src/instrumentation/libraries/firestore/e2e-tests/cjs-firestore
-          ./run.sh 3000
-        # run: ./run-all-e2e-tests.sh 2
+        run: ./run-all-e2e-tests.sh 2
 
       - name: Cleanup Docker resources
         if: always()

@@ -42,28 +42,14 @@ sleep 5
 # Step 2: Install dependencies (now that /sdk volume is mounted)
 echo "Step 2: Installing dependencies..."
 docker compose -p $PROJECT_NAME exec -T app npm install
-echo "Step 3: Starting server in RECORD mode..."
 
-# Start server with output redirected to log file
-docker compose -p $PROJECT_NAME exec -d -T -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev > /tmp/server.log 2>&1; echo \$? > /tmp/server.exit"
+# Step 3: Start server in RECORD mode
+echo "Step 3: Starting server in RECORD mode..."
+docker compose -p $PROJECT_NAME exec -d -T -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
 
 # Wait for server to start
 echo "Waiting for server to start..."
 sleep 10
-
-echo "Checking server status..."
-echo "- Server logs:"
-docker compose -p $PROJECT_NAME exec -T app cat /tmp/server.log 2>/dev/null || echo "  (No log file found)"
-echo ""
-echo "- Server exit code:"
-docker compose -p $PROJECT_NAME exec -T app cat /tmp/server.exit 2>/dev/null || echo "  (Server still running or no exit code file)"
-echo ""
-echo "- Running processes:"
-docker compose -p $PROJECT_NAME exec -T app ps aux | grep -E "(node|npm)" | grep -v grep || echo "  (No node/npm processes found)"
-echo ""
-echo "- Port 3000 status:"
-docker compose -p $PROJECT_NAME exec -T app sh -c "command -v netstat >/dev/null && netstat -tlnp 2>/dev/null | grep 3000 || ss -tlnp 2>/dev/null | grep 3000" || echo "  (Nothing listening on port 3000)"
-echo ""
 
 # Step 4: Hit all endpoints
 echo "Step 4: Hitting all Firestore endpoints..."
