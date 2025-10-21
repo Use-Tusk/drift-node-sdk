@@ -43,14 +43,16 @@ sleep 5
 echo "Step 2: Installing dependencies..."
 docker compose -p $PROJECT_NAME exec -T app npm install
 
-
 # Step 3: Start server in RECORD mode
 echo "Step 3: Starting server in RECORD mode..."
 docker compose -p $PROJECT_NAME exec -d -T -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
 
 # Wait for server to start
 echo "Waiting for server to start..."
-sleep 15
+sleep 10
+
+echo "Checking server logs..."
+docker compose -p $PROJECT_NAME logs app
 
 # Step 4: Hit all endpoints
 echo "Step 4: Hitting all Firestore endpoints..."
