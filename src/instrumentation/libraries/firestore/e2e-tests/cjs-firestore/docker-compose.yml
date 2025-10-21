@@ -25,3 +25,72 @@ services:
     # Keep container running without starting the app
     # The CLI will control starting/stopping the app
     command: tail -f /dev/null
+#
+#
+# Instead of using a real firebase project, we could use a local emulator for cjs-firestore/esm-firestore e2e tests.
+# Below is an example how we could do this. However, it takes about 2.5 minutes to pull the emulator image so haven't made this change.
+
+# version: "3.8"
+
+# services:
+#   firestore-emulator:
+#     image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+#     command: gcloud emulators firestore start --host-port=0.0.0.0:8080
+#     ports:
+#       - "8080:8080"
+#     healthcheck:
+#       test: ["CMD", "curl", "-f", "http://localhost:8080"]
+#       interval: 2s
+#       timeout: 5s
+#       retries: 10
+
+#   app:
+#     build:
+#       context: ../../../../../..
+#       dockerfile: src/instrumentation/libraries/firestore/e2e-tests/cjs-firestore/Dockerfile
+#       args:
+#         - CACHEBUST=${CACHEBUST:-1}
+#         - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
+#     ports:
+#       - "${APP_PORT:-3000}:3000"
+#     environment:
+#       - PORT=3000
+#       - FIRESTORE_EMULATOR_HOST=firestore-emulator:8080
+#       - FIREBASE_PROJECT_ID=test-project
+#     volumes:
+#       # Mount SDK source for hot reload (this is what package.json expects)
+#       - ../../../../../..:/sdk:ro
+#       # Mount .tusk folder to persist traces
+#       - ./.tusk:/app/.tusk
+#       # Mount app source for development
+#       - ./src:/app/src
+#     working_dir: /app
+#     depends_on:
+#       firestore-emulator:
+#         condition: service_healthy
+#     # Keep container running without starting the app
+#     # The CLI will control starting/stopping the app
+#     command: tail -f /dev/null
+
+# Would also need to update db/index.ts getDb() like so:
+
+# export function getDb(): Firestore {
+#   if (!db) {
+#     const projectId = process.env.FIREBASE_PROJECT_ID || "test-project";
+
+#     // Initialize Firestore
+#     // When FIRESTORE_EMULATOR_HOST is set, the SDK automatically connects to the emulator
+#     db = new Firestore({
+#       projectId: projectId,
+#     });
+
+#     console.log(`Firestore initialized for project: ${projectId}`);
+
+#     // Log if using emulator
+#     if (process.env.FIRESTORE_EMULATOR_HOST) {
+#       console.log(`Using Firestore Emulator at: ${process.env.FIRESTORE_EMULATOR_HOST}`);
+#     }
+#   }
+
+#   return db;
+# }
