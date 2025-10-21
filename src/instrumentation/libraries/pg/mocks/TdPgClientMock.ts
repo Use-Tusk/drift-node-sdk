@@ -3,6 +3,7 @@ import { PgInstrumentation } from "../Instrumentation";
 import { createMockInputValue } from "../../../../core/utils";
 import { SpanInfo } from "../../../../core/tracing/SpanUtils";
 import { logger } from "../../../../core/utils/logger";
+import { captureStackTrace } from "src/instrumentation/core/utils";
 
 /**
  * Mock PostgreSQL client for replay mode
@@ -21,6 +22,8 @@ export class TdPgClientMock extends EventEmitter {
   query(...args: any[]) {
     logger.debug(`[TdPgClientMock] Mock pool client query intercepted in REPLAY mode`);
 
+    const stackTrace = captureStackTrace(["TdPgClientMock"]);
+
     // Parse query arguments similar to the main query patch
     const queryConfig = this.pgInstrumentation.parseQueryArgs(args);
 
@@ -37,7 +40,7 @@ export class TdPgClientMock extends EventEmitter {
 
     const inputValue = createMockInputValue(rawInputValue);
 
-    return this.pgInstrumentation.handleReplayQuery(queryConfig, inputValue, this.spanInfo);
+    return this.pgInstrumentation.handleReplayQuery(queryConfig, inputValue, this.spanInfo, stackTrace);
   }
 
   release() {
