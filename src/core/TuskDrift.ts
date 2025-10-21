@@ -16,6 +16,7 @@ import {
   Mysql2Instrumentation,
   IORedisInstrumentation,
   GrpcInstrumentation,
+  FirestoreInstrumentation,
   NextjsInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
@@ -220,6 +221,11 @@ export class TuskDriftCore {
     });
 
     new GrpcInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
+
+    new FirestoreInstrumentation({
       enabled: true,
       mode: this.mode,
     });
@@ -502,13 +508,26 @@ export class TuskDriftCore {
     }
   }
 
-  // NOTE: this isn't being used anywhere right now
-  // When we do need to use it, we need to add a check for isConnectedWithCLI similar to requestMockAsync
   requestMockSync(mockRequest: MockRequestInput): {
     found: boolean;
     response?: unknown;
     error?: string;
   } {
+    // Poll for CLI readiness
+    const maxAttempts = 100; // 10 seconds total (100 * 100ms)
+    let attempts = 0;
+
+    while (!this.isConnectedWithCLI && attempts < maxAttempts) {
+      // Use a synchronous sleep
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); // 100ms wait
+      attempts++;
+    }
+
+    if (!this.isConnectedWithCLI) {
+      logger.error("Requesting sync mock but CLI is not ready yet (timeout)");
+      throw new Error("Requesting sync mock but CLI is not ready yet (timeout after 10s)");
+    }
+
     const mockRequestCore = this.createMockRequestCore(mockRequest);
     if (mockRequestCore) {
       return mockRequestCore;
