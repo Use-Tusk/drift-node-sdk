@@ -58,6 +58,7 @@ function convertMockRequestDataToCleanSpanData(
       code: StatusCode.OK,
       message: "OK",
     },
+    stackTrace: mockRequestData.stackTrace,
   };
 }
 

@@ -3,7 +3,7 @@ import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrument
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
-import { wrap } from "../../core/utils";
+import { captureStackTrace, wrap } from "../../core/utils";
 import { TdPgClientMock } from "./mocks/TdPgClientMock";
 import { findMockResponseAsync } from "../../core/utils/mockResponseUtils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
@@ -101,6 +101,8 @@ export class PgInstrumentation extends TdInstrumentationBase {
 
         // Handle replay mode (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["PgInstrumentation"]);
+
           return handleReplayMode({
             replayModeHandler: () => {
               // Create span in replay mode
@@ -120,7 +122,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self.handleReplayQuery(queryConfig, inputValue, spanInfo);
+                  return self.handleReplayQuery(queryConfig, inputValue, spanInfo, stackTrace);
                 },
               );
             },
@@ -358,6 +360,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
     queryConfig: QueryConfig,
     inputValue: PgClientInputValue,
     spanInfo: SpanInfo,
+    stackTrace?: string,
   ): Promise<any> {
     logger.debug(`[PgInstrumentation] Replaying PG query`);
 
@@ -375,6 +378,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: "query",
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });

@@ -36,8 +36,12 @@ until docker compose -p $PROJECT_NAME exec -T redis redis-cli ping > /dev/null 2
 done
 echo "Redis is ready!"
 
-# Step 2: Check app directory structure
-echo "Step 2a: Checking app directory structure..."
+# Step 2: Install dependencies (now that /sdk volume is mounted)
+echo "Step 2: Installing dependencies..."
+docker compose -p $PROJECT_NAME exec -T app npm install
+
+# Check app directory structure
+echo "Checking app directory structure..."
 echo "Contents of /app:"
 docker compose -p $PROJECT_NAME exec -T app ls -la /app
 echo ""
@@ -48,8 +52,8 @@ echo "Package.json scripts:"
 docker compose -p $PROJECT_NAME exec -T app cat /app/package.json | grep -A 10 '"scripts"' || echo "  (could not read package.json)"
 echo ""
 
-# Step 2b: Start server in RECORD mode
-echo "Step 2b: Starting server in RECORD mode..."
+# Step 3: Start server in RECORD mode
+echo "Step 3: Starting server in RECORD mode..."
 docker compose -p $PROJECT_NAME exec -d -T -e TUSK_DRIFT_MODE=RECORD app sh -c "cd /app && npm run build >> /tmp/server.log 2>&1 && npm run dev >> /tmp/server.log 2>&1"
 
 # Wait for server to start
@@ -60,8 +64,8 @@ sleep 8
 echo "Initial server output:"
 docker compose -p $PROJECT_NAME exec -T app cat /tmp/server.log 2>/dev/null || echo "  (no output yet)"
 
-# Step 3: Hit all endpoints
-echo "Step 3: Hitting all ioredis endpoints..."
+# Step 4: Hit all endpoints
+echo "Step 4: Hitting all ioredis endpoints..."
 
 echo "  - GET /health"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/health > /dev/null
@@ -170,8 +174,8 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/n
 
 echo "All endpoints hit successfully."
 
-# Step 4: Wait before stopping server
-echo "Step 4: Waiting 3 seconds before stopping server..."
+# Step 5: Wait before stopping server
+echo "Step 5: Waiting 3 seconds before stopping server..."
 sleep 3
 
 # Stop the server process
@@ -179,23 +183,23 @@ echo "Stopping server..."
 docker compose -p $PROJECT_NAME exec -T app pkill -f "node" || true
 sleep 2
 
-# Step 5: Run tests using tusk CLI
-echo "Step 5: Running tests using tusk CLI..."
+# Step 6: Run tests using tusk CLI
+echo "Step 6: Running tests using tusk CLI..."
 TEST_RESULTS=$(docker compose -p $PROJECT_NAME exec -T app tusk run --print --output-format "json" --enable-service-logs)
 
-# Step 6: Log test results
+# Step 7: Log test results
 parse_and_display_test_results "$TEST_RESULTS"
 
-# Step 6.5: Check for TCP instrumentation warning in logs
+# Step 7.5: Check for TCP instrumentation warning in logs
 check_tcp_instrumentation_warning "$PROJECT_NAME"
 
-# Step 7: Clean up
+# Step 8: Clean up
 echo ""
-echo "Step 7: Cleaning up docker containers..."
+echo "Step 8: Cleaning up docker containers..."
 docker compose -p $PROJECT_NAME down
 
-# Step 8: Clean up traces and logs
-echo "Step 8: Cleaning up traces and logs..."
+# Step 9: Clean up traces and logs
+echo "Step 9: Cleaning up traces and logs..."
 cleanup_tusk_files
 
 echo "ioredis E2E test run complete."

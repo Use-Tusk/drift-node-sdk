@@ -31,10 +31,25 @@ jobs:
 
       - name: Build SDK
         run: npm run build
+        
+      - name: Verify SDK build
+        run: |
+          ls -la dist/ || (echo "dist folder not found!" && exit 1)
+          test -f dist/index.js || (echo "SDK build incomplete!" && exit 1)
+
+      - name: Get latest Tusk CLI version
+        id: tusk-version
+        run: |
+          VERSION=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/Use-Tusk/tusk-drift-cli/releases/latest" \
+            | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Latest Tusk CLI version: $VERSION"
 
       - name: Run all E2E tests
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
+          TUSK_CLI_VERSION: ${{ steps.tusk-version.outputs.version }}
         run: ./run-all-e2e-tests.sh 2
 
       - name: Cleanup Docker resources

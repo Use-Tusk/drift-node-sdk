@@ -121,7 +121,7 @@ export class TuskDriftCore {
       }
     } else {
       // ESM or other module systems - no reliable detection possible
-      logger.warn("Running in ES Module mode. Cannot detect pre-loaded instrumentation modules.");
+      logger.debug("Running in ES Module mode. Cannot detect pre-loaded instrumentation modules.");
     }
 
     return alreadyRequiredModuleNames;
@@ -284,9 +284,9 @@ export class TuskDriftCore {
   }
 
   initialize(initParams: InitParams): void {
-    // Initialize logging with provided level or default to 'silent'
+    // Initialize logging with provided level or default to 'info'
     initializeGlobalLogger({
-      logLevel: initParams.logLevel || "silent",
+      logLevel: initParams.logLevel || "info",
       prefix: "TuskDrift",
     });
 
@@ -294,7 +294,7 @@ export class TuskDriftCore {
     this.initParams = initParams;
 
     if (!this.initParams.env) {
-      const nodeEnv = OriginalGlobalUtils.getOriginalProcessEnvVar("NODE_ENV") || "unknown";
+      const nodeEnv = OriginalGlobalUtils.getOriginalProcessEnvVar("NODE_ENV") || "development";
       logger.warn(
         `Environment not provided in initialization parameters. Using '${nodeEnv}' as the environment.`,
       );
@@ -435,9 +435,9 @@ export class TuskDriftCore {
     logger.debug("Application marked as ready");
 
     if (this.mode === TuskDriftMode.REPLAY) {
-      logger.info("Replay mode active - ready to serve mocked responses");
+      logger.debug("Replay mode active - ready to serve mocked responses");
     } else if (this.mode === TuskDriftMode.RECORD) {
-      logger.info("Record mode active - capturing requests and responses");
+      logger.debug("Record mode active - capturing inbound requests and responses");
     }
   }
 

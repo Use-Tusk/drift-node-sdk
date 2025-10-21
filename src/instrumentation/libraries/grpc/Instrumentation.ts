@@ -4,7 +4,7 @@ import { TdInstrumentationNodeModuleFile } from "../../core/baseClasses/TdInstru
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
-import { wrap } from "../../core/utils";
+import { captureStackTrace, wrap } from "../../core/utils";
 import { findMockResponseAsync } from "../../core/utils/mockResponseUtils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
@@ -312,6 +312,8 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
 
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["GrpcInstrumentation"]);
+
           return handleReplayMode({
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
@@ -333,6 +335,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
                     inputValue,
                     callback,
                     MetadataConstructor,
+                    stackTrace,
                   );
                 },
               );
@@ -724,6 +727,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
     inputValue: GrpcClientInputValue,
     callback: Function,
     MetadataConstructor: any,
+    stackTrace?: string,
   ): any {
     logger.debug(`[GrpcInstrumentation] Replaying gRPC unary request`);
 
@@ -746,6 +750,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: "client",
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     })

@@ -29,6 +29,7 @@ import {
   handleRecordMode,
   handleReplayMode,
   isTuskDriftIngestionUrl,
+  captureStackTrace,
 } from "../../core/utils";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
 import {
@@ -1048,6 +1049,8 @@ export class HttpInstrumentation extends TdInstrumentationBase {
         );
 
         if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["HttpInstrumentation"]);
+
           return handleReplayMode({
             replayModeHandler: () => {
               // Build input value object for replay mode
@@ -1083,6 +1086,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                     protocol: requestProtocol,
                     args,
                     spanInfo,
+                    stackTrace,
                   });
                 },
               );

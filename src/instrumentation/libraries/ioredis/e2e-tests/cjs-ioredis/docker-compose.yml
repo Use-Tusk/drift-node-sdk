@@ -13,6 +13,9 @@ services:
     build:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/ioredis/e2e-tests/cjs-ioredis/Dockerfile
+      args:
+        - CACHEBUST=${CACHEBUST:-1}
+        - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
     ports:
       - "${APP_PORT:-3000}:3000"
     environment:

@@ -170,7 +170,7 @@ export class ProtobufCommunicator {
       requestId,
       tags: {},
       outboundSpan: cleanSpan,
-      stackTrace: this.getStackTrace(),
+      stackTrace: cleanSpan?.stackTrace,
     });
 
     const sdkMessage: SDKMessage = SDKMessage.create({
@@ -228,7 +228,7 @@ export class ProtobufCommunicator {
       requestId,
       tags: {},
       outboundSpan: cleanSpan,
-      stackTrace: this.getStackTrace(),
+      stackTrace: cleanSpan?.stackTrace,
     });
 
     const sdkMessage = SDKMessage.create({

@@ -31,12 +31,14 @@ export class HttpReplayHooks {
     protocol,
     args,
     spanInfo,
+    stackTrace,
   }: {
     method: string;
     requestOptions: RequestOptions;
     protocol: "http" | "https";
     args: any[];
     spanInfo: SpanInfo;
+    stackTrace?: string;
   }): TdMockClientRequest | undefined {
     logger.debug(
       `[HttpReplayHooks] Handling outbound ${protocol.toUpperCase()} ${method} request in replay mode`,
@@ -66,7 +68,7 @@ export class HttpReplayHooks {
     };
 
     // Create and return the mock client request
-    const mockRequest = new TdMockClientRequest(mockOptions, spanInfo, callback);
+    const mockRequest = new TdMockClientRequest(mockOptions, spanInfo, callback, stackTrace);
 
     // For GET/HEAD requests, automatically call .end() to match native http.get() behavior
     // Native http.get() and https.get() are convenience methods that automatically call .end()

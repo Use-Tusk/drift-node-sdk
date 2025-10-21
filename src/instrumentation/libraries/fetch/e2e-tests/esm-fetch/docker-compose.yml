@@ -5,6 +5,9 @@ services:
     build:
       context: ../../../../../..
       dockerfile: src/instrumentation/libraries/fetch/e2e-tests/esm-fetch/Dockerfile
+      args:
+        - CACHEBUST=${CACHEBUST:-1}
+        - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
     ports:
       - "${APP_PORT:-3000}:3000"
     environment:

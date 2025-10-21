@@ -20,6 +20,7 @@ import {
 import { convertValueToJsonable } from "./utils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils/logger";
+import { captureStackTrace } from "src/instrumentation/core/utils";
 
 const SUPPORTED_VERSIONS = [">=4.11.0 <5", "5.*"];
 
@@ -175,6 +176,8 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
 
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["IORedisInstrumentation"]);
+
           return handleReplayMode({
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
@@ -191,7 +194,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplaySendCommand(spanInfo, cmd, inputValue, commandName);
+                  return self._handleReplaySendCommand(spanInfo, cmd, inputValue, commandName, stackTrace);
                 },
               );
             },
@@ -449,6 +452,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     cmd: IORedisCommand,
     inputValue: IORedisInputValue,
     commandName: string,
+    stackTrace?: string,
   ): Promise<any> {
     logger.debug(`[IORedisInstrumentation] Replaying IORedis command ${cmd.name}`);
 
@@ -462,6 +466,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: cmd.name,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });
