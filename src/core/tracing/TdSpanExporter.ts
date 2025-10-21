@@ -5,7 +5,7 @@ import { SpanTransformer } from "./SpanTransformer";
 import { FilesystemSpanAdapter } from "./adapters/FilesystemSpanAdapter";
 import { ApiSpanAdapter } from "./adapters/ApiSpanAdapter";
 import { logger } from "../utils/logger";
-import { CleanSpanData } from "../types";
+import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME } from "../types";
 
 export interface TdTraceExporterConfig {
   baseDirectory: string;
@@ -106,14 +106,13 @@ export class TdSpanExporter implements SpanExporter {
   export(spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
     logger.debug(`TdSpanExporter.export() called with ${spans.length} span(s)`);
 
-    const spanNamesToIgnore = ["next.js", "@google-cloud/firestore"];
-
     const filteredSpans = spans.filter((span) => {
-      // Filter out spans exported from Next.js internal telemetry
-      if (spanNamesToIgnore.includes(span.instrumentationLibrary?.name || "")) {
-        return false;
+      // Only keep spans created from this SDK
+      // This is set in getTracer in TuskDrift.ts
+      if (span.instrumentationLibrary.name === TD_INSTRUMENTATION_LIBRARY_NAME) {
+        return true;
       }
-      return true;
+      return false;
     });
 
     logger.debug(`After filtering: ${filteredSpans.length} span(s) remaining`);

@@ -6,7 +6,7 @@ import { TuskDriftMode } from "../../../core/TuskDrift";
 import { SPAN_KIND_CONTEXT_KEY, CALLING_LIBRARY_CONTEXT_KEY } from "../../../core/types";
 import { SpanKind } from "@opentelemetry/api";
 import { sendUnpatchedDependencyAlert } from "../../../core/analytics";
-import { logger } from "../../../core/utils/logger";
+import { logger, isNextJsRuntime } from "../../../core/utils";
 import { SpanInfo } from "../../../core/tracing/SpanUtils";
 
 export interface TcpInstrumentationConfig extends TdInstrumentationConfig {
@@ -44,12 +44,7 @@ export class TcpInstrumentation extends TdInstrumentationBase {
   }
 
   private _patchLoadedModules(): void {
-    // Check if we're in a Next.js environment
-    const isNextJs =
-      process.env.NEXT_RUNTIME !== undefined ||
-      typeof (global as any).__NEXT_DATA__ !== "undefined";
-
-    if (isNextJs) {
+    if (isNextJsRuntime()) {
       // Why this is needed for Next.js:
       // 1. Next.js's instrumentation hook (instrumentation.ts) runs DURING or AFTER framework initialization
       // 2. By that time, database clients (pg, mysql2, etc.) may have already loaded their dependencies

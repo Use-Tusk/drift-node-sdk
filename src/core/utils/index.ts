@@ -4,3 +4,4 @@ export * from "./protobufUtils";
 export * from "./OriginalGlobalUtils";
 export * from "./logger";
 export * from "./configUtils";
+export * from "./runtimeDetectionUtils";

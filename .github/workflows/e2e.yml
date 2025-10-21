@@ -50,6 +50,7 @@ jobs:
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
           TUSK_CLI_VERSION: ${{ steps.tusk-version.outputs.version }}
+          # Required for Firestore e2e tests
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: ./run-all-e2e-tests.sh 2

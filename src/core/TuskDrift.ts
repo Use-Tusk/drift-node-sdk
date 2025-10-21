@@ -24,7 +24,7 @@ import { trace, Tracer } from "@opentelemetry/api";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { ProtobufCommunicator, MockRequestInput } from "./ProtobufCommunicator";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
-import { CleanSpanData } from "./types";
+import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME } from "./types";
 import { TuskDriftInstrumentationModuleNames } from "./TuskDriftInstrumentationModuleNames";
 import { SDK_VERSION } from "../version";
 import {
@@ -586,7 +586,7 @@ export class TuskDriftCore {
   }
 
   getTracer(): Tracer {
-    return trace.getTracer("tusk-drift-sdk", "1.0.0");
+    return trace.getTracer(TD_INSTRUMENTATION_LIBRARY_NAME);
   }
 }
 
