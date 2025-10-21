@@ -6,9 +6,6 @@ WORKDIR /app
 COPY src/instrumentation/libraries/http/e2e-tests/cjs-http/package*.json ./
 COPY src/instrumentation/libraries/http/e2e-tests/cjs-http/tsconfig.json ./
 
-# Install dependencies
-RUN npm install
-
 # Add cache-busting argument to force fresh CLI download
 ARG CACHEBUST=1
 ARG TUSK_CLI_VERSION=latest
