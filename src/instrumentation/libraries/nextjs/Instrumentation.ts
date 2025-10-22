@@ -110,6 +110,18 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
 
     return (originalHandleRequest: Function) => {
       return async function (this: any, req: any, res: any, parsedUrl?: any) {
+        // Sample as soon as we can to avoid additional overhead if this request is not sampled
+        if (self.mode === TuskDriftMode.RECORD) {
+          if (
+            !shouldSample({
+              samplingRate: self.tuskDrift.getSamplingRate(),
+              isAppReady: self.tuskDrift.isAppReady(),
+            })
+          ) {
+            return originalHandleRequest.call(this, req, res, parsedUrl);
+          }
+        }
+
         const method = req.method || "GET";
         const url = req.url || "/";
 
