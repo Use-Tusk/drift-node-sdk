@@ -5,7 +5,8 @@ import { SpanTransformer } from "./SpanTransformer";
 import { FilesystemSpanAdapter } from "./adapters/FilesystemSpanAdapter";
 import { ApiSpanAdapter } from "./adapters/ApiSpanAdapter";
 import { logger } from "../utils/logger";
-import { CleanSpanData } from "../types";
+import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME, TdSpanAttributes } from "../types";
+import { TraceBlockingManager } from "./TraceBlockingManager";
 
 export interface TdTraceExporterConfig {
   baseDirectory: string;
@@ -106,8 +107,68 @@ export class TdSpanExporter implements SpanExporter {
   export(spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
     logger.debug(`TdSpanExporter.export() called with ${spans.length} span(s)`);
 
+    const traceBlockingManager = TraceBlockingManager.getInstance();
+
+    const filteredSpansBasedOnLibraryName: ReadableSpan[] = spans.filter((span) => {
+      // Only keep spans created from this SDK
+      // This is set in getTracer in TuskDrift.ts
+      if (span.instrumentationLibrary.name === TD_INSTRUMENTATION_LIBRARY_NAME) {
+        return true;
+      }
+      return false;
+    });
+
+    logger.debug(
+      `After filtering based on library name: ${filteredSpansBasedOnLibraryName.length} span(s) remaining`,
+    );
+
+    const MAX_SPAN_SIZE_MB = 1;
+    const MAX_SPAN_SIZE_BYTES = MAX_SPAN_SIZE_MB * 1024 * 1024;
+
+    const filteredSpansBasedOnSize: ReadableSpan[] = filteredSpansBasedOnLibraryName.filter(
+      (span) => {
+        const traceId = span.spanContext().traceId;
+
+        // Early exit: if this trace is already blocked, skip this span
+        if (traceBlockingManager.isTraceBlocked(traceId)) {
+          logger.debug(
+            `Skipping span '${span.name}' (${span.spanContext().spanId}) - trace ${traceId} is blocked`,
+          );
+          return false;
+        }
+
+        const inputValueString = (span.attributes[TdSpanAttributes.INPUT_VALUE] as string) || "";
+        const outputValueString = (span.attributes[TdSpanAttributes.OUTPUT_VALUE] as string) || "";
+
+        // Calculate approximate size (input + output are the main contributors)
+        // Add a small buffer for other attributes and metadata
+        const inputSize = Buffer.byteLength(inputValueString, "utf8");
+        const outputSize = Buffer.byteLength(outputValueString, "utf8");
+        const estimatedTotalSize = inputSize + outputSize + 50000; // 50KB buffer for other data
+
+        const estimatedSizeMB = estimatedTotalSize / (1024 * 1024);
+
+        if (estimatedTotalSize > MAX_SPAN_SIZE_BYTES) {
+          // Block this trace to prevent future spans from being created
+          traceBlockingManager.blockTrace(traceId);
+
+          logger.warn(
+            `Blocking trace ${traceId} - span '${span.name}' (${span.spanContext().spanId}) has estimated size ${estimatedSizeMB.toFixed(2)} MB exceeding limit of ${MAX_SPAN_SIZE_MB} MB. Future spans for this trace will be prevented.`,
+          );
+          return false;
+        }
+        return true;
+      },
+    );
+
+    logger.debug(
+      `Filtered ${filteredSpansBasedOnLibraryName.length - filteredSpansBasedOnSize.length} oversized span(s), ${filteredSpansBasedOnSize.length} remaining`,
+    );
+
     // Transform spans to CleanSpanData
-    const cleanSpans = spans.map((span) => SpanTransformer.transformSpanToCleanJSON(span));
+    const cleanSpans: CleanSpanData[] = filteredSpansBasedOnSize.map((span) =>
+      SpanTransformer.transformSpanToCleanJSON(span),
+    );
 
     if (this.adapters.length === 0) {
       logger.debug("No adapters configured");

@@ -3,7 +3,7 @@ import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrument
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
-import { wrap } from "../../core/utils";
+import { captureStackTrace, wrap } from "../../core/utils";
 import { findMockResponseAsync } from "../../core/utils/mockResponseUtils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
 import {
@@ -116,6 +116,8 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
 
         // Handle replay mode (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["JsonwebtokenInstrumentation"]);
+          
           return handleReplayMode({
             replayModeHandler: () => {
               // Create span in replay mode
@@ -132,7 +134,7 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self.handleReplayVerify(verifyConfig, inputValue, spanInfo);
+                  return self.handleReplayVerify(verifyConfig, inputValue, spanInfo, stackTrace);
                 },
               );
             },
@@ -204,6 +206,8 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
 
         // Handle replay mode (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["JsonwebtokenInstrumentation"]);
+          
           return handleReplayMode({
             replayModeHandler: () => {
               // Create span in replay mode
@@ -220,7 +224,7 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self.handleReplaySign(signConfig, inputValue, spanInfo);
+                  return self.handleReplaySign(signConfig, inputValue, spanInfo, stackTrace);
                 },
               );
             },
@@ -500,6 +504,7 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
     verifyConfig: VerifyQueryConfig,
     inputValue: JwtVerifyInputValue,
     spanInfo: SpanInfo,
+    stackTrace?: string,
   ): Promise<any> {
     logger.debug(`[JsonwebtokenInstrumentation] Replaying JWT verify`);
 
@@ -508,12 +513,13 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
       mockRequestData: {
         traceId: spanInfo.traceId,
         spanId: spanInfo.spanId,
-        name: inputValue.token,
+        name: "jsonwebtoken.verify",
         packageName: "jsonwebtoken",
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: "verify",
         inputValue: inputValue,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });
@@ -578,6 +584,7 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
     signConfig: SignQueryConfig,
     inputValue: JwtSignInputValue,
     spanInfo: SpanInfo,
+    stackTrace?: string,
   ): Promise<any> {
     logger.debug(`[JsonwebtokenInstrumentation] Replaying JWT sign`);
 
@@ -586,12 +593,13 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
       mockRequestData: {
         traceId: spanInfo?.traceId,
         spanId: spanInfo?.spanId,
-        name: JSON.stringify(inputValue.payload),
+        name: "jsonwebtoken.sign",
         packageName: "jsonwebtoken",
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: "sign",
         inputValue: inputValue,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });

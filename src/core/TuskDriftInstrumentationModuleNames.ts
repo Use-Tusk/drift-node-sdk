@@ -10,4 +10,9 @@ export const TuskDriftInstrumentationModuleNames = [
   "mysql2",
   "ioredis",
   "@grpc/grpc-js",
+  "@google-cloud/firestore",
+  // Note: "next" is intentionally excluded from this list because Next.js is always
+  // required before SDK initialization in Next.js apps.
+  // Our Next.js instrumentation handles this case correctly by patching at runtime
+  // rather than relying on require-in-the-middle hooks.
 ];

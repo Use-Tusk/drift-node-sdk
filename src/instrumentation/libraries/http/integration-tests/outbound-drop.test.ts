@@ -112,11 +112,11 @@ test("should drop outbound span data but keep span present when calling dropped 
 
   // Should have transformMetadata indicating it was dropped
   t.truthy(droppedSpan!.transformMetadata, "Expected transformMetadata to be defined");
-  const hasDropAction = droppedSpan!.transformMetadata.actions?.some(
+  const hasDropAction = droppedSpan!.transformMetadata?.actions?.some(
     (action) => action.type === "drop" && action.field === "entire_span",
   );
   t.truthy(
     hasDropAction,
-    `Expected drop action in transformMetadata, got ${JSON.stringify(droppedSpan!.transformMetadata.actions)}`,
+    `Expected drop action in transformMetadata, got ${JSON.stringify(droppedSpan!.transformMetadata?.actions)}`,
   );
 });

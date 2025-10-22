@@ -17,11 +17,10 @@ import {
   IORedisOutputValue,
   BufferMetadata,
 } from "./types";
-import {
-  convertValueToJsonable,
-} from "./utils";
+import { convertValueToJsonable } from "./utils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
-import { logger } from "../../../core/utils/logger";
+import { logger, isEsm } from "../../../core/utils";
+import { captureStackTrace } from "src/instrumentation/core/utils";
 
 const SUPPORTED_VERSIONS = [">=4.11.0 <5", "5.*"];
 
@@ -66,9 +65,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
       return moduleExports;
     }
 
-    // Handle both ESM and CommonJS module formats
-    const isESM = (moduleExports as any)[Symbol.toStringTag] === "Module";
-    const actualExports = isESM ? moduleExports.default : moduleExports;
+    const actualExports = isEsm(moduleExports) ? moduleExports.default : moduleExports;
 
     if (!actualExports || !actualExports.prototype) {
       logger.error(`[IORedisInstrumentation] Invalid module exports, cannot patch`);
@@ -120,12 +117,10 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
       return moduleExports;
     }
 
-    // Handle both ESM and CommonJS module formats
-    const isESM = (moduleExports as any)[Symbol.toStringTag] === "Module";
-    const actualExports = isESM ? moduleExports.default : moduleExports;
+    const actualExports = isEsm(moduleExports) ? moduleExports.default : moduleExports;
 
     if (!actualExports || !actualExports.prototype) {
-      logger.error(`[IORedisInstrumentation] Invalid Pipeline module exports, cannot patch`);
+      logger.debug(`[IORedisInstrumentation] Invalid Pipeline module exports, cannot patch`);
       return moduleExports;
     }
 
@@ -177,6 +172,8 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
 
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["IORedisInstrumentation"]);
+
           return handleReplayMode({
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
@@ -193,7 +190,13 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplaySendCommand(spanInfo, cmd, inputValue, commandName);
+                  return self._handleReplaySendCommand(
+                    spanInfo,
+                    cmd,
+                    inputValue,
+                    commandName,
+                    stackTrace,
+                  );
                 },
               );
             },
@@ -451,6 +454,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     cmd: IORedisCommand,
     inputValue: IORedisInputValue,
     commandName: string,
+    stackTrace?: string,
   ): Promise<any> {
     logger.debug(`[IORedisInstrumentation] Replaying IORedis command ${cmd.name}`);
 
@@ -464,6 +468,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: cmd.name,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });
@@ -550,7 +555,10 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     return promise;
   }
 
-  private async _handleReplayConnect(spanInfo: SpanInfo, thisContext: IORedisInterface): Promise<any> {
+  private async _handleReplayConnect(
+    spanInfo: SpanInfo,
+    thisContext: IORedisInterface,
+  ): Promise<any> {
     logger.debug(`[IORedisInstrumentation] Replaying IORedis connect`);
 
     // Connect operations typically don't have meaningful output to replay

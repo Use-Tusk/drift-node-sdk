@@ -1,6 +1,6 @@
 {
   "name": "@use-tusk/drift-node-sdk",
-  "version": "0.1.4",
+  "version": "0.1.7",
   "description": "Node.js SDK for Tusk Drift instrumentation and replay",
   "homepage": "https://github.com/Use-Tusk/drift-node-sdk",
   "repository": {
@@ -70,6 +70,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.0.0",
     "mysql2": "^3.15.1",
+    "next": "^15.5.4",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
     "prettier": "^3.2.4",
@@ -91,8 +92,8 @@
     "@protobuf-ts/runtime-rpc": "^2.11.1",
     "@protobuf-ts/twirp-transport": "^2.11.1",
     "@types/semver": "^7.7.0",
-    "@use-tusk/drift-schemas": "^0.1.10",
     "google-protobuf": "^4.0.0",
+    "@use-tusk/drift-schemas": "^0.1.13",
     "import-in-the-middle": "^1.14.4",
     "install": "^0.13.0",
     "js-yaml": "^4.1.0",

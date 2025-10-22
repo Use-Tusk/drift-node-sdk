@@ -56,15 +56,23 @@ This prevents confusion from old test runs and makes it easier to identify curre
 Build and start the Docker container in detached mode:
 
 ```bash
-docker-compose up -d --build --wait
+docker compose up -d --build --wait
 ```
 
-### Step 4: Start Server in RECORD Mode
+### Step 4: Install Dependencies
+
+Install dependencies (now that /sdk volume is mounted):
+
+```bash
+docker compose exec -T app npm install
+```
+
+### Step 5: Start Server in RECORD Mode
 
 Start the application server in RECORD mode to capture network traffic:
 
 ```bash
-docker-compose exec -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
+docker compose exec -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
 ```
 
 Wait a few seconds for the server to fully start (5-10 seconds recommended):
@@ -73,23 +81,23 @@ Wait a few seconds for the server to fully start (5-10 seconds recommended):
 sleep 5
 ```
 
-### Step 5: Hit the Endpoint(s) You Want to Record
+### Step 6: Hit the Endpoint(s) You Want to Record
 
 Use `curl` to make requests to the endpoints you want to test. You can hit one or multiple endpoints:
 
 ```bash
 # Example: GET request
-docker-compose exec app curl -s http://localhost:3000/test/fetch-get
+docker compose exec app curl -s http://localhost:3000/test/fetch-get
 
 # Example: POST request with JSON body
-docker-compose exec app curl -s -X POST -H "Content-Type: application/json" \
+docker compose exec app curl -s -X POST -H "Content-Type: application/json" \
   -d '{"title":"test","body":"test body"}' \
   http://localhost:3000/test/fetch-post
 ```
 
 **Tip:** Check the test's `src/index.ts` file to see all available endpoints.
 
-### Step 6: Wait Before Stopping the Server
+### Step 7: Wait Before Stopping the Server
 
 Wait a few seconds to ensure all traces are written to local storage:
 
@@ -97,21 +105,21 @@ Wait a few seconds to ensure all traces are written to local storage:
 sleep 3
 ```
 
-### Step 7: Stop the Server Process
+### Step 8: Stop the Server Process
 
 Stop the Node.js server process:
 
 ```bash
-docker-compose exec app pkill -f "node" || true
+docker compose exec app pkill -f "node" || true
 sleep 2
 ```
 
-### Step 8: Run the Tusk CLI to Execute Tests
+### Step 9: Run the Tusk CLI to Execute Tests
 
 Run the Tusk CLI to replay the recorded traces:
 
 ```bash
-docker-compose exec -T app tusk run --print --output-format "json" --enable-service-logs
+docker compose exec -T app tusk run --print --output-format "json" --enable-service-logs
 ```
 
 **Flags explained:**
@@ -149,7 +157,7 @@ The output will be JSON with test results:
 - `"passed": false` - Test failed (mismatch between recording and replay)
 - Check `.tusk/logs/` for detailed error messages and debugging information
 
-### Step 9: Review Logs for Issues
+### Step 10: Review Logs for Issues
 
 If tests fail, check the service logs for detailed error information:
 
@@ -157,7 +165,7 @@ If you deleted the logs before running the test, there should be only 1 log file
 
 You can also view the traces recorded in the `.tusk/traces/` directory.
 
-### Step 10: Iterate on SDK Code
+### Step 11: Iterate on SDK Code
 
 When you need to fix instrumentation code:
 
@@ -175,12 +183,12 @@ When you need to fix instrumentation code:
 7. **Run the CLI tests** (Step 8)
 8. **Repeat until tests pass**
 
-### Step 11: Clean Up Docker Containers
+### Step 12: Clean Up Docker Containers
 
 When you're done testing, clean up the Docker containers:
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
 ## Important Notes
@@ -242,26 +250,29 @@ Use `run.sh` for full test runs, and use the manual steps above for iterative de
 rm -rf .tusk/traces/* .tusk/logs/*
 
 # Start containers
-docker-compose up -d --build
+docker compose up -d --build
+
+# Install dependencies
+docker compose exec -T app npm install
 
 # Start server in RECORD mode
-docker-compose exec -d -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
+docker compose exec -d -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
 
 # Stop server
-docker-compose exec app pkill -f "node" || true
+docker compose exec app pkill -f "node" || true
 
 # Run tests
-docker-compose exec -T app tusk run --print --output-format "json" --enable-service-logs
+docker compose exec -T app tusk run --print --output-format "json" --enable-service-logs
 
 # View logs
-docker-compose exec app ls .tusk/logs
-docker-compose exec app cat .tusk/logs/<log-file>
+docker compose exec app ls .tusk/logs
+docker compose exec app cat .tusk/logs/<log-file>
 
 # Rebuild SDK (from repo root)
 npm run build
 
 # Clean up containers
-docker-compose down
+docker compose down
 
 # Run full automated test
 ./run.sh

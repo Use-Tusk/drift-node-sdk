@@ -20,6 +20,7 @@ import { createSpanInputValue } from "../utils/dataNormalizationUtils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { SchemaMerges } from "./JsonSchemaHelper";
 import { logger } from "../utils/logger";
+import { TraceBlockingManager } from "./TraceBlockingManager";
 
 export interface SpanInfo {
   traceId: string;
@@ -82,6 +83,21 @@ export class SpanUtils {
       // Get tracer from the global trace API
       const tracer = TuskDriftCore.getInstance().getTracer();
       const parentContext = options.parentContext || context.active();
+
+      // Check if we should block span creation for this trace
+      // This happens when a previous span in this trace exceeded size limits
+      const activeSpan = trace.getSpan(parentContext);
+      if (activeSpan) {
+        const parentTraceId = activeSpan.spanContext().traceId;
+        const traceBlockingManager = TraceBlockingManager.getInstance();
+
+        if (traceBlockingManager.isTraceBlocked(parentTraceId)) {
+          logger.debug(
+            `[SpanUtils] Skipping span creation for '${options.name}' - trace ${parentTraceId} is blocked`,
+          );
+          return null;
+        }
+      }
 
       // We can add a bunch of attributes to the span here, everything we want to store in tusk drift backend
       const span = tracer.startSpan(

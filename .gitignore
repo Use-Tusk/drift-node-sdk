@@ -43,5 +43,11 @@ coverage/
 ehthumbs.db
 Thumbs.db
 
+<<<<<<< HEAD
 # Benchmark traces
 benchmarks/.benchmark-traces/
+=======
+# E2E test generated files
+**/e2e-tests/**/.tusk/logs/
+**/e2e-tests/**/.tusk/traces/
+>>>>>>> main

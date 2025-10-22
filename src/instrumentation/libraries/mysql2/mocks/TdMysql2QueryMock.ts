@@ -30,6 +30,7 @@ export class TdMysql2QueryMock {
     inputValue: Mysql2InputValue,
     spanInfo: SpanInfo,
     submoduleName: string = "query",
+    stackTrace?: string,
   ): any {
     logger.debug(`[Mysql2Instrumentation] Replaying MySQL2 query`);
 
@@ -46,12 +47,14 @@ export class TdMysql2QueryMock {
       spanInfo,
       spanName,
       submoduleName,
+      stackTrace,
     );
   }
 
   /**
    * Handle query - always returns an EventEmitter (like mysql2 does)
    * This handles both callback and streaming modes
+   * The EventEmitter is also thenable (has a .then() method) to support await/Promise usage
    */
   private _handleQuery(
     queryConfig: Mysql2QueryConfig,
@@ -59,13 +62,31 @@ export class TdMysql2QueryMock {
     spanInfo: SpanInfo,
     spanName: string,
     submoduleName: string,
+    stackTrace?: string,
   ): EventEmitter {
     const emitter = new EventEmitter();
+
+    // Store rows and fields for Promise resolution
+    let storedRows: any = null;
+    let storedFields: any = null;
+
+    // Make the emitter thenable so it can be awaited
+    // This is how mysql2's Query object works - it's an EventEmitter that can also be awaited
+    (emitter as any).then = function(onResolve?: (value: any) => any, onReject?: (error: any) => any) {
+      return new Promise((resolve, reject) => {
+        emitter.once("end", () => {
+          resolve([storedRows, storedFields]);
+        });
+        emitter.once("error", (error) => {
+          reject(error);
+        });
+      }).then(onResolve, onReject);
+    };
 
     // Fetch mock data asynchronously and emit events
     (async () => {
       try {
-        const mockData = await this._fetchMockData(inputValue, spanInfo, spanName, submoduleName);
+        const mockData = await this._fetchMockData(inputValue, spanInfo, spanName, submoduleName, stackTrace);
 
         if (!mockData) {
           const sql = queryConfig.sql || inputValue.sql || "UNKNOWN_QUERY";
@@ -84,6 +105,10 @@ export class TdMysql2QueryMock {
 
         // Convert mock data to proper MySQL2 format
         const processedResult = this._convertMysql2Types(mockData.result);
+
+        // Store for Promise resolution
+        storedRows = processedResult.rows;
+        storedFields = processedResult.fields;
 
         // Emit events to simulate query execution
         process.nextTick(() => {
@@ -132,6 +157,7 @@ export class TdMysql2QueryMock {
     spanInfo: SpanInfo,
     spanName: string,
     submoduleName: string,
+    stackTrace?: string,
   ) {
     return await findMockResponseAsync({
       mockRequestData: {
@@ -143,6 +169,7 @@ export class TdMysql2QueryMock {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: submoduleName,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });

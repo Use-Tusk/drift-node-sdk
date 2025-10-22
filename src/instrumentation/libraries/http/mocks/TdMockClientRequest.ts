@@ -42,6 +42,7 @@ export class TdMockClientRequest extends EventEmitter {
   public finished: boolean = false;
   private tuskDrift: TuskDriftCore;
   private spanInfo: SpanInfo;
+  private stackTrace?: string;
 
   private requestBodyBuffers: Buffer[] = [];
   private playbackStarted: boolean = false;
@@ -52,12 +53,14 @@ export class TdMockClientRequest extends EventEmitter {
     options: TdMockClientRequestOptions,
     spanInfo: SpanInfo,
     callback?: (res: IncomingMessage) => void,
+    stackTrace?: string,
   ) {
     super();
     TdMockClientRequest._setupPrototype();
     this.tuskDrift = TuskDriftCore.getInstance();
 
     this.spanInfo = spanInfo;
+    this.stackTrace = stackTrace;
 
     if (!options || Object.keys(options).length === 0) {
       throw new Error(
@@ -302,6 +305,7 @@ export class TdMockClientRequest extends EventEmitter {
           submoduleName: rawInputValue.method,
           inputValue,
           kind: SpanKind.CLIENT,
+          stackTrace: this.stackTrace,
         },
         tuskDrift: this.tuskDrift,
         inputValueSchemaMerges: {

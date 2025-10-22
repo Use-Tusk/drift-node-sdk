@@ -3,7 +3,7 @@ import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrument
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
-import { wrap } from "../../core/utils";
+import { captureStackTrace, wrap } from "../../core/utils";
 import { findMockResponseAsync } from "../../core/utils/mockResponseUtils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
 import {
@@ -17,7 +17,7 @@ import {
   isPostgresOutputValueType,
 } from "./types";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
-import { logger } from "../../../core/utils/logger";
+import { logger, isEsm } from "../../../core/utils";
 
 export class PostgresInstrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "PostgresInstrumentation";
@@ -50,11 +50,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     const self = this;
 
-    // ESM Support: Detect if this is an ESM module by checking Symbol.toStringTag
-    // ESM modules have Symbol.toStringTag === 'Module'
-    const isESM = (postgresModule as any)[Symbol.toStringTag] === 'Module';
-
-    if (isESM) {
+    if (isEsm(postgresModule)) {
       // ESM Case: Default function exports are in the .default property
       // In ESM: import postgres from 'postgres' gives { default: function(...) {...} }
       // We need to wrap moduleExports.default, not the module itself
@@ -369,6 +365,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     // Handle replay mode (only if app is ready)
     if (this.mode === TuskDriftMode.REPLAY) {
+      const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
+
       return handleReplayMode({
         replayModeHandler: () => {
           return SpanUtils.createAndExecuteSpan(
@@ -390,6 +388,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                 spanInfo,
                 submodule: "query",
                 name: "postgres.query",
+                stackTrace,
               });
             },
           );
@@ -451,6 +450,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     };
 
     if (this.mode === TuskDriftMode.REPLAY) {
+      const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
+
       return handleReplayMode({
         replayModeHandler: () => {
           return this._createPendingQueryWrapper(() => {
@@ -473,6 +474,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   spanInfo,
                   submodule: "unsafe",
                   name: "postgres.unsafe",
+                  stackTrace,
                 });
               },
             );
@@ -532,6 +534,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     };
 
     if (this.mode === TuskDriftMode.REPLAY) {
+      const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
+
       return handleReplayMode({
         replayModeHandler: () => {
           return SpanUtils.createAndExecuteSpan(
@@ -548,7 +552,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               isPreAppStart: false,
             },
             (spanInfo) => {
-              return this._handleReplayBeginTransaction(spanInfo, options);
+              return this._handleReplayBeginTransaction(spanInfo, options, stackTrace);
             },
           );
         },
@@ -681,7 +685,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     return promise; // Return the original promise
   }
 
-  private async _handleReplayBeginTransaction(spanInfo: SpanInfo, options?: string): Promise<any> {
+  private async _handleReplayBeginTransaction(
+    spanInfo: SpanInfo,
+    options?: string,
+    stackTrace?: string,
+  ): Promise<any> {
     logger.debug(`[PostgresInstrumentation] Replaying Postgres transaction`);
 
     // Find mock data for the transaction
@@ -698,6 +706,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: "transaction",
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });
@@ -792,11 +801,13 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     spanInfo,
     submodule,
     name,
+    stackTrace,
   }: {
     inputValue: PostgresClientInputValue;
     spanInfo: SpanInfo;
     submodule: string;
     name: string;
+    stackTrace?: string;
   }): Promise<PostgresRow[] | undefined> {
     logger.debug(`[PostgresInstrumentation] Replaying Postgres sql query`);
 
@@ -810,6 +821,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: submodule,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });
@@ -853,11 +865,13 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     spanInfo,
     submodule,
     name,
+    stackTrace,
   }: {
     inputValue: PostgresClientInputValue;
     spanInfo: SpanInfo;
     submodule: string;
     name: string;
+    stackTrace?: string;
   }): Promise<PostgresConvertedResult | undefined> {
     logger.debug(`[PostgresInstrumentation] Replaying Postgres unsafe query`);
 
@@ -871,6 +885,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         instrumentationName: this.INSTRUMENTATION_NAME,
         submoduleName: submodule,
         kind: SpanKind.CLIENT,
+        stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });
@@ -955,7 +970,9 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
   private convertPostgresTypes(result: any): PostgresConvertedResult | undefined {
     // if result is not of type PostgresOutputValueType, throw an error
     if (!isPostgresOutputValueType(result)) {
-      logger.error(`[PostgresInstrumentation] output value is not of type PostgresOutputValueType: ${JSON.stringify(result)}`);
+      logger.error(
+        `[PostgresInstrumentation] output value is not of type PostgresOutputValueType: ${JSON.stringify(result)}`,
+      );
       return undefined;
     }
 
@@ -984,13 +1001,17 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     if (Array.isArray(result)) {
       // Direct array result - wrap with metadata to indicate original format
-      logger.debug(`[PostgresInstrumentation] Adding output attributes to span for array result: ${JSON.stringify(result)}`);
+      logger.debug(
+        `[PostgresInstrumentation] Adding output attributes to span for array result: ${JSON.stringify(result)}`,
+      );
       outputValue = {
         _tdOriginalFormat: PostgresReturnType.ARRAY,
         rows: result,
       };
     } else if (typeof result === "object") {
-      logger.debug(`[PostgresInstrumentation] Adding output attributes to span for object result: ${JSON.stringify(result)}`);
+      logger.debug(
+        `[PostgresInstrumentation] Adding output attributes to span for object result: ${JSON.stringify(result)}`,
+      );
       outputValue = {
         _tdOriginalFormat: PostgresReturnType.OBJECT,
         count: result.count,

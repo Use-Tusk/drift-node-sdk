@@ -37,7 +37,7 @@ const express = require("express");
 const serviceAApp = express();
 serviceAApp.use(express.json());
 
-serviceAApp.post("/api/sensitive", (req, res) => {
+serviceAApp.post("/api/sensitive", (req: any, res: any) => {
   res.json({
     status: "success",
     sensitiveData: "TOP_SECRET_123",
@@ -45,7 +45,7 @@ serviceAApp.post("/api/sensitive", (req, res) => {
   });
 });
 
-serviceAApp.get("/api/data", (req, res) => {
+serviceAApp.get("/api/data", (req: any, res: any) => {
   res.json({ data: "public data from service A" });
 });
 
@@ -71,8 +71,8 @@ test.after.always(() => {
 
 test("should be able to reach the server", async (t) => {
   await new Promise<void>((resolve) => {
-    http.get(`http://127.0.0.1:${port}/api/data`, (res) => {
-      res.on("data", function (chunk) {
+    http.get(`http://127.0.0.1:${port}/api/data`, (res: any) => {
+      res.on("data", function (chunk: any) {
         console.log("BODY: " + chunk);
       });
 

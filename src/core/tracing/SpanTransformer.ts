@@ -1,6 +1,6 @@
 import { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 import { SpanKind as OtSpanKind } from "@opentelemetry/api";
-import { JsonSchemaHelper, JsonSchema, JsonSchemaType } from "./JsonSchemaHelper";
+import { JsonSchemaHelper, JsonSchemaType, JsonSchema } from "./JsonSchemaHelper";
 import { CleanSpanData, MetadataObject, TdSpanAttributes } from "../types";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
 import { logger, OriginalGlobalUtils } from "../utils";
@@ -71,7 +71,7 @@ export class SpanTransformer {
       try {
         transformMetadata = JSON.parse(transformMetadataString);
       } catch (error) {
-        logger.warn("Failed to parse transform metadata", error);
+        logger.warn("[SpanTransformer] Failed to parse transform metadata", error);
       }
     }
 

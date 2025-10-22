@@ -4,6 +4,7 @@ import { createMockInputValue } from "../../../../core/utils";
 import { SpanInfo } from "../../../../core/tracing/SpanUtils";
 import { logger } from "../../../../core/utils/logger";
 import { QueryCallback } from "../types";
+import { captureStackTrace } from "src/instrumentation/core/utils";
 
 /**
  * Mock MySQL2 connection/pool connection for replay mode
@@ -38,6 +39,8 @@ export class TdMysql2ConnectionMock extends EventEmitter {
   query(...args: any[]) {
     logger.debug(`[TdMysql2ConnectionMock] Mock connection query intercepted in REPLAY mode`);
 
+    const stackTrace = captureStackTrace(["TdMysql2ConnectionMock"]);
+
     // Parse query arguments similar to the main query patch
     const queryConfig = this.mysql2Instrumentation.parseQueryArgs(args);
 
@@ -61,11 +64,13 @@ export class TdMysql2ConnectionMock extends EventEmitter {
 
     const inputValue = createMockInputValue(rawInputValue);
 
-    return this.mysql2Instrumentation.handleReplayQuery(queryConfig, inputValue, this.spanInfo);
+    return this.mysql2Instrumentation.handleReplayQuery(queryConfig, inputValue, this.spanInfo, stackTrace);
   }
 
   execute(...args: any[]) {
     logger.debug(`[TdMysql2ConnectionMock] Mock connection execute intercepted in REPLAY mode`);
+
+    const stackTrace = captureStackTrace(["TdMysql2ConnectionMock"]);
 
     // Parse execute arguments similar to the main execute patch
     const queryConfig = this.mysql2Instrumentation.parseQueryArgs(args);
@@ -90,7 +95,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
 
     const inputValue = createMockInputValue(rawInputValue);
 
-    return this.mysql2Instrumentation.handleReplayQuery(queryConfig, inputValue, this.spanInfo);
+    return this.mysql2Instrumentation.handleReplayQuery(queryConfig, inputValue, this.spanInfo, stackTrace);
   }
 
   release() {

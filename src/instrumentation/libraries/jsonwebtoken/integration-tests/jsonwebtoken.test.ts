@@ -104,7 +104,7 @@ test.serial("should capture spans for asynchronous sign operation with callback"
 
   await new Promise<void>((resolve, reject) => {
     withRootSpan(() => {
-      jwt.sign(payload, TEST_SECRET, {}, async (err, token) => {
+      jwt.sign(payload, TEST_SECRET, {}, async (err: any, token: any) => {
         try {
           t.is(err, null);
           t.truthy(token);
@@ -177,7 +177,7 @@ test.serial("should capture spans for synchronous verify operation", async (t) =
 test.serial("should capture spans for asynchronous verify operation with callback", async (t) => {
   await new Promise<void>((resolve, reject) => {
     withRootSpan(() => {
-      jwt.verify(validToken, TEST_SECRET, {}, async (err, decoded: any) => {
+      jwt.verify(validToken, TEST_SECRET, {}, async (err: any, decoded: any) => {
         try {
           t.is(err, null);
           t.truthy(decoded);

@@ -7,7 +7,10 @@ Before setting up the SDK, ensure you have:
 - Completed the [CLI wizard](https://github.com/Use-Tusk/tusk-drift-cli?tab=readme-ov-file#quick-start)
 - Obtained an API key from the [Tusk Drift dashboard](https://usetusk.ai/app/settings/api-keys) (only required if using Tusk Cloud)
 
-Follow these steps in order to properly initialize the Tusk Drift SDK:
+> **📦 Using Next.js?** Next.js applications require a different initialization process.
+> **[Go to the Next.js Initialization Guide →](./nextjs-initialization.md)**
+
+For **standard Node.js applications** (Express, Fastify, plain Node.js, etc.), follow these steps in order to properly initialize the Tusk Drift SDK:
 
 ## 1. Create SDK Initialization File
 
@@ -36,12 +39,12 @@ ESM applications require additional setup to properly intercept module imports:
 
 ```typescript
 // tuskDriftInit.ts
-import { register } from 'node:module';
-import { pathToFileURL } from 'node:url';
+import { register } from "node:module";
+import { pathToFileURL } from "node:url";
 
 // Register the ESM loader
 // This enables interception of ESM module imports
-register('@use-tusk/drift-node-sdk/hook.mjs', pathToFileURL('./'));
+register("@use-tusk/drift-node-sdk/hook.mjs", pathToFileURL("./"));
 
 import { TuskDrift } from "@use-tusk/drift-node-sdk";
 

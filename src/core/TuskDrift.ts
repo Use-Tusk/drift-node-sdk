@@ -16,13 +16,15 @@ import {
   Mysql2Instrumentation,
   IORedisInstrumentation,
   GrpcInstrumentation,
+  FirestoreInstrumentation,
+  NextjsInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
 import { trace, Tracer } from "@opentelemetry/api";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { ProtobufCommunicator, MockRequestInput } from "./ProtobufCommunicator";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
-import { CleanSpanData } from "./types";
+import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME } from "./types";
 import { TuskDriftInstrumentationModuleNames } from "./TuskDriftInstrumentationModuleNames";
 import { SDK_VERSION } from "../version";
 import {
@@ -119,7 +121,7 @@ export class TuskDriftCore {
       }
     } else {
       // ESM or other module systems - no reliable detection possible
-      logger.warn("Running in ES Module mode. Cannot detect pre-loaded instrumentation modules.");
+      logger.debug("Running in ES Module mode. Cannot detect pre-loaded instrumentation modules.");
     }
 
     return alreadyRequiredModuleNames;
@@ -222,6 +224,16 @@ export class TuskDriftCore {
       enabled: true,
       mode: this.mode,
     });
+
+    new FirestoreInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
+
+    new NextjsInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
   }
 
   private initializeTracing({ baseDirectory }: { baseDirectory: string }): void {
@@ -272,22 +284,22 @@ export class TuskDriftCore {
   }
 
   initialize(initParams: InitParams): void {
+    // Initialize logging with provided level or default to 'info'
+    initializeGlobalLogger({
+      logLevel: initParams.logLevel || "info",
+      prefix: "TuskDrift",
+    });
+
     this.samplingRate = this.config.recording?.sampling_rate ?? 1;
     this.initParams = initParams;
 
     if (!this.initParams.env) {
-      const nodeEnv = OriginalGlobalUtils.getOriginalProcessEnvVar("NODE_ENV") || "unknown";
+      const nodeEnv = OriginalGlobalUtils.getOriginalProcessEnvVar("NODE_ENV") || "development";
       logger.warn(
         `Environment not provided in initialization parameters. Using '${nodeEnv}' as the environment.`,
       );
       this.initParams.env = nodeEnv;
     }
-
-    // Initialize logging with provided level or default to 'silent'
-    initializeGlobalLogger({
-      logLevel: initParams.logLevel || "silent",
-      prefix: "TuskDrift",
-    });
 
     if (this.initialized) {
       logger.debug("Already initialized, skipping...");
@@ -423,9 +435,9 @@ export class TuskDriftCore {
     logger.debug("Application marked as ready");
 
     if (this.mode === TuskDriftMode.REPLAY) {
-      logger.info("Replay mode active - ready to serve mocked responses");
+      logger.debug("Replay mode active - ready to serve mocked responses");
     } else if (this.mode === TuskDriftMode.RECORD) {
-      logger.info("Record mode active - capturing requests and responses");
+      logger.debug("Record mode active - capturing inbound requests and responses");
     }
   }
 
@@ -496,13 +508,19 @@ export class TuskDriftCore {
     }
   }
 
-  // NOTE: this isn't being used anywhere right now
-  // When we do need to use it, we need to add a check for isConnectedWithCLI similar to requestMockAsync
   requestMockSync(mockRequest: MockRequestInput): {
     found: boolean;
     response?: unknown;
     error?: string;
   } {
+    if (!this.isConnectedWithCLI) {
+      // We cannot await for the CLI to be connected like we do in requestMockAsync since it's a synchronous call
+      // That means this function will likely throw an error if the first mock requested needs to be sync
+      // This is a limitation of the current implementation and will be fixed in the future
+      logger.error("Requesting sync mock but CLI is not ready yet");
+      throw new Error("Requesting sync mock but CLI is not ready yet");
+    }
+
     const mockRequestCore = this.createMockRequestCore(mockRequest);
     if (mockRequestCore) {
       return mockRequestCore;
@@ -568,7 +586,7 @@ export class TuskDriftCore {
   }
 
   getTracer(): Tracer {
-    return trace.getTracer("tusk-drift-sdk", "1.0.0");
+    return trace.getTracer(TD_INSTRUMENTATION_LIBRARY_NAME);
   }
 }
 

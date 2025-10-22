@@ -29,6 +29,7 @@ import {
   handleRecordMode,
   handleReplayMode,
   isTuskDriftIngestionUrl,
+  captureStackTrace,
 } from "../../core/utils";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
 import {
@@ -36,7 +37,13 @@ import {
   JsonSchemaHelper,
   SchemaMerges,
 } from "../../../core/tracing/JsonSchemaHelper";
-import { shouldSample, OriginalGlobalUtils, logger } from "../../../core/utils";
+import {
+  shouldSample,
+  OriginalGlobalUtils,
+  logger,
+  isEsm,
+  isNextJsRuntime,
+} from "../../../core/utils";
 import { EnvVarTracker } from "../../core/trackers";
 import { HttpSpanData, HttpTransformEngine } from "./HttpTransformEngine";
 import { TransformConfigs } from "../types";
@@ -90,10 +97,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
       return httpModule;
     }
 
-    // ESM Support: Detect if this is an ESM module
-    const isESM = (httpModule as any)[Symbol.toStringTag] === "Module";
-
-    if (isESM) {
+    if (isEsm(httpModule)) {
       // ESM Case: Also set wrapped methods on the default export
       // In ESM: import http from 'http' gives { default: <http module>, request: ..., get: ... }
       // Users may access http.request (namespace) OR http.default.request (default export)
@@ -134,6 +138,15 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     originalHandler: Function;
     protocol: HttpProtocol;
   }): void {
+    // Don't record/replay if this is a nextJs runtime
+    // We have a nextJs instrumentation to handle this
+    if (isNextJsRuntime()) {
+      logger.debug(
+        `[HttpInstrumentation] Skipping recording/replaying for nextJs runtime, handled by nextJs instrumentation`,
+      );
+      return originalHandler.call(this);
+    }
+
     const method = req.method || "GET";
     const url = req.url || "/";
     const target = req.url || "/";
@@ -141,6 +154,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
 
     // Ignore drift ingestion endpoints (avoid recording SDK export traffic)
     if (isTuskDriftIngestionUrl(url) || isTuskDriftIngestionUrl(target)) {
+      logger.debug(`[HttpInstrumentation] Ignoring drift ingestion endpoints`);
       return originalHandler.call(this);
     }
 
@@ -177,9 +191,12 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           // Set replay trace context (replaces previous replayHooks-only call)
           const replayTraceId = this.replayHooks.extractTraceIdFromHeaders(req);
           if (!replayTraceId) {
+            logger.debug(`[HttpInstrumentation] No trace id found in headers`, req.headers);
             // No trace context; proceed without span
             return originalHandler.call(this);
           }
+
+          logger.debug(`[HttpInstrumentation] Setting replay trace id`, replayTraceId);
 
           // Set env vars for current trace
           const envVars = this.replayHooks.extractEnvVarsFromHeaders(req);
@@ -1031,6 +1048,8 @@ export class HttpInstrumentation extends TdInstrumentationBase {
         );
 
         if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["HttpInstrumentation"]);
+
           return handleReplayMode({
             replayModeHandler: () => {
               // Build input value object for replay mode
@@ -1066,6 +1085,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                     protocol: requestProtocol,
                     args,
                     spanInfo,
+                    stackTrace,
                   });
                 },
               );
@@ -1279,6 +1299,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     return (originalEmit: Function) => {
       return function (this: Server, eventName: string, ...args: any[]) {
         if (eventName === "request") {
+          // Sample as soon as we can to avoid additional overhead if this request is not sampled
           if (self.mode === TuskDriftMode.RECORD) {
             if (
               !shouldSample({
@@ -1286,13 +1307,10 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                 isAppReady: self.tuskDrift.isAppReady(),
               })
             ) {
-              logger.debug(
-                `Skipping server span due to sampling rate`,
-                self.tuskDrift.getSamplingRate(),
-              );
               return originalEmit.apply(this, [eventName, ...args]);
             }
           }
+
           const req = args[0];
           const res = args[1];
 

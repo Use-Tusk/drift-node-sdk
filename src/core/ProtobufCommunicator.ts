@@ -45,7 +45,7 @@ export class ProtobufCommunicator {
 
   private makeConnection(
     connectionInfo: { socketPath: string } | { host: string; port: number },
-    callback: () => void
+    callback: () => void,
   ) {
     const currentContext = context.active();
     this.protobufContext = currentContext.setValue(
@@ -55,14 +55,14 @@ export class ProtobufCommunicator {
 
     // Create connection in context so TCP instrumentation knows to ignore these TCP calls
     return context.with(this.protobufContext, () => {
-      if ('socketPath' in connectionInfo) {
+      if ("socketPath" in connectionInfo) {
         // Unix socket connection
         this.client = net.createConnection(connectionInfo.socketPath, callback);
       } else {
         // TCP connection
         this.client = net.createConnection(
           { host: connectionInfo.host, port: connectionInfo.port },
-          callback
+          callback,
         );
       }
     });
@@ -70,11 +70,11 @@ export class ProtobufCommunicator {
 
   async connect(
     connectionInfo: { socketPath: string } | { host: string; port: number },
-    serviceId: string
+    serviceId: string,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       this.makeConnection(connectionInfo, () => {
-        const connType = 'socketPath' in connectionInfo ? 'Unix socket' : 'TCP';
+        const connType = "socketPath" in connectionInfo ? "Unix socket" : "TCP";
         logger.debug(`Connected to CLI via protobuf (${connType})`);
         this.sendConnectMessage(serviceId).then(resolve).catch(reject);
       });
@@ -170,7 +170,7 @@ export class ProtobufCommunicator {
       requestId,
       tags: {},
       outboundSpan: cleanSpan,
-      stackTrace: this.getStackTrace(),
+      stackTrace: cleanSpan?.stackTrace,
     });
 
     const sdkMessage: SDKMessage = SDKMessage.create({
@@ -193,15 +193,12 @@ export class ProtobufCommunicator {
   }
 
   /**
-   * This function uses a Node.js script to communicate with the CLI over a socket.
-   * The script is called using execSync, which will block the main thread until the child process exits. This makes requesting mocks from the CLI synchronous.
+   * This function uses a separate Node.js child process to communicate with the CLI over a socket.
+   * The child process creates its own connection and event loop, allowing proper async socket handling.
+   * The parent process blocks synchronously waiting for the child to complete.
    *
-   * Since this function blocks the main thread, there is a perfomance impact for using this. We should use requestMockAsync whenever possilbe and only use this function
-   * for instrumentations that request fetching mocks synchronously.
-   *
-   * (10/9/2025) Currently not using this function since we are not actually fetching mocks for the only sync instrumentation (Date)
-   * NOTE: This function probably doesn't work. plus, nc might not be installed on all machines (especially windows)
-   *       Better approach is replacing nc command with pure Node.js implementation
+   * Since this function blocks the main thread, there is a performance impact. We should use requestMockAsync whenever possible and only use this function
+   * for instrumentations that require fetching mocks synchronously.
    */
   requestMockSync(mockRequest: MockRequestInput): MockResponseOutput {
     const requestId = this.generateRequestId();
@@ -231,7 +228,7 @@ export class ProtobufCommunicator {
       requestId,
       tags: {},
       outboundSpan: cleanSpan,
-      stackTrace: this.getStackTrace(),
+      stackTrace: cleanSpan?.stackTrace,
     });
 
     const sdkMessage = SDKMessage.create({
@@ -243,20 +240,25 @@ export class ProtobufCommunicator {
       },
     });
 
+    logger.debug("Sending protobuf request to CLI (sync)", {
+      outboundSpan: mockRequest.outboundSpan,
+      testId: mockRequest.testId,
+    });
+
     // Serialize the message to binary
     const messageBytes = SDKMessage.toBinary(sdkMessage);
 
-    // Create temporary file paths
+    // Create temporary file for the request and response
     const tempDir = os.tmpdir();
-    const requestFile = path.join(tempDir, `tusk-request-${requestId}.bin`);
-    const responseFile = path.join(tempDir, `tusk-response-${requestId}.bin`);
+    const requestFile = path.join(tempDir, `tusk-sync-request-${requestId}.bin`);
+    const responseFile = path.join(tempDir, `tusk-sync-response-${requestId}.bin`);
+    const scriptFile = path.join(tempDir, `tusk-sync-script-${requestId}.js`);
 
     try {
       // Write length prefix (4 bytes big-endian) + message to temp file
       const lengthBuffer = Buffer.allocUnsafe(4);
       lengthBuffer.writeUInt32BE(messageBytes.length, 0);
       const fullMessage = Buffer.concat([lengthBuffer, Buffer.from(messageBytes)]);
-
       fs.writeFileSync(requestFile, fullMessage);
 
       // Determine connection method
@@ -264,33 +266,121 @@ export class ProtobufCommunicator {
       const mockHost = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_HOST");
       const mockPort = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_PORT");
 
-      let command: string;
-
+      let connectionConfig: any;
       if (mockSocket) {
-        // Unix socket mode
-        if (!fs.existsSync(mockSocket)) {
-          throw new Error(`Socket file does not exist: ${mockSocket}`);
-        }
-        command = `nc -U -w 10 "${mockSocket}" < "${requestFile}" > "${responseFile}"`;
+        connectionConfig = { type: "unix", path: mockSocket };
       } else if (mockHost && mockPort) {
-        // TCP mode
-        command = `nc -w 10 "${mockHost}" ${mockPort} < "${requestFile}" > "${responseFile}"`;
+        connectionConfig = { type: "tcp", host: mockHost, port: parseInt(mockPort, 10) };
       } else {
-        // Fallback to default Unix socket
         const socketPath = path.join(os.tmpdir(), "tusk-connect.sock");
-        if (!fs.existsSync(socketPath)) {
-          throw new Error(`Socket file does not exist: ${socketPath}`);
-        }
-        command = `nc -U -w 10 "${socketPath}" < "${requestFile}" > "${responseFile}"`;
+        connectionConfig = { type: "unix", path: socketPath };
       }
 
-      try {
-        execSync(command, {
-          timeout: 10000,
-          stdio: "pipe",
-        });
+      // Create a child process script that establishes its own connection
+      const childScript = `
+const net = require('net');
+const fs = require('fs');
 
-        // Read the response from the file
+const requestFile = process.argv[2];
+const responseFile = process.argv[3];
+const config = JSON.parse(process.argv[4]);
+
+let responseReceived = false;
+let timeoutId;
+
+function cleanup(exitCode) {
+  if (timeoutId) clearTimeout(timeoutId);
+  process.exit(exitCode);
+}
+
+try {
+  // Read the request data
+  const requestData = fs.readFileSync(requestFile);
+  
+  // Create connection based on config
+  const client = config.type === 'unix' 
+    ? net.createConnection({ path: config.path })
+    : net.createConnection({ host: config.host, port: config.port });
+
+  const incomingChunks = [];
+  let incomingBuffer = Buffer.alloc(0);
+
+  // Set timeout
+  timeoutId = setTimeout(() => {
+    if (!responseReceived) {
+      console.error('Timeout waiting for response');
+      client.destroy();
+      cleanup(1);
+    }
+  }, 10000);
+
+  client.on('connect', () => {
+    // Send the request
+    client.write(requestData);
+  });
+
+  client.on('data', (data) => {
+    incomingBuffer = Buffer.concat([incomingBuffer, data]);
+    
+    // Try to parse complete message (4 byte length prefix + message)
+    while (incomingBuffer.length >= 4) {
+      const messageLength = incomingBuffer.readUInt32BE(0);
+      
+      if (incomingBuffer.length < 4 + messageLength) {
+        // Incomplete message, wait for more data
+        break;
+      }
+      
+      // We have a complete message
+      const messageData = incomingBuffer.slice(4, 4 + messageLength);
+      incomingBuffer = incomingBuffer.slice(4 + messageLength);
+      
+      // Write the complete response (including length prefix)
+      const lengthPrefix = Buffer.allocUnsafe(4);
+      lengthPrefix.writeUInt32BE(messageLength, 0);
+      fs.writeFileSync(responseFile, Buffer.concat([lengthPrefix, messageData]));
+      
+      responseReceived = true;
+      client.destroy();
+      cleanup(0);
+      break;
+    }
+  });
+
+  client.on('error', (err) => {
+    if (!responseReceived) {
+      console.error('Connection error:', err.message);
+      cleanup(1);
+    }
+  });
+
+  client.on('close', () => {
+    if (!responseReceived) {
+      console.error('Connection closed without response');
+      cleanup(1);
+    }
+  });
+
+} catch (err) {
+  console.error('Script error:', err.message);
+  cleanup(1);
+}
+`;
+
+      // Write the script to a file
+      fs.writeFileSync(scriptFile, childScript);
+
+      try {
+        // Execute the child process synchronously
+        execSync(
+          `node "${scriptFile}" "${requestFile}" "${responseFile}" '${JSON.stringify(connectionConfig)}'`,
+          {
+            timeout: 12000, // Slightly longer than the child's timeout
+            stdio: "pipe",
+          },
+        );
+
+        // Read the response
         const responseBuffer = fs.readFileSync(responseFile);
 
         // Parse the response
@@ -298,15 +388,12 @@ export class ProtobufCommunicator {
           throw new Error("Invalid response: too short");
         }
 
-        // Read length prefix
         const responseLength = responseBuffer.readUInt32BE(0);
-
         if (responseBuffer.length < 4 + responseLength) {
           throw new Error("Invalid response: incomplete message");
         }
 
         const responseData = responseBuffer.slice(4, 4 + responseLength);
-
         const cliMessage = CLIMessage.fromBinary(responseData);
 
         if (cliMessage.payload.oneofKind !== "getMockResponse") {
@@ -335,7 +422,7 @@ export class ProtobufCommunicator {
           };
         }
       } catch (error: any) {
-        logger.error("[ProtobufCommunicator] error sending request to CLI:", error);
+        logger.error("[ProtobufCommunicator] error in sync request child process:", error);
         throw error;
       }
     } catch (error: any) {
@@ -343,14 +430,19 @@ export class ProtobufCommunicator {
     } finally {
       // Clean up temp files
       try {
-        fs.unlinkSync(requestFile);
+        if (fs.existsSync(requestFile)) fs.unlinkSync(requestFile);
       } catch (e) {
         logger.error("[ProtobufCommunicator] error cleaning up request file:", e);
       }
       try {
-        fs.unlinkSync(responseFile);
+        if (fs.existsSync(responseFile)) fs.unlinkSync(responseFile);
       } catch (e) {
         logger.error("[ProtobufCommunicator] error cleaning up response file:", e);
+      }
+      try {
+        if (fs.existsSync(scriptFile)) fs.unlinkSync(scriptFile);
+      } catch (e) {
+        logger.error("[ProtobufCommunicator] error cleaning up script file:", e);
       }
     }
   }
@@ -384,8 +476,8 @@ export class ProtobufCommunicator {
       submoduleName: span.submoduleName || "",
       inputValue: toStruct(span.inputValue),
       outputValue: toStruct(span.outputValue),
-      inputSchema: toStruct(span.inputSchema),
-      outputSchema: toStruct(span.outputSchema),
+      inputSchema: span.inputSchema,
+      outputSchema: span.outputSchema,
       inputSchemaHash: span.inputSchemaHash || "",
       outputSchemaHash: span.outputSchemaHash || "",
       inputValueHash: span.inputValueHash || "",

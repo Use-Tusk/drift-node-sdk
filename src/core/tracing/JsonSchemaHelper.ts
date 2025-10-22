@@ -1,17 +1,11 @@
 import * as crypto from "crypto";
 import { logger } from "../utils/logger";
-
-export enum JsonSchemaType {
-  NUMBER = "NUMBER",
-  STRING = "STRING",
-  BOOLEAN = "BOOLEAN",
-  NULL = "NULL",
-  UNDEFINED = "UNDEFINED",
-  OBJECT = "OBJECT",
-  ORDERED_LIST = "ORDERED_LIST",
-  UNORDERED_LIST = "UNORDERED_LIST",
-  FUNCTION = "FUNCTION",
-}
+import {
+  JsonSchemaType,
+  EncodingType,
+  DecodedType,
+  type JsonSchema,
+} from "@use-tusk/drift-schemas/core/json_schema";
 
 // Standardized schema type mapping
 const jsToJsonSchemaTypeMapping = {
@@ -47,45 +41,8 @@ const jsToJsonSchemaTypeMapping = {
   ["Arguments"]: JsonSchemaType.ORDERED_LIST,
 } as const;
 
-export enum EncodingType {
-  BASE64 = "BASE64",
-}
-
-export enum DecodedType {
-  JSON = "JSON",
-  HTML = "HTML",
-  CSS = "CSS",
-  JAVASCRIPT = "JAVASCRIPT",
-  XML = "XML",
-  YAML = "YAML",
-  MARKDOWN = "MARKDOWN",
-  CSV = "CSV",
-  SQL = "SQL",
-  GRAPHQL = "GRAPHQL",
-  PLAIN_TEXT = "PLAIN_TEXT",
-  FORM_DATA = "FORM_DATA",
-  MULTIPART_FORM = "MULTIPART_FORM",
-  PDF = "PDF",
-  AUDIO = "AUDIO",
-  VIDEO = "VIDEO",
-  GZIP = "GZIP",
-  BINARY = "BINARY",
-  JPEG = "JPEG",
-  PNG = "PNG",
-  GIF = "GIF",
-  WEBP = "WEBP",
-  SVG = "SVG",
-  ZIP = "ZIP",
-}
-
-export interface JsonSchema {
-  type: JsonSchemaType;
-  properties?: Record<string, JsonSchema>;
-  items?: JsonSchema | null;
-  encoding?: EncodingType;
-  decodedType?: DecodedType;
-  matchImportance?: number; // Should be between 0 and 1, 0 being the lowest importance and 1 being the highest importance
-}
+// Re-export proto types for convenience
+export { JsonSchemaType, EncodingType, DecodedType, type JsonSchema };
 
 // The following types can be merged with the generated schema to provide additional information
 // This is set in the instrumentation layer and merged with the generated schema
@@ -212,39 +169,52 @@ export class JsonSchemaHelper {
 
   /**
    * Generate schema from data object using standardized types
+   *
+   * Note: We properties always exists on JsonSchema because proto3 maps cannot be marked optional.
+   * The JSON data is a bit inefficient because of this, but the easiest way to handle this is to keep it for now.
    */
   static generateSchema(data: any, schemaMerges?: SchemaMerges): JsonSchema {
     if (data === null) {
-      return { type: jsToJsonSchemaTypeMapping["null"] };
+      return { type: jsToJsonSchemaTypeMapping["null"], properties: {} };
     }
 
     if (data === undefined) {
-      return { type: jsToJsonSchemaTypeMapping["undefined"] };
+      return { type: jsToJsonSchemaTypeMapping["undefined"], properties: {} };
     }
 
     const detailedType = JsonSchemaHelper.getDetailedType(data);
 
     if (detailedType === JsonSchemaType.ORDERED_LIST) {
       if (Array.isArray(data) && data.length === 0) {
-        return { type: JsonSchemaType.ORDERED_LIST, items: null };
+        return { type: JsonSchemaType.ORDERED_LIST, properties: {} };
       }
-      return {
-        type: JsonSchemaType.ORDERED_LIST,
-        items:
-          Array.isArray(data) && data.length > 0 ? JsonSchemaHelper.generateSchema(data[0]) : null,
-      };
+      const items =
+        Array.isArray(data) && data.length > 0
+          ? JsonSchemaHelper.generateSchema(data[0])
+          : undefined;
+      if (items !== undefined) {
+        return {
+          type: JsonSchemaType.ORDERED_LIST,
+          items,
+          properties: {},
+        };
+      }
+      return { type: JsonSchemaType.ORDERED_LIST, properties: {} };
     }
 
     if (detailedType === JsonSchemaType.UNORDERED_LIST) {
       // Handle Set objects
       if (data instanceof Set) {
         const firstItem = data.size > 0 ? data.values().next().value : null;
-        return {
-          type: JsonSchemaType.UNORDERED_LIST,
-          items: firstItem !== null ? JsonSchemaHelper.generateSchema(firstItem) : null,
-        };
+        if (firstItem !== null) {
+          return {
+            type: JsonSchemaType.UNORDERED_LIST,
+            items: JsonSchemaHelper.generateSchema(firstItem),
+            properties: {},
+          };
+        }
       }
-      return { type: JsonSchemaType.UNORDERED_LIST, items: null };
+      return { type: JsonSchemaType.UNORDERED_LIST, properties: {} };
     }
 
     if (detailedType === JsonSchemaType.OBJECT) {
@@ -253,35 +223,31 @@ export class JsonSchemaHelper {
       // Handle Map objects
       if (data instanceof Map) {
         data.forEach((value, key) => {
-          if (schema.properties) {
-            const keyString = String(key);
-            const generatedSchema = JsonSchemaHelper.generateSchema(value);
+          const keyString = String(key);
+          const generatedSchema = JsonSchemaHelper.generateSchema(value);
 
-            // Check for schema override for this key
-            if (schemaMerges && schemaMerges[keyString]) {
-              schema.properties[keyString] = JsonSchemaHelper.mergeSchemaWithMerges(
-                generatedSchema,
-                schemaMerges[keyString],
-              );
-            } else {
-              schema.properties[keyString] = generatedSchema;
-            }
+          // Check for schema override for this key
+          if (schemaMerges && schemaMerges[keyString]) {
+            schema.properties[keyString] = JsonSchemaHelper.mergeSchemaWithMerges(
+              generatedSchema,
+              schemaMerges[keyString],
+            );
+          } else {
+            schema.properties[keyString] = generatedSchema;
           }
         });
       } else if (typeof data === "object") {
         Object.keys(data).forEach((key) => {
-          if (schema.properties) {
-            const generatedSchema = JsonSchemaHelper.generateSchema(data[key]);
+          const generatedSchema = JsonSchemaHelper.generateSchema(data[key]);
 
-            // Check for schema override for this key
-            if (schemaMerges && schemaMerges[key]) {
-              schema.properties[key] = JsonSchemaHelper.mergeSchemaWithMerges(
-                generatedSchema,
-                schemaMerges[key],
-              );
-            } else {
-              schema.properties[key] = generatedSchema;
-            }
+          // Check for schema override for this key
+          if (schemaMerges && schemaMerges[key]) {
+            schema.properties[key] = JsonSchemaHelper.mergeSchemaWithMerges(
+              generatedSchema,
+              schemaMerges[key],
+            );
+          } else {
+            schema.properties[key] = generatedSchema;
           }
         });
       }
@@ -289,8 +255,8 @@ export class JsonSchemaHelper {
       return schema;
     }
 
-    // For primitive types, return the standardized type
-    return { type: detailedType };
+    // For primitive types, return just the type
+    return { type: detailedType, properties: {} };
   }
 
   /**
@@ -357,7 +323,7 @@ export class JsonSchemaHelper {
 
           decodedData[key] = decodedValue;
         } catch (error) {
-          logger.warn(`[JsonSchemaHelper] Failed to decode ${key}:`, error);
+          logger.debug(`[JsonSchemaHelper] Failed to decode ${key}:`, error);
           // Keep original value if decoding fails
           decodedData[key] = data[key];
         }
