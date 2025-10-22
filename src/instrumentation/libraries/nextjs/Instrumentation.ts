@@ -205,18 +205,6 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
             return originalHandleRequest.call(this, req, res, parsedUrl);
           }
 
-          if (
-            !shouldSample({
-              samplingRate: self.tuskDrift.getSamplingRate(),
-              isAppReady: self.tuskDrift.isAppReady(),
-            })
-          ) {
-            logger.debug(
-              `[NextjsInstrumentation] Skipping server span due to sampling rate: ${url}`,
-            );
-            return originalHandleRequest.call(this, req, res, parsedUrl);
-          }
-
           logger.debug(`[NextjsInstrumentation] Creating server span for ${method} ${url}`);
           return handleRecordMode({
             originalFunctionCall: () => originalHandleRequest.call(this, req, res, parsedUrl),
