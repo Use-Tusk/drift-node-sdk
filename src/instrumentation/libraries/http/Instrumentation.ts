@@ -256,20 +256,6 @@ export class HttpInstrumentation extends TdInstrumentationBase {
         return originalHandler.call(this);
       }
 
-      if (
-        !shouldSample({
-          samplingRate: this.tuskDrift.getSamplingRate(),
-          isAppReady: this.tuskDrift.isAppReady(),
-        })
-      ) {
-        logger.debug(
-          `Skipping server span due to sampling rate`,
-          url,
-          this.tuskDrift.getSamplingRate(),
-        );
-        return originalHandler.call(this);
-      }
-
       logger.debug(`[HttpInstrumentation] Creating server span for ${method} ${url}`);
       return handleRecordMode({
         originalFunctionCall: () => originalHandler.call(this),
@@ -1313,6 +1299,18 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     return (originalEmit: Function) => {
       return function (this: Server, eventName: string, ...args: any[]) {
         if (eventName === "request") {
+          // Sample as soon as we can to avoid additional overhead if this request is not sampled
+          if (self.mode === TuskDriftMode.RECORD) {
+            if (
+              !shouldSample({
+                samplingRate: self.tuskDrift.getSamplingRate(),
+                isAppReady: self.tuskDrift.isAppReady(),
+              })
+            ) {
+              return originalEmit.apply(this, [eventName, ...args]);
+            }
+          }
+
           const req = args[0];
           const res = args[1];
 
