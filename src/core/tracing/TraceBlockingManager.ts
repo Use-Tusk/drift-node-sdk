@@ -15,10 +15,10 @@ export class TraceBlockingManager {
   private cleanupIntervalId: NodeJS.Timeout | null = null;
 
   // Default TTL: 10 minutes (traces should complete well before this)
-  private readonly DEFAULT_TTL_MS = 1 * 60 * 1000;
+  private readonly DEFAULT_TTL_MS = 10 * 60 * 1000;
 
   // Cleanup interval: 2 minutes
-  private readonly CLEANUP_INTERVAL_MS = 0.5 * 60 * 1000;
+  private readonly CLEANUP_INTERVAL_MS = 2 * 60 * 1000;
 
   private constructor() {
     this.startCleanupInterval();
@@ -51,32 +51,6 @@ export class TraceBlockingManager {
       this.traceTimestamps.set(traceId, originalDate.getTime());
       logger.debug(`[TraceBlockingManager] Blocked trace: ${traceId}`);
     }
-  }
-
-  /**
-   * Unblock a trace ID (useful for testing or manual intervention)
-   */
-  unblockTrace(traceId: string): void {
-    this.blockedTraceIds.delete(traceId);
-    this.traceTimestamps.delete(traceId);
-    logger.debug(`[TraceBlockingManager] Unblocked trace: ${traceId}`);
-  }
-
-  /**
-   * Get count of currently blocked traces
-   */
-  getBlockedTraceCount(): number {
-    return this.blockedTraceIds.size;
-  }
-
-  /**
-   * Clear all blocked traces (useful for testing)
-   */
-  clearAll(): void {
-    const count = this.blockedTraceIds.size;
-    this.blockedTraceIds.clear();
-    this.traceTimestamps.clear();
-    logger.debug(`[TraceBlockingManager] Cleared ${count} blocked trace(s)`);
   }
 
   /**
@@ -120,26 +94,6 @@ export class TraceBlockingManager {
       logger.debug(
         `[TraceBlockingManager] Cleaned up ${expiredTraces.length} expired blocked trace(s)`,
       );
-    }
-  }
-
-  /**
-   * Stop cleanup interval (useful for testing and shutdown)
-   */
-  stopCleanup(): void {
-    if (this.cleanupIntervalId) {
-      clearInterval(this.cleanupIntervalId);
-      this.cleanupIntervalId = null;
-    }
-  }
-
-  /**
-   * Reset singleton instance (useful for testing)
-   */
-  static resetInstance(): void {
-    if (TraceBlockingManager.instance) {
-      TraceBlockingManager.instance.stopCleanup();
-      TraceBlockingManager.instance = null;
     }
   }
 }
