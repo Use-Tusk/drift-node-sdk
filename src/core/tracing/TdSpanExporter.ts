@@ -122,7 +122,7 @@ export class TdSpanExporter implements SpanExporter {
       `After filtering based on library name: ${filteredSpansBasedOnLibraryName.length} span(s) remaining`,
     );
 
-    const MAX_SPAN_SIZE_MB = 20;
+    const MAX_SPAN_SIZE_MB = 1;
     const MAX_SPAN_SIZE_BYTES = MAX_SPAN_SIZE_MB * 1024 * 1024;
 
     const filteredSpansBasedOnSize: ReadableSpan[] = filteredSpansBasedOnLibraryName.filter(
