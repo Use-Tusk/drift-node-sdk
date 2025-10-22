@@ -91,7 +91,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     }
 
     // ESM Support: Detect if this is an ESM module
-    const isESM = (httpModule as any)[Symbol.toStringTag] === 'Module';
+    const isESM = (httpModule as any)[Symbol.toStringTag] === "Module";
 
     if (isESM) {
       // ESM Case: Also set wrapped methods on the default export
@@ -236,20 +236,6 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     } else if (this.mode === TuskDriftMode.RECORD) {
       // Skip CORS preflight in RECORD mode (don't create a span)
       if (method.toUpperCase() === "OPTIONS" || !!req.headers["access-control-request-method"]) {
-        return originalHandler.call(this);
-      }
-
-      if (
-        !shouldSample({
-          samplingRate: this.tuskDrift.getSamplingRate(),
-          isAppReady: this.tuskDrift.isAppReady(),
-        })
-      ) {
-        logger.debug(
-          `Skipping server span due to sampling rate`,
-          url,
-          this.tuskDrift.getSamplingRate(),
-        );
         return originalHandler.call(this);
       }
 
@@ -933,7 +919,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           complete: true,
           readable: false,
           // Add error-specific fields
-          errorName: error.name || 'UNKNOWN',
+          errorName: error.name || "UNKNOWN",
           errorMessage: error.message,
         };
 
@@ -1293,6 +1279,20 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     return (originalEmit: Function) => {
       return function (this: Server, eventName: string, ...args: any[]) {
         if (eventName === "request") {
+          if (self.mode === TuskDriftMode.RECORD) {
+            if (
+              !shouldSample({
+                samplingRate: self.tuskDrift.getSamplingRate(),
+                isAppReady: self.tuskDrift.isAppReady(),
+              })
+            ) {
+              logger.debug(
+                `Skipping server span due to sampling rate`,
+                self.tuskDrift.getSamplingRate(),
+              );
+              return originalEmit.apply(this, [eventName, ...args]);
+            }
+          }
           const req = args[0];
           const res = args[1];
 

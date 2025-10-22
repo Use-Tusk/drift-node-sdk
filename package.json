@@ -35,7 +35,8 @@
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
     "test": "ava --workerThreads false",
-    "test:docker": "docker compose -f docker-compose.test.yml up -d --wait"
+    "test:docker": "docker compose -f docker-compose.test.yml up -d --wait",
+    "benchmark:compare": "node benchmarks/compare-benchmarks.js"
   },
   "keywords": [
     "instrumentation",
