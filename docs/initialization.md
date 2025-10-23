@@ -18,6 +18,25 @@ Create a separate file (e.g. `tuskDriftInit.ts`) to initialize the Tusk Drift SD
 
 **IMPORTANT**: Ensure that `TuskDrift` is initialized before any other telemetry providers (e.g. OpenTelemetry, Sentry, etc.). If not, your existing telemetry may not work properly.
 
+### Determining Your Module System
+
+Before proceeding, you need to determine whether your application uses **CommonJS** or **ESM** (ECMAScript Modules).
+
+The easiest way to determine this is by looking at your import syntax.
+
+**If your application uses `require()`:**
+
+- Your application is CommonJS (use the CommonJS setup below)
+
+**If your application uses `import` statements:**
+
+- This could be either CommonJS or ESM, depending on your build configuration
+- Check your compiled output (if you compile to a directory like `dist/`):
+  - If the compiled code contains `require()` statements → CommonJS application
+  - If the compiled code contains `import` statements → ESM application
+- If you don't compile your code (running source files directly):
+  - It is an ESM application
+
 ### For CommonJS Applications
 
 ```typescript
