@@ -12,7 +12,13 @@ import type {
   ServerResponse,
 } from "http";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
-import { combineChunks, getDecodedType, httpBodyEncoder, normalizeHeaders } from "./utils";
+import {
+  combineChunks,
+  getDecodedType,
+  httpBodyEncoder,
+  normalizeHeaders,
+  STATIC_ASSET_TYPES,
+} from "./utils";
 import { HttpReplayHooks } from "./HttpReplayHooks";
 import {
   HttpClientInputValue,
@@ -47,6 +53,7 @@ import {
 import { EnvVarTracker } from "../../core/trackers";
 import { HttpSpanData, HttpTransformEngine } from "./HttpTransformEngine";
 import { TransformConfigs } from "../types";
+import { TraceBlockingManager } from "src/core/tracing/TraceBlockingManager";
 
 export interface HttpInstrumentationConfig extends TdInstrumentationConfig {
   requestHook?: (request: any) => void;
@@ -465,9 +472,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
             outputSchemaMerges: {
               body: {
                 encoding: EncodingType.BASE64,
-                decodedType: getDecodedType(
-                  (spanData.outputValue as any).headers?.["content-type"] || "",
-                ),
+                decodedType: getDecodedType(spanData.outputValue?.headers?.["content-type"] || ""),
               },
               headers: {
                 matchImportance: 0,
@@ -490,6 +495,18 @@ export class HttpInstrumentation extends TdInstrumentationBase {
               : { code: SpanStatusCode.OK };
 
           SpanUtils.setStatus(spanInfo.span, status);
+
+          // Ignore static asset responses
+          // Must check this before ending the span
+          const decodedType = getDecodedType(outputValue.headers?.["content-type"] || "");
+          if (decodedType && STATIC_ASSET_TYPES.has(decodedType)) {
+            const traceBlockingManager = TraceBlockingManager.getInstance();
+            traceBlockingManager.blockTrace(spanInfo.traceId);
+            logger.debug(
+              `[HttpInstrumentation] Blocking trace ${spanInfo.traceId} because it is an static asset response. Decoded type: ${decodedType}`,
+            );
+          }
+
           SpanUtils.endSpan(spanInfo.span);
         } catch (error) {
           logger.error(`[HttpInstrumentation] Error adding response attributes to span:`, error);

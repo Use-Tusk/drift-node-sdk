@@ -137,3 +137,20 @@ export function getDecodedType(
   const mainType = contentTypeString.toLowerCase().split(";")[0].trim();
   return CONTENT_TYPE_MAPPING[mainType];
 }
+
+export const STATIC_ASSET_TYPES = new Set([
+  DecodedType.HTML,
+  DecodedType.CSS,
+  DecodedType.JAVASCRIPT,
+  DecodedType.JPEG,
+  DecodedType.PNG,
+  DecodedType.GIF,
+  DecodedType.WEBP,
+  DecodedType.SVG,
+  DecodedType.PDF,
+  DecodedType.AUDIO,
+  DecodedType.VIDEO,
+  DecodedType.BINARY,
+  DecodedType.ZIP,
+  DecodedType.GZIP,
+]);

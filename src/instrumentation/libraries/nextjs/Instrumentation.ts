@@ -16,7 +16,7 @@ import { shouldSample, OriginalGlobalUtils, logger } from "../../../core/utils";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
 import { EncodingType, JsonSchemaHelper } from "../../../core/tracing/JsonSchemaHelper";
 import { EnvVarTracker } from "../../core/trackers";
-import { combineChunks, httpBodyEncoder, getDecodedType } from "../http/utils";
+import { combineChunks, httpBodyEncoder, getDecodedType, STATIC_ASSET_TYPES } from "../http/utils";
 import { TraceBlockingManager } from "../../../core/tracing/TraceBlockingManager";
 import { IncomingMessage, ServerResponse } from "http";
 
@@ -445,13 +445,14 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
 
       SpanUtils.setStatus(spanInfo.span, status);
 
-      // Ignore HTML responses
+      // Ignore static asset responses
       // Must check this before ending the span
-      if (getDecodedType(outputValue.headers?.["content-type"] || "") === DecodedType.HTML) {
+      const decodedType = getDecodedType(outputValue.headers?.["content-type"] || "");
+      if (decodedType && STATIC_ASSET_TYPES.has(decodedType)) {
         const traceBlockingManager = TraceBlockingManager.getInstance();
         traceBlockingManager.blockTrace(spanInfo.traceId);
         logger.debug(
-          `[NextjsInstrumentation] Blocking trace ${spanInfo.traceId} because it is an HTML response`,
+          `[NextjsInstrumentation] Blocking trace ${spanInfo.traceId} because it is an static asset response. Decoded type: ${decodedType}`,
         );
       }
 
