@@ -443,8 +443,6 @@ export class HttpInstrumentation extends TdInstrumentationBase {
             outputValue.bodySize = responseBuffer.length;
           } catch (error) {
             logger.error(`[HttpInstrumentation] Error processing server response body:`, error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            outputValue.bodyProcessingError = errorMessage;
           }
         }
 
