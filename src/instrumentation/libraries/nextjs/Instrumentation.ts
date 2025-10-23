@@ -356,8 +356,23 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
       };
     }
 
-    // Call original Next.js handler (pass through)
-    await originalHandleRequest.call(thisContext, req, res, parsedUrl);
+    try {
+      // Call original Next.js handler (pass through)
+      await originalHandleRequest.call(thisContext, req, res, parsedUrl);
+    } catch (error) {
+      logger.error(
+        `[NextjsInstrumentation] Error in Next.js request: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+      try {
+        SpanUtils.endSpan(spanInfo.span, {
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      } catch (e) {
+        logger.error(`[NextjsInstrumentation] Error ending span:`, e);
+      }
+      throw error;
+    }
 
     try {
       // Capture final status code if not already captured
@@ -512,8 +527,16 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
       }
     } catch (error) {
       logger.error(
-        `[NextjsInstrumentation] Error in Next.js request: ${error instanceof Error ? error.message : String(error)}`,
+        `[NextjsInstrumentation] Error in Next.js request: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
+      try {
+        SpanUtils.endSpan(spanInfo.span, {
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      } catch (e) {
+        logger.error(`[NextjsInstrumentation] Error ending span:`, e);
+      }
     }
   }
 
