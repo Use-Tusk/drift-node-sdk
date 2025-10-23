@@ -4,6 +4,7 @@ import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode, context } from "@opentelemetry/api";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
 import { HttpReplayHooks } from "../http/HttpReplayHooks";
+import { DecodedType } from "@use-tusk/drift-schemas/core/json_schema";
 import {
   NextjsInstrumentationConfig,
   NextjsServerInputValue,
@@ -15,7 +16,9 @@ import { shouldSample, OriginalGlobalUtils, logger } from "../../../core/utils";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
 import { EncodingType, JsonSchemaHelper } from "../../../core/tracing/JsonSchemaHelper";
 import { EnvVarTracker } from "../../core/trackers";
-import { combineChunks, httpBodyEncoder, getDecodedType } from "../http/utils";
+import { combineChunks, httpBodyEncoder, getDecodedType, STATIC_ASSET_TYPES } from "../http/utils";
+import { TraceBlockingManager } from "../../../core/tracing/TraceBlockingManager";
+import { IncomingMessage, ServerResponse } from "http";
 
 export class NextjsInstrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "NextjsInstrumentation";
@@ -109,7 +112,12 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
     const self = this;
 
     return (originalHandleRequest: Function) => {
-      return async function (this: any, req: any, res: any, parsedUrl?: any) {
+      return async function (
+        this: any,
+        req: IncomingMessage,
+        res: ServerResponse,
+        parsedUrl?: any,
+      ) {
         // Sample as soon as we can to avoid additional overhead if this request is not sampled
         if (self.mode === TuskDriftMode.RECORD) {
           if (
@@ -266,8 +274,8 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
     inputValue,
     thisContext,
   }: {
-    req: any;
-    res: any;
+    req: IncomingMessage;
+    res: ServerResponse;
     parsedUrl: any;
     originalHandleRequest: Function;
     spanInfo: SpanInfo;
@@ -351,7 +359,22 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
     try {
       // Call original Next.js handler (pass through)
       await originalHandleRequest.call(thisContext, req, res, parsedUrl);
+    } catch (error) {
+      logger.error(
+        `[NextjsInstrumentation] Error in Next.js request: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+      try {
+        SpanUtils.endSpan(spanInfo.span, {
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      } catch (e) {
+        logger.error(`[NextjsInstrumentation] Error ending span:`, e);
+      }
+      throw error;
+    }
 
+    try {
       // Capture final status code if not already captured
       if (!capturedStatusCode) {
         capturedStatusCode = res.statusCode;
@@ -391,8 +414,6 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
           outputValue.bodySize = responseBuffer.length;
         } catch (error) {
           logger.error(`[NextjsInstrumentation] Error processing response body:`, error);
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          outputValue.bodyProcessingError = errorMessage;
         }
       }
 
@@ -423,6 +444,18 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
           : { code: SpanStatusCode.OK };
 
       SpanUtils.setStatus(spanInfo.span, status);
+
+      // Ignore static asset responses
+      // Must check this before ending the span
+      const decodedType = getDecodedType(outputValue.headers?.["content-type"] || "");
+      if (decodedType && STATIC_ASSET_TYPES.has(decodedType)) {
+        const traceBlockingManager = TraceBlockingManager.getInstance();
+        traceBlockingManager.blockTrace(spanInfo.traceId);
+        logger.debug(
+          `[NextjsInstrumentation] Blocking trace ${spanInfo.traceId} because it is an static asset response. Decoded type: ${decodedType}`,
+        );
+      }
+
       SpanUtils.endSpan(spanInfo.span);
 
       // In REPLAY mode, send inbound span to CLI
@@ -495,13 +528,16 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
       }
     } catch (error) {
       logger.error(
-        `[NextjsInstrumentation] Error in Next.js request: ${error instanceof Error ? error.message : String(error)}`,
+        `[NextjsInstrumentation] Error in Next.js request: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
+      try {
+        SpanUtils.endSpan(spanInfo.span, {
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      } catch (e) {
+        logger.error(`[NextjsInstrumentation] Error ending span:`, e);
+      }
     }
   }
 
