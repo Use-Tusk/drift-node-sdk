@@ -1,0 +1,373 @@
+{
+  "timestamp": "2025-10-22T04:38:17.527Z",
+  "samplingRate": 0.01,
+  "disabled": [
+    {
+      "index": 0,
+      "taskName": "High Throughput: GET /api/simple",
+      "latencyAvg": "92395 ± 0.57%",
+      "latencyMed": "79667 ± 4083.9",
+      "throughputAvg": "11941 ± 0.09%",
+      "throughputMed": "12552 ± 671",
+      "samples": 108231
+    },
+    {
+      "index": 1,
+      "taskName": "High Throughput: POST /api/simple-post",
+      "latencyAvg": "107164 ± 0.49%",
+      "latencyMed": "94667 ± 5708.2",
+      "throughputAvg": "10200 ± 0.09%",
+      "throughputMed": "10563 ± 657",
+      "samples": 93315
+    },
+    {
+      "index": 2,
+      "taskName": "High CPU: POST /api/compute-hash",
+      "latencyAvg": "534740 ± 2.15%",
+      "latencyMed": "399917 ± 11791",
+      "throughputAvg": "2444 ± 0.24%",
+      "throughputMed": "2501 ± 74",
+      "samples": 18701
+    },
+    {
+      "index": 3,
+      "taskName": "High IO, Low CPU: POST /api/io-bound",
+      "latencyAvg": "29680409 ± 0.32%",
+      "latencyMed": "29816166 ± 566249",
+      "throughputAvg": "34 ± 0.31%",
+      "throughputMed": "34 ± 1",
+      "samples": 337
+    },
+    {
+      "index": 4,
+      "taskName": "Large Payload: GET /api/small (100KB)",
+      "latencyAvg": "396847 ± 0.31%",
+      "latencyMed": "378292 ± 6584.2",
+      "throughputAvg": "2584 ± 0.14%",
+      "throughputMed": "2643 ± 46",
+      "samples": 25199
+    },
+    {
+      "index": 5,
+      "taskName": "Large Payload: POST /api/small-post (100KB)",
+      "latencyAvg": "670332 ± 0.32%",
+      "latencyMed": "623875 ± 16584",
+      "throughputAvg": "1528 ± 0.20%",
+      "throughputMed": "1603 ± 43",
+      "samples": 14918
+    },
+    {
+      "index": 6,
+      "taskName": "Large Payload: GET /api/medium (1MB)",
+      "latencyAvg": "3528692 ± 0.69%",
+      "latencyMed": "3272833 ± 167937",
+      "throughputAvg": "290 ± 0.46%",
+      "throughputMed": "306 ± 16",
+      "samples": 2834
+    },
+    {
+      "index": 7,
+      "taskName": "Large Payload: POST /api/medium-post (1MB)",
+      "latencyAvg": "6545852 ± 0.95%",
+      "latencyMed": "6256855 ± 342312",
+      "throughputAvg": "156 ± 0.59%",
+      "throughputMed": "160 ± 9",
+      "samples": 1528
+    },
+    {
+      "index": 8,
+      "taskName": "Large Payload: GET /api/large (2MB)",
+      "latencyAvg": "6923199 ± 0.59%",
+      "latencyMed": "6740375 ± 249833",
+      "throughputAvg": "146 ± 0.46%",
+      "throughputMed": "148 ± 5",
+      "samples": 1445
+    },
+    {
+      "index": 9,
+      "taskName": "Large Payload: POST /api/large-post (2MB)",
+      "latencyAvg": "12476212 ± 0.49%",
+      "latencyMed": "12221979 ± 200146",
+      "throughputAvg": "80 ± 0.40%",
+      "throughputMed": "82 ± 1",
+      "samples": 802
+    },
+    {
+      "index": 10,
+      "taskName": "Transform endpoints",
+      "latencyAvg": "106700 ± 0.46%",
+      "latencyMed": "96125 ± 5583.3",
+      "throughputAvg": "10145 ± 0.09%",
+      "throughputMed": "10403 ± 621",
+      "samples": 93721
+    }
+  ],
+  "active": [
+    {
+      "index": 0,
+      "taskName": "High Throughput: GET /api/simple",
+      "latencyAvg": "90993 ± 0.44%",
+      "latencyMed": "80792 ± 4667.0",
+      "throughputAvg": "11891 ± 0.08%",
+      "throughputMed": "12377 ± 744",
+      "samples": 109899
+    },
+    {
+      "index": 1,
+      "taskName": "High Throughput: POST /api/simple-post",
+      "latencyAvg": "108181 ± 0.48%",
+      "latencyMed": "96416 ± 5708.0",
+      "throughputAvg": "10079 ± 0.09%",
+      "throughputMed": "10372 ± 632",
+      "samples": 92438
+    },
+    {
+      "index": 2,
+      "taskName": "High CPU: POST /api/compute-hash",
+      "latencyAvg": "564248 ± 2.27%",
+      "latencyMed": "411667 ± 15167",
+      "throughputAvg": "2353 ± 0.27%",
+      "throughputMed": "2429 ± 90",
+      "samples": 17723
+    },
+    {
+      "index": 3,
+      "taskName": "High IO, Low CPU: POST /api/io-bound",
+      "latencyAvg": "29695504 ± 0.35%",
+      "latencyMed": "29653667 ± 588083",
+      "throughputAvg": "34 ± 0.35%",
+      "throughputMed": "34 ± 1",
+      "samples": 337
+    },
+    {
+      "index": 4,
+      "taskName": "Large Payload: GET /api/small (100KB)",
+      "latencyAvg": "407933 ± 0.33%",
+      "latencyMed": "380292 ± 8666.0",
+      "throughputAvg": "2534 ± 0.17%",
+      "throughputMed": "2630 ± 60",
+      "samples": 24514
+    },
+    {
+      "index": 5,
+      "taskName": "Large Payload: POST /api/small-post (100KB)",
+      "latencyAvg": "731125 ± 0.68%",
+      "latencyMed": "654208 ± 17541",
+      "throughputAvg": "1445 ± 0.27%",
+      "throughputMed": "1529 ± 41",
+      "samples": 13678
+    },
+    {
+      "index": 6,
+      "taskName": "Large Payload: GET /api/medium (1MB)",
+      "latencyAvg": "3597219 ± 0.65%",
+      "latencyMed": "3328895 ± 198812",
+      "throughputAvg": "285 ± 0.50%",
+      "throughputMed": "300 ± 19",
+      "samples": 2780
+    },
+    {
+      "index": 7,
+      "taskName": "Large Payload: POST /api/medium-post (1MB)",
+      "latencyAvg": "7032490 ± 1.53%",
+      "latencyMed": "6530792 ± 469146",
+      "throughputAvg": "148 ± 0.79%",
+      "throughputMed": "153 ± 11",
+      "samples": 1422
+    },
+    {
+      "index": 8,
+      "taskName": "Large Payload: GET /api/large (2MB)",
+      "latencyAvg": "8625445 ± 0.93%",
+      "latencyMed": "8482980 ± 677209",
+      "throughputAvg": "118 ± 0.79%",
+      "throughputMed": "118 ± 9",
+      "samples": 1160
+    },
+    {
+      "index": 9,
+      "taskName": "Large Payload: POST /api/large-post (2MB)",
+      "latencyAvg": "14186727 ± 2.04%",
+      "latencyMed": "13139125 ± 496125",
+      "throughputAvg": "73 ± 0.98%",
+      "throughputMed": "76 ± 3",
+      "samples": 705
+    },
+    {
+      "index": 10,
+      "taskName": "Transform endpoints",
+      "latencyAvg": "112630 ± 0.51%",
+      "latencyMed": "99208 ± 6499.3",
+      "throughputAvg": "9737 ± 0.10%",
+      "throughputMed": "10080 ± 682",
+      "samples": 88787
+    }
+  ],
+  "comparisons": [
+    {
+      "taskName": "High Throughput: GET /api/simple",
+      "disabled": {
+        "latency": 92395,
+        "throughput": 11941
+      },
+      "active": {
+        "latency": 90993,
+        "throughput": 11891
+      },
+      "impact": {
+        "latencyOverhead": -1.5173981276043076,
+        "throughputImpact": -0.41872539988275687
+      }
+    },
+    {
+      "taskName": "High Throughput: POST /api/simple-post",
+      "disabled": {
+        "latency": 107164,
+        "throughput": 10200
+      },
+      "active": {
+        "latency": 108181,
+        "throughput": 10079
+      },
+      "impact": {
+        "latencyOverhead": 0.9490127281549774,
+        "throughputImpact": -1.1862745098039216
+      }
+    },
+    {
+      "taskName": "High CPU: POST /api/compute-hash",
+      "disabled": {
+        "latency": 534740,
+        "throughput": 2444
+      },
+      "active": {
+        "latency": 564248,
+        "throughput": 2353
+      },
+      "impact": {
+        "latencyOverhead": 5.518195758686464,
+        "throughputImpact": -3.723404255319149
+      }
+    },
+    {
+      "taskName": "High IO, Low CPU: POST /api/io-bound",
+      "disabled": {
+        "latency": 29680409,
+        "throughput": 34
+      },
+      "active": {
+        "latency": 29695504,
+        "throughput": 34
+      },
+      "impact": {
+        "latencyOverhead": 0.050858463574406945,
+        "throughputImpact": 0
+      }
+    },
+    {
+      "taskName": "Large Payload: GET /api/small (100KB)",
+      "disabled": {
+        "latency": 396847,
+        "throughput": 2584
+      },
+      "active": {
+        "latency": 407933,
+        "throughput": 2534
+      },
+      "impact": {
+        "latencyOverhead": 2.793519920775513,
+        "throughputImpact": -1.9349845201238391
+      }
+    },
+    {
+      "taskName": "Large Payload: POST /api/small-post (100KB)",
+      "disabled": {
+        "latency": 670332,
+        "throughput": 1528
+      },
+      "active": {
+        "latency": 731125,
+        "throughput": 1445
+      },
+      "impact": {
+        "latencyOverhead": 9.069088153332975,
+        "throughputImpact": -5.4319371727748695
+      }
+    },
+    {
+      "taskName": "Large Payload: GET /api/medium (1MB)",
+      "disabled": {
+        "latency": 3528692,
+        "throughput": 290
+      },
+      "active": {
+        "latency": 3597219,
+        "throughput": 285
+      },
+      "impact": {
+        "latencyOverhead": 1.9419943707186686,
+        "throughputImpact": -1.7241379310344827
+      }
+    },
+    {
+      "taskName": "Large Payload: POST /api/medium-post (1MB)",
+      "disabled": {
+        "latency": 6545852,
+        "throughput": 156
+      },
+      "active": {
+        "latency": 7032490,
+        "throughput": 148
+      },
+      "impact": {
+        "latencyOverhead": 7.434295795260877,
+        "throughputImpact": -5.128205128205128
+      }
+    },
+    {
+      "taskName": "Large Payload: GET /api/large (2MB)",
+      "disabled": {
+        "latency": 6923199,
+        "throughput": 146
+      },
+      "active": {
+        "latency": 8625445,
+        "throughput": 118
+      },
+      "impact": {
+        "latencyOverhead": 24.587564217062084,
+        "throughputImpact": -19.17808219178082
+      }
+    },
+    {
+      "taskName": "Large Payload: POST /api/large-post (2MB)",
+      "disabled": {
+        "latency": 12476212,
+        "throughput": 80
+      },
+      "active": {
+        "latency": 14186727,
+        "throughput": 73
+      },
+      "impact": {
+        "latencyOverhead": 13.710211080093861,
+        "throughputImpact": -8.75
+      }
+    },
+    {
+      "taskName": "Transform endpoints",
+      "disabled": {
+        "latency": 106700,
+        "throughput": 10145
+      },
+      "active": {
+        "latency": 112630,
+        "throughput": 9737
+      },
+      "impact": {
+        "latencyOverhead": 5.557638238050609,
+        "throughputImpact": -4.021685559388861
+      }
+    }
+  ]
+}
