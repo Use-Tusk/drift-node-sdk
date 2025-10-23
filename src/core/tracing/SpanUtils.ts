@@ -125,6 +125,8 @@ export class SpanUtils {
           span.end();
         } catch (e) {
           logger.error("SpanUtils error auto-ending span:", e);
+        } finally {
+          SpanUtils.spanTimeouts.delete(span);
         }
       }, SpanUtils.SPAN_TIMEOUT_MS);
 
