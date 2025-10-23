@@ -75,6 +75,9 @@ export interface AddSpanAttributesOptions {
 }
 
 export class SpanUtils {
+  private static spanTimeouts = new WeakMap<Span, NodeJS.Timeout>();
+  private static readonly SPAN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
   /**
    * Creates a new span and returns span info including trace ID and span ID
    */
@@ -108,6 +111,27 @@ export class SpanUtils {
         },
         parentContext,
       );
+
+      // Safeguard: Set up automatic span ending as a failsafe
+      const timeout = setTimeout(() => {
+        logger.warn(
+          `[SpanUtils] Span '${options.name}' was not ended after ${SpanUtils.SPAN_TIMEOUT_MS}ms. Auto-ending span.`,
+        );
+        try {
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: "Span timeout - auto-ended",
+          });
+          span.end();
+        } catch (e) {
+          logger.error("SpanUtils error auto-ending span:", e);
+        }
+      }, SpanUtils.SPAN_TIMEOUT_MS);
+
+      // Use unref() so timeout doesn't keep Node.js process alive
+      // This is a non critical timeout, hence not important for it to keep the process alive
+      timeout.unref();
+      SpanUtils.spanTimeouts.set(span, timeout);
 
       const spanContext = span.spanContext();
 
@@ -307,6 +331,13 @@ export class SpanUtils {
    */
   static endSpan(span: Span, status?: { code: SpanStatusCode; message?: string }): void {
     try {
+      // Clear the timeout safeguard since we're properly ending the span
+      const timeout = SpanUtils.spanTimeouts.get(span);
+      if (timeout) {
+        clearTimeout(timeout);
+        SpanUtils.spanTimeouts.delete(span);
+      }
+
       if (status) {
         span.setStatus(status);
       }
