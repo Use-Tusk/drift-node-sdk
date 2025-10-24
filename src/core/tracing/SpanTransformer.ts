@@ -33,13 +33,17 @@ export class SpanTransformer {
       ? JSON.parse(inputSchemaMergesString)
       : undefined;
 
-    const { schema: inputSchema, decodedValueHash: inputValueHash } =
-      JsonSchemaHelper.generateSchemaAndHash(inputData, inputSchemaMerges);
+    const {
+      schema: inputSchema,
+      decodedValueHash: inputValueHash,
+      decodedSchemaHash: inputSchemaHash,
+    } = JsonSchemaHelper.generateSchemaAndHash(inputData, inputSchemaMerges);
 
     // Process output data
     let outputData: unknown = {};
     let outputSchema: JsonSchema = { type: JsonSchemaType.OBJECT, properties: {} };
     let outputValueHash: string = "";
+    let outputSchemaHash: string = "";
 
     if (attributes[TdSpanAttributes.OUTPUT_VALUE]) {
       const outputValueString = attributes[TdSpanAttributes.OUTPUT_VALUE] as string;
@@ -51,11 +55,17 @@ export class SpanTransformer {
         ? JSON.parse(outputSchemaMergesString)
         : undefined;
 
-      ({ schema: outputSchema, decodedValueHash: outputValueHash } =
-        JsonSchemaHelper.generateSchemaAndHash(outputData, outputSchemaMerges));
+      ({
+        schema: outputSchema,
+        decodedValueHash: outputValueHash,
+        decodedSchemaHash: outputSchemaHash,
+      } = JsonSchemaHelper.generateSchemaAndHash(outputData, outputSchemaMerges));
     } else {
-      ({ schema: outputSchema, decodedSchemaHash: outputValueHash } =
-        JsonSchemaHelper.generateSchemaAndHash(outputData));
+      ({
+        schema: outputSchema,
+        decodedValueHash: outputValueHash,
+        decodedSchemaHash: outputSchemaHash,
+      } = JsonSchemaHelper.generateSchemaAndHash(outputData));
     }
 
     let metadata: MetadataObject | undefined = undefined;
@@ -95,8 +105,8 @@ export class SpanTransformer {
       inputSchema,
       outputSchema,
 
-      inputSchemaHash: JsonSchemaHelper.generateDeterministicHash(inputSchema),
-      outputSchemaHash: JsonSchemaHelper.generateDeterministicHash(outputSchema),
+      inputSchemaHash,
+      outputSchemaHash,
       inputValueHash,
       outputValueHash,
 
