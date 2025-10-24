@@ -6,6 +6,10 @@ Records and replays Google Cloud Firestore database operations to ensure determi
 
 ## Implementation Details
 
+### Stop Recording Child Spans
+
+We stop recording child spans for Firestore operations to avoid recording the underlying grpc calls. This is because we only record/replay at the firestore level, so we don't need to record the underlying grpc calls.
+
 ### Key Design Decision: Synchronous Mock Resolution
 
 **The Challenge**: Unlike most database operations, Firestore's `CollectionReference.doc()` is a **synchronous** method that returns a `DocumentReference` immediately without awaiting a Promise. This creates a unique instrumentation challenge.
@@ -67,7 +71,3 @@ async function initializeDatabase() {
 ```
 
 This limitation is only relevant in replay mode and is mitigated by the pattern of having at least one async operation before using `doc()`.
-
-## Future Improvements
-
-Firestore makes grpc calls under the hood which we also patch. Storing the underlying grpc calls are not useful since we just record/replay at the firestore level, so we should stop recording child spans once we encounter a firestore operation.
