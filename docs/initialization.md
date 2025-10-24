@@ -45,7 +45,7 @@ import { TuskDrift } from "@use-tusk/drift-node-sdk";
 
 // Initialize SDK immediately
 TuskDrift.initialize({
-  apiKey: process.env.TUSK_DRIFT_API_KEY,
+  apiKey: process.env.TUSK_API_KEY,
   env: process.env.NODE_ENV,
 });
 
@@ -69,7 +69,7 @@ import { TuskDrift } from "@use-tusk/drift-node-sdk";
 
 // Initialize SDK immediately
 TuskDrift.initialize({
-  apiKey: process.env.TUSK_DRIFT_API_KEY,
+  apiKey: process.env.TUSK_API_KEY,
   env: process.env.NODE_ENV,
 });
 
