@@ -169,6 +169,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayDocumentGet(spanInfo, inputValue);
@@ -192,6 +193,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordDocumentGet(spanInfo, originalGet, this);
@@ -303,6 +305,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayDocumentWrite(spanInfo, inputValue);
@@ -326,6 +329,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordDocumentWrite(spanInfo, originalCreate, this, data);
@@ -371,6 +375,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayDocumentWrite(spanInfo, inputValue);
@@ -394,6 +399,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordDocumentWrite(
@@ -445,6 +451,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayDocumentWrite(spanInfo, inputValue);
@@ -468,6 +475,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordDocumentWrite(spanInfo, originalUpdate, this, ...args);
@@ -512,6 +520,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayDocumentWrite(spanInfo, inputValue);
@@ -535,6 +544,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordDocumentWrite(
@@ -646,6 +656,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayCollectionAdd(spanInfo, inputValue, this);
@@ -669,6 +680,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordCollectionAdd(spanInfo, originalAdd, this, data);
@@ -775,6 +787,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   // doc is a sync function so we need to fetch the mock syncronously
@@ -834,6 +847,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   // Record the ID (whether auto-generated or provided)
@@ -897,6 +911,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayQueryGet(spanInfo, inputValue);
@@ -920,6 +935,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordQueryGet(spanInfo, originalGet, this);
