@@ -1,0 +1,27 @@
+{
+  "name": "esm-nextjs-e2e-test",
+  "version": "1.0.0",
+  "description": "E2E tests for Next.js instrumentation (ESM)",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "dev:record": "TUSK_DRIFT_MODE=RECORD next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@use-tusk/drift-node-sdk": "file:/sdk",
+    "axios": "^1.6.2",
+    "next": "^15.5.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.0.0"
+  }
+}

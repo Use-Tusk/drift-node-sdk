@@ -37,8 +37,13 @@ parse_and_display_test_results() {
   echo "Test Results:"
   echo "======================================"
 
+  # Extract JSON objects from output
+  # Find the section containing JSON (between first { and last })
+  # Use sed to extract from first line with { to end, then use jq to parse
+  local JSON_ARRAY=$(echo "$TEST_RESULTS" | sed -n '/^[[:space:]]*{/,$p' | jq -s '[.[] | select(type == "object")]')
+
   # Parse JSON results and display with colored check marks
-  echo "$TEST_RESULTS" | jq -r '.[] | "\(.test_id) \(.passed) \(.duration)"' | while read -r test_id passed duration; do
+  echo "$JSON_ARRAY" | jq -r '.[] | "\(.test_id) \(.passed) \(.duration)"' | while read -r test_id passed duration; do
     if [ "$passed" = "true" ]; then
       echo -e "${GREEN}✓${NC} Test ID: $test_id (Duration: ${duration}ms)"
     else
@@ -49,7 +54,7 @@ parse_and_display_test_results() {
   echo "======================================"
 
   # Check if all tests passed
-  ALL_PASSED=$(echo "$TEST_RESULTS" | jq -r 'all(.passed)')
+  ALL_PASSED=$(echo "$JSON_ARRAY" | jq -r 'all(.passed)')
   if [ "$ALL_PASSED" = "true" ]; then
     echo -e "${GREEN}All tests passed!${NC}"
     EXIT_CODE=0
