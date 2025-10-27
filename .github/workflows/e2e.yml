@@ -53,7 +53,7 @@ jobs:
           # Required for Firestore e2e tests
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: ./run-all-e2e-tests.sh 2
+        run: ./run-all-e2e-tests.sh 1
 
       - name: Cleanup Docker resources
         if: always()
