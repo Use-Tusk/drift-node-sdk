@@ -18,16 +18,7 @@ export function getDb(): Firestore {
 
     let serviceAccount: any;
     try {
-      // Handle the multi-level escaping:
-      // 1. First, protect the double-escaped newlines in private_key (\\n)
-      // 2. Then unescape the single-escaped characters (\n and \")
-      let unescapedJson = serviceAccountJson
-        .replace(/\\\\n/g, "__NEWLINE_PLACEHOLDER__") // Protect \\n temporarily
-        .replace(/\\"/g, '"') // Convert \" to "
-        .replace(/\\n/g, "\n") // Convert \n to actual newlines
-        .replace(/__NEWLINE_PLACEHOLDER__/g, "\\n"); // Restore \\n as \n for private_key
-
-      serviceAccount = JSON.parse(unescapedJson);
+      serviceAccount = JSON.parse(serviceAccountJson);
     } catch (error) {
       console.error("Full JSON:", serviceAccountJson);
       throw new Error("Failed to parse FIREBASE_SERVICE_ACCOUNT JSON: " + error);
