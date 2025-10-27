@@ -87,7 +87,7 @@ export async function register() {
     const { TuskDrift } = await import("@use-tusk/drift-node-sdk");
 
     TuskDrift.initialize({
-      apiKey: process.env.TUSK_DRIFT_API_KEY,
+      apiKey: process.env.TUSK_API_KEY,
       env: process.env.NODE_ENV,
       logLevel: "debug",
     });

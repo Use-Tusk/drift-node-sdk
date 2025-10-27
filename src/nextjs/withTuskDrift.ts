@@ -92,22 +92,43 @@ export function withTuskDrift(
         // Core packages that must be external for instrumentation
         const coreExternals = ["require-in-the-middle", "jsonpath"];
 
-        if (!originalExternals) {
-          // No externals defined, create a new array
-          webpackConfig.externals = coreExternals;
-          debugLog(debug, "Created new externals array with core packages");
-        } else if (Array.isArray(originalExternals)) {
-          // Externals is already an array, add our packages if not present
+        // Create externals mapping that resolves to SDK's node_modules
+        // This ensures these packages are loaded from the SDK's dependencies rather than
+        // requiring consumers to install them. By providing explicit paths to the SDK's
+        // node_modules, webpack will use the bundled versions instead of searching in the
+        // consumer's node_modules, not requiring them to be installed in the consumer's project
+        const externalsMapping: Record<string, string> = {};
+        try {
+          const sdkPath = require.resolve("@use-tusk/drift-node-sdk");
+          const sdkNodeModules = require("path").resolve(sdkPath, "../..", "node_modules");
+
           for (const pkg of coreExternals) {
-            if (!originalExternals.includes(pkg)) {
-              originalExternals.push(pkg);
-              debugLog(debug, `Added ${pkg} to webpack externals`);
-            }
+            const pkgPath = require("path").join(sdkNodeModules, pkg);
+            externalsMapping[pkg] = `commonjs ${pkgPath}`;
+            debugLog(debug, `Mapped external ${pkg} -> ${pkgPath}`);
           }
+        } catch (e) {
+          // Fallback to regular externals if we can't resolve SDK path
+          // Should never happen
+          warn(
+            suppressAllWarnings || false,
+            `Could not resolve SDK path, falling back to regular externals: ${e instanceof Error ? e.message : String(e)}`,
+          );
+          for (const pkg of coreExternals) {
+            externalsMapping[pkg] = `commonjs ${pkg}`;
+          }
+        }
+
+        // Add our externals mapping
+        if (!originalExternals) {
+          webpackConfig.externals = [externalsMapping];
+          debugLog(debug, "Created new externals with SDK paths");
+        } else if (Array.isArray(originalExternals)) {
+          originalExternals.push(externalsMapping);
+          debugLog(debug, "Added SDK paths to existing externals array");
         } else {
-          // Externals is a function or other type, wrap it in an array with our packages
-          webpackConfig.externals = [originalExternals, ...coreExternals];
-          debugLog(debug, "Wrapped existing externals with core packages");
+          webpackConfig.externals = [originalExternals, externalsMapping];
+          debugLog(debug, "Wrapped existing externals with SDK paths");
         }
       }
 

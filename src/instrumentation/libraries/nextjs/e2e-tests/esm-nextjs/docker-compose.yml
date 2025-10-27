@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: ../../../../../..
+      dockerfile: src/instrumentation/libraries/nextjs/e2e-tests/esm-nextjs/Dockerfile
+      args:
+        - CACHEBUST=${CACHEBUST:-1}
+        - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+    volumes:
+      # Mount SDK source for hot reload (this is what package.json expects)
+      - ../../../../../..:/sdk:ro
+      # Mount .tusk folder to persist traces
+      - ./.tusk:/app/.tusk
+      # Mount app source for development
+      - ./src:/app/src
+      # Mount Next.js config files
+      - ./next.config.mjs:/app/next.config.mjs
+    working_dir: /app
+    # Keep container running without starting the app
+    # The CLI will control starting/stopping the app
+    command: tail -f /dev/null

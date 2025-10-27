@@ -1,0 +1,28 @@
+version: 1 # version of the config file format
+
+service:
+  id: 'cjs-nextjs-e2e-test-id'
+  name: 'cjs-nextjs-e2e-test'
+  port: 3000
+  start:
+    command: 'npm run dev'
+  readiness_check:
+    command: 'curl http://localhost:3000/api/health'
+    timeout: 60s
+    interval: 5s
+
+tusk_api:
+  url: 'http://localhost:3000'
+
+test_execution:
+  concurrent_limit: 10
+  batch_size: 10
+  timeout: 30s
+
+comparison:
+  ignore_fields:
+    - created_at
+
+recording:
+  sampling_rate: 1.0 # 100%
+  export_spans: false

@@ -22,7 +22,8 @@ cleanup_tusk_files
 
 # Step 1: Start docker container
 echo "Step 1: Starting docker container..."
-docker compose -p $PROJECT_NAME up -d --build --quiet-pull
+docker compose -p $PROJECT_NAME build --no-cache
+docker compose -p $PROJECT_NAME up -d --quiet-pull
 
 # Wait for container to be ready
 echo "Waiting for container to be ready..."
