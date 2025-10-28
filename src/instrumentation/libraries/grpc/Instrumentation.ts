@@ -315,6 +315,11 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
           const stackTrace = captureStackTrace(["GrpcInstrumentation"]);
 
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              callback(null, undefined);
+              return;
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -463,6 +468,25 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              // Create a Readable stream instead of EventEmitter
+              const stream = new Readable({
+                objectMode: true, // Important for gRPC which streams objects
+                read() {
+                  // No-op: data will be pushed asynchronously when mock data arrives
+                },
+              });
+
+              // Add gRPC-specific methods
+              Object.assign(stream, {
+                cancel() {},
+                getPeer: () => "0.0.0.0:0000",
+                call: undefined,
+              });
+
+              return stream;
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -760,11 +784,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             `[GrpcInstrumentation] No mock data found for gRPC request: ${inputValue.service}/${inputValue.method}`,
             inputValue,
           );
-          callback(null, undefined);
-          SpanUtils.endSpan(spanInfo.span, {
-            code: SpanStatusCode.ERROR,
-          });
-          return;
+          throw new Error(`[GrpcInstrumentation] No matching mock found for gRPC unary request`);
         }
 
         const mockResult: GrpcOutputValue | GrpcErrorOutput = mockData.result;
@@ -812,20 +832,10 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
           }
           emitter.emit("status", status);
         });
-
-        SpanUtils.addSpanAttributes(spanInfo.span, {
-          outputValue: mockResult,
-        });
-        SpanUtils.endSpan(spanInfo.span, {
-          code: mockResult.error ? SpanStatusCode.ERROR : SpanStatusCode.OK,
-        });
       })
       .catch((error) => {
         logger.error(`[GrpcInstrumentation] Error fetching mock data:`, error);
         callback(error);
-        SpanUtils.endSpan(spanInfo.span, {
-          code: SpanStatusCode.ERROR,
-        });
       });
 
     // Return emitter immediately (synchronously)
@@ -1005,21 +1015,9 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             inputValue,
           );
 
-          process.nextTick(() => {
-            stream.emit("status", {
-              code: 0, // OK
-              details: "",
-              metadata: new MetadataConstructor(),
-            });
-            stream.emit("end");
-            stream.push(null); // Signal end of stream
-          });
-
-          SpanUtils.endSpan(spanInfo.span, {
-            code: SpanStatusCode.ERROR,
-          });
-
-          return;
+          throw new Error(
+            `[GrpcInstrumentation] No matching mock found for gRPC server stream request`,
+          );
         }
 
         const mockResult: GrpcOutputValue | GrpcErrorOutput = mockData.result;
@@ -1051,14 +1049,6 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             stream.emit("error", errorObj);
             stream.emit("status", status);
             stream.push(null); // Signal end of stream
-
-            SpanUtils.addSpanAttributes(spanInfo.span, {
-              outputValue: mockResult,
-            });
-            SpanUtils.endSpan(spanInfo.span, {
-              code: SpanStatusCode.ERROR,
-              message: error.message,
-            });
           } else {
             // Handle success case - emit data events for each item in the stream
             const { body, status: successStatus } = mockResult;
@@ -1091,13 +1081,6 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
 
             stream.push(null); // Signal end of stream (important!)
             stream.emit("status", status);
-
-            SpanUtils.addSpanAttributes(spanInfo.span, {
-              outputValue: mockResult,
-            });
-            SpanUtils.endSpan(spanInfo.span, {
-              code: SpanStatusCode.OK,
-            });
           }
         });
       })
@@ -1111,9 +1094,6 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             metadata: new MetadataConstructor(),
           });
           stream.push(null); // Signal end of stream
-        });
-        SpanUtils.endSpan(spanInfo.span, {
-          code: SpanStatusCode.ERROR,
         });
       });
 

@@ -11,9 +11,9 @@ import { captureStackTrace } from "src/instrumentation/core/utils";
  */
 export class TdPgClientMock extends EventEmitter {
   private pgInstrumentation: PgInstrumentation;
-  private spanInfo: SpanInfo;
+  private spanInfo?: SpanInfo;
 
-  constructor(pgInstrumentation: PgInstrumentation, spanInfo: SpanInfo) {
+  constructor(pgInstrumentation: PgInstrumentation, spanInfo?: SpanInfo) {
     super();
     this.pgInstrumentation = pgInstrumentation;
     this.spanInfo = spanInfo;
@@ -40,7 +40,18 @@ export class TdPgClientMock extends EventEmitter {
 
     const inputValue = createMockInputValue(rawInputValue);
 
-    return this.pgInstrumentation.handleReplayQuery(queryConfig, inputValue, this.spanInfo, stackTrace);
+    if (this.spanInfo) {
+      return this.pgInstrumentation.handleReplayQuery(
+        queryConfig,
+        inputValue,
+        this.spanInfo,
+        stackTrace,
+      );
+    } else {
+      // Background query
+      // Return an EventEmitter that immediately completes with empty results
+      return this.pgInstrumentation.handleNoOpReplayQuery(queryConfig);
+    }
   }
 
   release() {

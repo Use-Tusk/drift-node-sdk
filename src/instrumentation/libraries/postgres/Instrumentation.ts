@@ -126,6 +126,21 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     // Handle replay mode
     if (this.mode === TuskDriftMode.REPLAY) {
       return handleReplayMode({
+        noOpRequestHandler: () => {
+          try {
+            const sqlInstance = originalFunction(...args);
+            const wrappedInstance = this._wrapSqlInstance(sqlInstance);
+
+            return wrappedInstance;
+          } catch (error: any) {
+            logger.debug(
+              `[PostgresInstrumentation] Postgres connection error in replay: ${error.message}`,
+            );
+
+            throw error;
+          }
+        },
+        isServerRequest: false,
         replayModeHandler: () => {
           return SpanUtils.createAndExecuteSpan(
             this.mode,
@@ -144,7 +159,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               isPreAppStart: false,
             },
             (spanInfo) => {
-              return this._handleReplayConnect(spanInfo, originalFunction, args);
+              return this._handleReplayConnect(originalFunction, args);
             },
           );
         },
@@ -237,7 +252,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     return wrappedInstance;
   }
 
-  private _handleReplayConnect(spanInfo: SpanInfo, originalFunction: Function, args: any[]): any {
+  private _handleReplayConnect(originalFunction: Function, args: any[]): any {
     logger.debug(`[PostgresInstrumentation] Replaying Postgres connection`);
 
     // In replay mode, we still create the sql instance but wrap it
@@ -246,21 +261,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       const sqlInstance = originalFunction(...args);
       const wrappedInstance = this._wrapSqlInstance(sqlInstance);
 
-      SpanUtils.addSpanAttributes(spanInfo.span, {
-        outputValue: { connected: true },
-      });
-      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-
       return wrappedInstance;
     } catch (error: any) {
       logger.debug(
         `[PostgresInstrumentation] Postgres connection error in replay: ${error.message}`,
       );
-
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: error.message,
-      });
 
       throw error;
     }
@@ -368,6 +373,10 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
 
       return handleReplayMode({
+        noOpRequestHandler: () => {
+          return;
+        },
+        isServerRequest: false,
         replayModeHandler: () => {
           return SpanUtils.createAndExecuteSpan(
             this.mode,
@@ -453,6 +462,10 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
 
       return handleReplayMode({
+        noOpRequestHandler: () => {
+          return Promise.resolve(undefined);
+        },
+        isServerRequest: false,
         replayModeHandler: () => {
           return this._createPendingQueryWrapper(() => {
             return SpanUtils.createAndExecuteSpan(
@@ -537,6 +550,10 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
 
       return handleReplayMode({
+        noOpRequestHandler: () => {
+          return;
+        },
+        isServerRequest: false,
         replayModeHandler: () => {
           return SpanUtils.createAndExecuteSpan(
             this.mode,
@@ -713,8 +730,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     if (!mockData) {
       logger.warn(`[PostgresInstrumentation] No mock data found for transaction BEGIN`);
-      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-      return;
+      throw new Error(`[PostgresInstrumentation] No matching mock found for transaction BEGIN`);
     }
 
     logger.debug(
@@ -732,10 +748,6 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       transactionResult.status === "committed";
 
     if (wasCommitted) {
-      SpanUtils.addSpanAttributes(spanInfo.span, {
-        outputValue: { status: "committed", result: transactionResult.result },
-      });
-      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
       return transactionResult.result;
     } else {
       // Transaction was rolled back
@@ -746,14 +758,6 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         transactionResult.error
           ? transactionResult.error
           : "Transaction rolled back";
-
-      SpanUtils.addSpanAttributes(spanInfo.span, {
-        outputValue: { status: "rolled_back", error: errorMessage },
-      });
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: errorMessage,
-      });
       throw new Error(errorMessage);
     }
   }
@@ -831,7 +835,9 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[PostgresInstrumentation] No mock data found for Postgres sql query: ${queryText}`,
       );
-      return;
+      throw new Error(
+        `[PostgresInstrumentation] No matching mock found for Postgres sql query: ${queryText}`,
+      );
     }
 
     logger.debug(
@@ -895,7 +901,9 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[PostgresInstrumentation] No mock data found for Postgres unsafe query: ${queryText}`,
       );
-      return;
+      throw new Error(
+        `[PostgresInstrumentation] No matching mock found for Postgres unsafe query: ${queryText}`,
+      );
     }
 
     logger.debug(

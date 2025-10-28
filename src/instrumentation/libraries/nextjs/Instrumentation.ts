@@ -138,6 +138,12 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
         // Handle replay mode using replay hooks (pass through pattern)
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              throw new Error(
+                `[NextjsInstrumentation] Should never call noOpRequestHandler for server requests ${method} ${url}`,
+              );
+            },
+            isServerRequest: true,
             replayModeHandler: () => {
               // Build input value object for server request in replay mode
               const inputValue: NextjsServerInputValue = {

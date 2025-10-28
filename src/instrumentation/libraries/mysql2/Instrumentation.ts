@@ -23,6 +23,7 @@ import { TdMysql2ConnectionMock } from "./mocks/TdMysql2ConnectionMock";
 import { TdMysql2QueryMock } from "./mocks/TdMysql2QueryMock";
 import { captureStackTrace } from "src/instrumentation/core/utils";
 import { TdMysql2ConnectionEventMock } from "./mocks/TdMysql2ConnectionEventMock";
+import { EventEmitter } from "events";
 
 // Version ranges for mysql2
 const COMPLETE_SUPPORTED_VERSIONS = ">=2.3.3 <4.0.0";
@@ -342,6 +343,10 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
           const stackTrace = captureStackTrace(["Mysql2Instrumentation"]);
 
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              return self.queryMock.handleNoOpReplayQuery(queryConfig);
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               const spanName = `mysql2.${clientType}.query`;
               return SpanUtils.createAndExecuteSpan(
@@ -358,7 +363,13 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self.handleReplayQuery(queryConfig, inputValue, spanInfo, "query", stackTrace);
+                  return self.handleReplayQuery(
+                    queryConfig,
+                    inputValue,
+                    spanInfo,
+                    "query",
+                    stackTrace,
+                  );
                 },
               );
             },
@@ -433,6 +444,10 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
           const stackTrace = captureStackTrace(["Mysql2Instrumentation"]);
 
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              return self.queryMock.handleNoOpReplayQuery(queryConfig);
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               const spanName = `mysql2.${clientType}.execute`;
               return SpanUtils.createAndExecuteSpan(
@@ -449,7 +464,13 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self.handleReplayQuery(queryConfig, inputValue, spanInfo, "execute", stackTrace);
+                  return self.handleReplayQuery(
+                    queryConfig,
+                    inputValue,
+                    spanInfo,
+                    "execute",
+                    stackTrace,
+                  );
                 },
               );
             },
@@ -504,6 +525,10 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         // Handle replay mode (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              return self.handleNoOpReplayGetConnection(callback);
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -571,6 +596,14 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
 
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (callback) {
+                process.nextTick(() => callback(null));
+                return;
+              }
+              return Promise.resolve();
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -641,6 +674,14 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
 
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (callback) {
+                process.nextTick(() => callback(null));
+                return;
+              }
+              return Promise.resolve();
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -706,6 +747,14 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
 
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (callback) {
+                process.nextTick(() => callback(null));
+                return;
+              }
+              return Promise.resolve();
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -997,8 +1046,18 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     spanInfo: SpanInfo,
     submoduleName: string = "query",
     stackTrace?: string,
-  ): any {
-    return this.queryMock.handleReplayQuery(queryConfig, inputValue, spanInfo, submoduleName, stackTrace);
+  ): EventEmitter {
+    return this.queryMock.handleReplayQuery(
+      queryConfig,
+      inputValue,
+      spanInfo,
+      submoduleName,
+      stackTrace,
+    );
+  }
+
+  handleNoOpReplayQuery(queryConfig: Mysql2QueryConfig): EventEmitter {
+    return this.queryMock.handleNoOpReplayQuery(queryConfig);
   }
 
   private _handleRecordPoolGetConnectionInSpan(
@@ -1081,11 +1140,25 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     }
   }
 
+  private handleNoOpReplayGetConnection(callback?: Function): any {
+    logger.debug(
+      `[Mysql2Instrumentation] Background getConnection detected, returning mock connection`,
+    );
+
+    const mockConnection = new TdMysql2ConnectionMock(this, "pool");
+
+    if (callback) {
+      process.nextTick(() => callback(null, mockConnection));
+      return;
+    }
+    return Promise.resolve(mockConnection);
+  }
+
   private _handleReplayPoolGetConnection(spanInfo: SpanInfo, callback?: Function) {
     logger.debug(`[Mysql2Instrumentation] Replaying MySQL2 Pool getConnection`);
 
     // For pool getConnection operations, simulate returning a mock connection
-    const mockConnection = new TdMysql2ConnectionMock(this, spanInfo, "pool");
+    const mockConnection = new TdMysql2ConnectionMock(this, "pool", spanInfo);
 
     if (callback) {
       process.nextTick(() => callback(null, mockConnection));
@@ -1168,6 +1241,11 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       // REPLAY mode: create mock connection that doesn't actually connect
       if (self.mode === TuskDriftMode.REPLAY) {
         return handleReplayMode({
+          noOpRequestHandler: () => {
+            // For background connection creation, return a mock connection
+            return new TdMysql2ConnectionMock(self, "connection");
+          },
+          isServerRequest: false,
           replayModeHandler: () => {
             return SpanUtils.createAndExecuteSpan(
               self.mode,
@@ -1252,11 +1330,6 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                 mockConnection.addListener("error", (_err: Error) => {
                   // Silently catch to prevent crashes
                 });
-
-                SpanUtils.addSpanAttributes(spanInfo.span, {
-                  outputValue: { connected: true, mock: true },
-                });
-                SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
 
                 return mockConnection;
               },
