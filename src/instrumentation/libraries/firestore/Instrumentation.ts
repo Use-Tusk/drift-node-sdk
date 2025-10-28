@@ -269,7 +269,12 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[FirestoreInstrumentation] No mock data found for document.get: ${inputValue.path}`,
       );
-      return Promise.reject(new Error("No mock data found"));
+      const emptyDocumentResult: FirestoreDocumentResult = {
+        exists: false,
+        id: "",
+        path: "",
+      };
+      return new TdFirestoreDocumentMock(emptyDocumentResult);
     }
 
     const documentResult = mockData.result as FirestoreDocumentResult;
@@ -619,7 +624,14 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[FirestoreInstrumentation] No mock data found for ${inputValue.operation}: ${inputValue.path}`,
       );
-      return Promise.reject(new Error("No mock data found"));
+      const now = Date.now();
+      const emptyWriteResult: FirestoreWriteResult = {
+        writeTime: {
+          seconds: Math.floor(now / 1000),
+          nanoseconds: (now % 1000) * 1000000,
+        },
+      };
+      return new TdFirestoreWriteResultMock(emptyWriteResult);
     }
 
     // Return mock write result with proper API
@@ -745,7 +757,12 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[FirestoreInstrumentation] No mock data found for collection.add: ${inputValue.path}`,
       );
-      return Promise.reject(new Error("No mock data found"));
+
+      if (!this.originalCollectionDocFn) {
+        logger.error(`[FirestoreInstrumentation] Original doc function not available`);
+        return Promise.reject(new Error("Original doc function not available"));
+      }
+      return this.originalCollectionDocFn.call(collectionRef, "");
     }
 
     // Return a DocumentReference with the recorded ID
@@ -812,8 +829,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                     logger.warn(
                       `[FirestoreInstrumentation] No mock data found for collection.doc: ${collectionPath}`,
                     );
-                    // Fallback to original behavior
-                    throw new Error("No mock data found for collection.doc");
+                    return originalDoc.call(this, "");
                   }
 
                   // Use the recorded ID (this ensures deterministic replay)
@@ -1021,7 +1037,12 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[FirestoreInstrumentation] No mock data found for query.get: ${inputValue.path}`,
       );
-      return Promise.reject(new Error("No mock data found"));
+      const emptyQueryResult: FirestoreQueryResult = {
+        size: 0,
+        empty: true,
+        docs: [],
+      };
+      return new TdFirestoreQueryMock(emptyQueryResult);
     }
 
     const queryResult = mockData.result as FirestoreQueryResult;

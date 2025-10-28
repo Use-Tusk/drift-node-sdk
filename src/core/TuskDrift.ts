@@ -257,21 +257,19 @@ export class TuskDriftCore {
       resource: new Resource({
         [ATTR_SERVICE_NAME]: serviceName,
       }),
+      spanProcessors: [
+        new BatchSpanProcessor(this.spanExporter, {
+          // Maximum queue size before spans are dropped, default 2048
+          maxQueueSize: 2048,
+          // Maximum batch size per export, default 512
+          maxExportBatchSize: 512,
+          // Interval between exports, default 5s
+          scheduledDelayMillis: 2000,
+          // Max time for export before timeout, default 30s
+          exportTimeoutMillis: 30000,
+        }),
+      ],
     });
-
-    // Add your custom span processor
-    tracerProvider.addSpanProcessor(
-      new BatchSpanProcessor(this.spanExporter, {
-        // Maximum queue size before spans are dropped, default 2048
-        maxQueueSize: 2048,
-        // Maximum batch size per export, default 512
-        maxExportBatchSize: 512,
-        // Interval between exports, default 5s
-        scheduledDelayMillis: 2000,
-        // Max time for export before timeout, default 30s
-        exportTimeoutMillis: 30000,
-      }),
-    );
 
     // Register the tracer provider
     tracerProvider.register();

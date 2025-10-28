@@ -91,14 +91,18 @@ export class TdMysql2QueryMock {
         if (!mockData) {
           const sql = queryConfig.sql || inputValue.sql || "UNKNOWN_QUERY";
           logger.warn(`[Mysql2Instrumentation] No mock data found for MySQL2 query: ${sql}`);
-          const error = new Error("No mock data found") as QueryError;
+
+          // Return empty result set (no-op)
+          storedRows = [];
+          storedFields = [];
+
           process.nextTick(() => {
-            // If callback provided, call it with error
+            // If callback provided, call it with empty results
             if (queryConfig.callback) {
-              queryConfig.callback(error);
+              queryConfig.callback(null, [], []);
             }
-            // Always emit error event
-            emitter.emit("error", error);
+            // Emit end event for streaming mode
+            emitter.emit("end");
           });
           return;
         }

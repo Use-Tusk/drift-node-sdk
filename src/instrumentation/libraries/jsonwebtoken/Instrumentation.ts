@@ -530,13 +530,12 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[JsonwebtokenInstrumentation] No mock data found for JWT verify: ${verifyConfig.token}`,
       );
-      const error = new Error("No mock data found");
 
       if (hasCallback) {
-        process.nextTick(() => verifyConfig.callback!(error));
+        process.nextTick(() => verifyConfig.callback!(null, undefined));
         return;
       } else {
-        throw error;
+        return undefined;
       }
     }
 
@@ -608,13 +607,12 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
 
     if (!mockData) {
       logger.warn(`[JsonwebtokenInstrumentation] No mock data found for JWT sign`);
-      const error = new Error("No mock data found");
 
       if (hasCallback) {
-        process.nextTick(() => signConfig.callback!(error));
+        process.nextTick(() => signConfig.callback!(null, undefined));
         return;
       } else {
-        throw error;
+        return undefined;
       }
     }
 
