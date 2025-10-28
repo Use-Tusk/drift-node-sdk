@@ -483,6 +483,8 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
                 getPeer: () => "0.0.0.0:0000",
                 call: undefined,
               });
+
+              return stream;
             },
             isServerRequest: false,
             replayModeHandler: () => {

@@ -105,12 +105,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
 
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (queryConfig.callback) {
-                process.nextTick(() => queryConfig.callback!(null, undefined));
-                return;
-              } else {
-                return Promise.resolve(undefined);
-              }
+              return self.handleNoOpReplayQuery(queryConfig);
             },
             isServerRequest: false,
             replayModeHandler: () => {
@@ -375,11 +370,12 @@ export class PgInstrumentation extends TdInstrumentationBase {
   }
 
   async handleNoOpReplayQuery(queryConfig: QueryConfig): Promise<any> {
+    const emptyResult = { rows: [], rowCount: 0 };
     if (queryConfig.callback) {
-      process.nextTick(() => queryConfig.callback!(null, undefined));
+      process.nextTick(() => queryConfig.callback!(null, emptyResult));
       return;
     } else {
-      return Promise.resolve(undefined);
+      return Promise.resolve(emptyResult);
     }
   }
 
