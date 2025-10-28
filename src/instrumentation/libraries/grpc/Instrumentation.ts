@@ -1049,14 +1049,6 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             stream.emit("error", errorObj);
             stream.emit("status", status);
             stream.push(null); // Signal end of stream
-
-            SpanUtils.addSpanAttributes(spanInfo.span, {
-              outputValue: mockResult,
-            });
-            SpanUtils.endSpan(spanInfo.span, {
-              code: SpanStatusCode.ERROR,
-              message: error.message,
-            });
           } else {
             // Handle success case - emit data events for each item in the stream
             const { body, status: successStatus } = mockResult;
@@ -1102,9 +1094,6 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             metadata: new MetadataConstructor(),
           });
           stream.push(null); // Signal end of stream
-        });
-        SpanUtils.endSpan(spanInfo.span, {
-          code: SpanStatusCode.ERROR,
         });
       });
 
