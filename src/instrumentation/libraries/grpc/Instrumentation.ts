@@ -760,8 +760,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             `[GrpcInstrumentation] No mock data found for gRPC request: ${inputValue.service}/${inputValue.method}`,
             inputValue,
           );
-          const error = new Error("No mock data found");
-          callback(error);
+          callback(null, undefined);
           SpanUtils.endSpan(spanInfo.span, {
             code: SpanStatusCode.ERROR,
           });
@@ -1005,21 +1004,19 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
             `[GrpcInstrumentation] No mock data found for gRPC server stream request: ${inputValue.service}/${inputValue.method}`,
             inputValue,
           );
-          const error = new Error("No mock data found");
 
           process.nextTick(() => {
-            stream.emit("error", error);
             stream.emit("status", {
-              code: 2, // UNKNOWN
-              details: "No mock data found",
+              code: 0, // OK
+              details: "",
               metadata: new MetadataConstructor(),
             });
+            stream.emit("end");
             stream.push(null); // Signal end of stream
           });
 
           SpanUtils.endSpan(spanInfo.span, {
             code: SpanStatusCode.ERROR,
-            message: "No mock data found",
           });
 
           return;

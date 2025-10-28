@@ -319,7 +319,27 @@ export class TdMockClientRequest extends EventEmitter {
         },
       });
       if (!mockData) {
-        throw new Error(`No matching mock found for ${this.method} ${this.path}`);
+        logger.warn(`[TdMockClientRequest] No mock data found for ${this.method} ${this.path}`);
+
+        // Return a no-op response (200 OK with empty body)
+        const emptyResponse: HttpClientOutputValue = {
+          statusCode: 200,
+          statusMessage: "OK",
+          headers: {},
+          httpVersion: "1.1",
+          httpVersionMajor: 1,
+          httpVersionMinor: 1,
+          complete: true,
+          readable: false,
+        };
+
+        this.emit("finish");
+
+        // Play the empty response
+        process.nextTick(() => {
+          this.playResponse(emptyResponse);
+        });
+        return;
       }
 
       this.emit("finish");

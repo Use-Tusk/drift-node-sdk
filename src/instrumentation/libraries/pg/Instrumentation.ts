@@ -387,10 +387,10 @@ export class PgInstrumentation extends TdInstrumentationBase {
       const queryText = queryConfig.text || inputValue.text || "UNKNOWN_QUERY";
       logger.warn(`[PgInstrumentation] No mock data found for PG query: ${queryText}`);
       if (queryConfig.callback) {
-        process.nextTick(() => queryConfig.callback!(new Error("No mock data found")));
+        process.nextTick(() => queryConfig.callback!(null, undefined));
         return;
       } else {
-        return Promise.reject(new Error("No mock data found"));
+        return Promise.resolve(undefined);
       }
     }
 
