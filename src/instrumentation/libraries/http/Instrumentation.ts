@@ -176,6 +176,13 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     // Handle replay mode using replay hooks (only if app is ready)
     if (this.mode === TuskDriftMode.REPLAY) {
       return handleReplayMode({
+        // Shouldn't be used for server requests
+        noOpRequestHandler: () => {
+          throw new Error(
+            `[HttpInstrumentation] Should never call noOpRequestHandler for server requests`,
+          );
+        },
+        isServerRequest: true,
         replayModeHandler: () => {
           // Remove accept-encoding header to prevent compression during replay
           // since we're providing already-decompressed data
@@ -1066,6 +1073,17 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           const stackTrace = captureStackTrace(["HttpInstrumentation"]);
 
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              // Calling with no spanInfo since this is a background request
+              // handleOutboundReplayRequest will return a 200 OK response with no mock data
+              return self.replayHooks.handleOutboundReplayRequest({
+                method,
+                requestOptions,
+                protocol: requestProtocol,
+                args,
+              });
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               // Build input value object for replay mode
               const headers = normalizeHeaders(requestOptions.headers || {});
@@ -1202,6 +1220,17 @@ export class HttpInstrumentation extends TdInstrumentationBase {
         // Handle replay mode using replay hooks (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              // Calling with no spanInfo since this is a background request
+              // handleOutboundReplayRequest will return a 200 OK response with no mock data
+              return self.replayHooks.handleOutboundReplayRequest({
+                method,
+                requestOptions,
+                protocol: requestProtocol,
+                args,
+              });
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               // Build input value object for replay mode
               const headers = normalizeHeaders(requestOptions.headers || {});

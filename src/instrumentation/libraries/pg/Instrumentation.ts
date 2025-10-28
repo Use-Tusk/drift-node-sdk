@@ -104,6 +104,15 @@ export class PgInstrumentation extends TdInstrumentationBase {
           const stackTrace = captureStackTrace(["PgInstrumentation"]);
 
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (queryConfig.callback) {
+                process.nextTick(() => queryConfig.callback!(null, undefined));
+                return;
+              } else {
+                return Promise.resolve(undefined);
+              }
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               // Create span in replay mode
               const packageName = inputValue.clientType === "pool" ? "pg-pool" : "pg";
@@ -179,6 +188,15 @@ export class PgInstrumentation extends TdInstrumentationBase {
         // Handle replay mode (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (callback) {
+                process.nextTick(() => callback(null));
+                return;
+              } else {
+                return Promise.resolve();
+              }
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               // Create span in replay mode
               return SpanUtils.createAndExecuteSpan(
@@ -356,6 +374,15 @@ export class PgInstrumentation extends TdInstrumentationBase {
     }
   }
 
+  async handleNoOpReplayQuery(queryConfig: QueryConfig): Promise<any> {
+    if (queryConfig.callback) {
+      process.nextTick(() => queryConfig.callback!(null, undefined));
+      return;
+    } else {
+      return Promise.resolve(undefined);
+    }
+  }
+
   async handleReplayQuery(
     queryConfig: QueryConfig,
     inputValue: PgClientInputValue,
@@ -386,12 +413,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
     if (!mockData) {
       const queryText = queryConfig.text || inputValue.text || "UNKNOWN_QUERY";
       logger.warn(`[PgInstrumentation] No mock data found for PG query: ${queryText}`);
-      if (queryConfig.callback) {
-        process.nextTick(() => queryConfig.callback!(null, undefined));
-        return;
-      } else {
-        return Promise.resolve(undefined);
-      }
+      throw new Error(`[PgInstrumentation] No mock data found for PG query: ${queryText}`);
     }
 
     // Convert string timestamps back to Date objects based on field metadata
@@ -609,6 +631,17 @@ export class PgInstrumentation extends TdInstrumentationBase {
         // Handle replay mode (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              const mockClient = new TdPgClientMock(self);
+
+              if (callback) {
+                process.nextTick(() => callback(null, mockClient, () => {}));
+                return;
+              } else {
+                return Promise.resolve(mockClient);
+              }
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,

@@ -175,6 +175,10 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
           const stackTrace = captureStackTrace(["IORedisInstrumentation"]);
 
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              return undefined;
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -190,13 +194,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplaySendCommand(
-                    spanInfo,
-                    cmd,
-                    inputValue,
-                    commandName,
-                    stackTrace,
-                  );
+                  return self._handleReplaySendCommand(spanInfo, cmd, inputValue, stackTrace);
                 },
               );
             },
@@ -244,6 +242,14 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              process.nextTick(() => {
+                (this as any).emit("ready");
+              });
+
+              return Promise.resolve();
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -259,7 +265,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayConnect(spanInfo, this);
+                  return self._handleReplayConnect(this);
                 },
               );
             },
@@ -352,6 +358,10 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              return [];
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -453,7 +463,6 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     spanInfo: SpanInfo,
     cmd: IORedisCommand,
     inputValue: IORedisInputValue,
-    commandName: string,
     stackTrace?: string,
   ): Promise<any> {
     logger.debug(`[IORedisInstrumentation] Replaying IORedis command ${cmd.name}`);
@@ -475,8 +484,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
 
     if (!mockData) {
       logger.warn(`[IORedisInstrumentation] No mock data found for command: ${cmd.name}`);
-      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-      return undefined;
+      throw new Error(`[IORedisInstrumentation] No matching mock found for command: ${cmd.name}`);
     }
 
     logger.debug(
@@ -484,10 +492,6 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     );
 
     const result = this._deserializeOutput(mockData.result);
-
-    // Add span attributes and end span
-    SpanUtils.addSpanAttributes(spanInfo.span, { outputValue: mockData.result });
-    SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
 
     // Handle callback if present
     if (cmd.callback && typeof cmd.callback === "function") {
@@ -555,18 +559,8 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     return promise;
   }
 
-  private async _handleReplayConnect(
-    spanInfo: SpanInfo,
-    thisContext: IORedisInterface,
-  ): Promise<any> {
+  private async _handleReplayConnect(thisContext: IORedisInterface): Promise<any> {
     logger.debug(`[IORedisInstrumentation] Replaying IORedis connect`);
-
-    // Connect operations typically don't have meaningful output to replay
-    // Just mark it as successful
-    SpanUtils.addSpanAttributes(spanInfo.span, {
-      outputValue: { connected: true },
-    });
-    SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
 
     process.nextTick(() => {
       (thisContext as any).emit("ready");
@@ -642,8 +636,7 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
 
     if (!mockData) {
       logger.warn(`[IORedisInstrumentation] No mock data found for pipeline exec`);
-      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-      return [];
+      throw new Error(`[IORedisInstrumentation] No matching mock found for pipeline exec`);
     }
 
     logger.debug(
@@ -660,9 +653,6 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
         callback(null, result);
       });
     }
-
-    SpanUtils.addSpanAttributes(spanInfo.span, { outputValue: mockData.result });
-    SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
 
     return Promise.resolve(result);
   }

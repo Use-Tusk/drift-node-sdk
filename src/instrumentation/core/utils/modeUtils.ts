@@ -53,14 +53,30 @@ export function handleRecordMode<T>({
 /**
  * Utility function that abstracts the common replay mode pattern of checking if the app is ready
  *
- * Currently just calls the replayModeHandler, but we might add some logic here in the future.
+ * If this is a background request (app is ready and no parent span), calls the backgroundRequestHandler.
+ * Otherwise, calls the replayModeHandler.
  * @param replayModeHandler - Function that handles the replay mode logic when app is ready
- * @returns The result from either originalFunctionCall or replayModeHandler
+ * @param noOpRequestHandler - Function to handle no-op requests, called for background requests
+ * @returns The result from either noOpRequestHandler or replayModeHandler
  */
 export function handleReplayMode<T>({
   replayModeHandler,
+  noOpRequestHandler,
+  isServerRequest,
 }: {
   replayModeHandler: ReplayModeHandler<T>;
+  noOpRequestHandler: () => T;
+  isServerRequest: boolean;
 }): T {
+  const isAppReady = TuskDriftCore.getInstance().isAppReady();
+  const currentSpanInfo = SpanUtils.getCurrentSpanInfo();
+
+  // Background request: App is ready + not within a trace (no parent span) + not a server request
+  if (isAppReady && !currentSpanInfo && !isServerRequest) {
+    logger.debug(`[ModeUtils] Handling no-op request`);
+    // This is a background request (app is ready and no parent span), call the backgroundRequestHandler
+    return noOpRequestHandler();
+  }
+
   return replayModeHandler();
 }

@@ -4,12 +4,7 @@ import { SpanInfo } from "../../../../core/tracing/SpanUtils";
 import { TuskDriftCore } from "../../../../core/TuskDrift";
 import { findMockResponseAsync } from "../../../core/utils/mockResponseUtils";
 import { logger } from "../../../../core/utils/logger";
-import {
-  Mysql2QueryConfig,
-  Mysql2InputValue,
-  Mysql2Result,
-  QueryError,
-} from "../types";
+import { Mysql2QueryConfig, Mysql2InputValue, Mysql2Result, QueryError } from "../types";
 
 /**
  * Handles replay mode for MySQL2 query operations
@@ -31,7 +26,7 @@ export class TdMysql2QueryMock {
     spanInfo: SpanInfo,
     submoduleName: string = "query",
     stackTrace?: string,
-  ): any {
+  ): EventEmitter {
     logger.debug(`[Mysql2Instrumentation] Replaying MySQL2 query`);
 
     const clientType = inputValue.clientType;
@@ -49,6 +44,39 @@ export class TdMysql2QueryMock {
       submoduleName,
       stackTrace,
     );
+  }
+
+  /**
+   * Handle background query requests (outside of trace context)
+   * Returns an EventEmitter that immediately completes with empty results
+   */
+  handleNoOpReplayQuery(queryConfig: Mysql2QueryConfig): EventEmitter {
+    logger.debug(`[Mysql2Instrumentation] Background query detected, returning empty result`);
+
+    const emitter = new EventEmitter();
+
+    // Make it thenable for Promise/await support
+    (emitter as any).then = function (
+      onResolve?: (value: any) => any,
+      onReject?: (error: any) => any,
+    ) {
+      return new Promise((resolve) => {
+        emitter.once("end", () => {
+          resolve([[], []]); // Empty rows and fields
+        });
+      }).then(onResolve, onReject);
+    };
+
+    // Emit completion asynchronously
+    process.nextTick(() => {
+      const callback = queryConfig.callback;
+      if (callback) {
+        callback(null, [], []);
+      }
+      emitter.emit("end");
+    });
+
+    return emitter;
   }
 
   /**
@@ -72,7 +100,10 @@ export class TdMysql2QueryMock {
 
     // Make the emitter thenable so it can be awaited
     // This is how mysql2's Query object works - it's an EventEmitter that can also be awaited
-    (emitter as any).then = function(onResolve?: (value: any) => any, onReject?: (error: any) => any) {
+    (emitter as any).then = function (
+      onResolve?: (value: any) => any,
+      onReject?: (error: any) => any,
+    ) {
       return new Promise((resolve, reject) => {
         emitter.once("end", () => {
           resolve([storedRows, storedFields]);
@@ -86,25 +117,19 @@ export class TdMysql2QueryMock {
     // Fetch mock data asynchronously and emit events
     (async () => {
       try {
-        const mockData = await this._fetchMockData(inputValue, spanInfo, spanName, submoduleName, stackTrace);
+        const mockData = await this._fetchMockData(
+          inputValue,
+          spanInfo,
+          spanName,
+          submoduleName,
+          stackTrace,
+        );
 
         if (!mockData) {
           const sql = queryConfig.sql || inputValue.sql || "UNKNOWN_QUERY";
           logger.warn(`[Mysql2Instrumentation] No mock data found for MySQL2 query: ${sql}`);
 
-          // Return empty result set (no-op)
-          storedRows = [];
-          storedFields = [];
-
-          process.nextTick(() => {
-            // If callback provided, call it with empty results
-            if (queryConfig.callback) {
-              queryConfig.callback(null, [], []);
-            }
-            // Emit end event for streaming mode
-            emitter.emit("end");
-          });
-          return;
+          throw new Error(`[Mysql2Instrumentation] No matching mock found for query: ${sql}`);
         }
 
         // Convert mock data to proper MySQL2 format
