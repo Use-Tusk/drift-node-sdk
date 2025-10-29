@@ -108,6 +108,12 @@ export { TuskDrift };
       <td><code>'info'</code></td>
       <td>The logging level.</td>
     </tr>
+    <tr>
+      <td><code>samplingRate</code></td>
+      <td><code>number</code></td>
+      <td><code>1.0</code></td>
+      <td>Override sampling rate (0.0 - 1.0) for recording. Takes precedence over <code>TUSK_SAMPLING_RATE</code> env var and config file.</td>
+    </tr>
   </tbody>
 </table>
 
@@ -145,7 +151,41 @@ For ESM applications, you **cannot** control import order within your applicatio
 
 **Why `--import` is required for ESM**: In ESM, all `import` statements are hoisted and evaluated before any code runs, making it impossible to control import order within a file. The `--import` flag ensures the SDK initialization (including loader registration) happens in a separate phase before your application code loads, guaranteeing proper module interception.
 
-### 3. Update Configuration File
+### 3. Configure Sampling Rate
+
+The sampling rate determines what percentage of requests are recorded during replay tests. Tusk Drift supports three ways to configure the sampling rate, with the following precedence (highest to lowest):
+
+1. **Init Parameter**
+2. **Environment Variable** (`TUSK_SAMPLING_RATE`)
+3. **Configuration File** (`.tusk/config.yaml`)
+
+If not specified, the default sampling rate is `1.0` (100%).
+
+#### Method 1: Init Parameter (Programmatic Override)
+
+Set the sampling rate directly in your initialization code:
+
+```typescript
+TuskDrift.initialize({
+  apiKey: process.env.TUSK_API_KEY,
+  env: process.env.NODE_ENV,
+  samplingRate: 0.1, // 10% of requests
+});
+```
+
+#### Method 2: Environment Variable
+
+Set the `TUSK_SAMPLING_RATE` environment variable:
+
+```bash
+# Development - record everything
+TUSK_SAMPLING_RATE=1.0 npm run dev
+
+# Production - sample 10% of requests
+TUSK_SAMPLING_RATE=0.1 npm start
+```
+
+#### Method 3: Configuration File
 
 Update the configuration file `.tusk/config.yaml` to include a `recording` section. Example `recording` configuration:
 
@@ -158,7 +198,7 @@ recording:
   enable_env_var_recording: true
 ```
 
-#### Configuration Options
+#### Additional Recording Configuration Options
 
 <table>
   <thead>

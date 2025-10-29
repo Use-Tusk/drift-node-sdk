@@ -44,6 +44,7 @@ export interface InitParams {
   env?: string;
   logLevel?: LogLevel;
   transforms?: TransformConfigs;
+  samplingRate?: number;
 }
 
 export enum TuskDriftMode {
@@ -149,6 +150,56 @@ export class TuskDriftCore {
         // If no mode specified, default to disabled
         return TuskDriftMode.DISABLED;
     }
+  }
+
+  private validateSamplingRate(value: number, source: string): boolean {
+    if (typeof value !== "number" || isNaN(value)) {
+      logger.warn(`Invalid sampling rate from ${source}: not a number. Ignoring.`);
+      return false;
+    }
+    if (value < 0 || value > 1) {
+      logger.warn(
+        `Invalid sampling rate from ${source}: ${value}. Must be between 0.0 and 1.0. Ignoring.`,
+      );
+      return false;
+    }
+    return true;
+  }
+
+  private determineSamplingRate(initParams: InitParams): number {
+    // Precedence: InitParams > Env Var > Config YAML > Default (1.0)
+
+    // 1. Check init params (highest priority)
+    if (initParams.samplingRate !== undefined) {
+      if (this.validateSamplingRate(initParams.samplingRate, "init params")) {
+        logger.debug(`Using sampling rate from init params: ${initParams.samplingRate}`);
+        return initParams.samplingRate;
+      }
+    }
+
+    // 2. Check environment variable
+    const envSamplingRate = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_SAMPLING_RATE");
+    if (envSamplingRate !== undefined) {
+      const parsed = parseFloat(envSamplingRate);
+      if (this.validateSamplingRate(parsed, "TUSK_SAMPLING_RATE env var")) {
+        logger.debug(`Using sampling rate from TUSK_SAMPLING_RATE env var: ${parsed}`);
+        return parsed;
+      }
+    }
+
+    // 3. Check config file
+    if (this.config.recording?.sampling_rate !== undefined) {
+      if (this.validateSamplingRate(this.config.recording.sampling_rate, "config.yaml")) {
+        logger.debug(
+          `Using sampling rate from config.yaml: ${this.config.recording.sampling_rate}`,
+        );
+        return this.config.recording.sampling_rate;
+      }
+    }
+
+    // 4. Default to 1.0 (100%)
+    logger.debug("Using default sampling rate: 1.0");
+    return 1;
   }
 
   private registerDefaultInstrumentations(): void {
@@ -288,7 +339,7 @@ export class TuskDriftCore {
       prefix: "TuskDrift",
     });
 
-    this.samplingRate = this.config.recording?.sampling_rate ?? 1;
+    this.samplingRate = this.determineSamplingRate(initParams);
     this.initParams = initParams;
 
     if (!this.initParams.env) {
@@ -599,6 +650,7 @@ interface TuskDriftPublicAPI {
    *   - apiKey: string - Your TuskDrift API key (required)
    *   - env: string - The environment name (e.g., 'development', 'staging', 'production') (required)
    *   - logLevel?: LogLevel - Optional logging level ('silent' | 'error' | 'warn' | 'info' | 'debug'), defaults to 'info'
+   *   - samplingRate?: number - Optional sampling rate (0.0-1.0) for recording requests. Overrides TUSK_SAMPLING_RATE env var and config.yaml. Defaults to 1.0
    *
    * @returns void - Initializes the SDK
    *
@@ -609,7 +661,8 @@ interface TuskDriftPublicAPI {
    * TuskDrift.initialize({
    *   apiKey: 'your-api-key',
    *   env: 'production',
-   *   logLevel: 'debug'
+   *   logLevel: 'debug',
+   *   samplingRate: 1  // Record 100% of requests
    * });
    *
    * ```
