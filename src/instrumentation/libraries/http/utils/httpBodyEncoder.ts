@@ -124,7 +124,12 @@ export async function httpBodyEncoder({
 export function getDecodedType(
   contentType: string | string[] | undefined,
 ): DecodedType | undefined {
+  if (!contentType) {
+    return undefined;
+  }
+
   // Handle array values (when same header appears multiple times)
+  // Should rarely happen, but just in case. First one is usually the "original" one.
   const contentTypeString =
     Array.isArray(contentType) && contentType.length > 0 ? contentType[0] : contentType;
 
@@ -138,4 +143,4 @@ export function getDecodedType(
   return CONTENT_TYPE_MAPPING[mainType];
 }
 
-export const ACCEPTABLE_CONTENT_TYPES = new Set([DecodedType.JSON]);
+export const ACCEPTABLE_CONTENT_TYPES = new Set([DecodedType.JSON, DecodedType.PLAIN_TEXT]);
