@@ -17,7 +17,7 @@ import {
   getDecodedType,
   httpBodyEncoder,
   normalizeHeaders,
-  STATIC_ASSET_TYPES,
+  ACCEPTABLE_CONTENT_TYPES,
 } from "./utils";
 import { HttpReplayHooks } from "./HttpReplayHooks";
 import {
@@ -506,11 +506,12 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           // Ignore static asset responses
           // Must check this before ending the span
           const decodedType = getDecodedType(outputValue.headers?.["content-type"] || "");
-          if (decodedType && STATIC_ASSET_TYPES.has(decodedType)) {
+          if (decodedType && !ACCEPTABLE_CONTENT_TYPES.has(decodedType)) {
             const traceBlockingManager = TraceBlockingManager.getInstance();
             traceBlockingManager.blockTrace(spanInfo.traceId);
             logger.debug(
-              `[HttpInstrumentation] Blocking trace ${spanInfo.traceId} because it is an static asset response. Decoded type: ${decodedType}`,
+              `[HttpInstrumentation] Blocking trace ${spanInfo.traceId} because it is not an acceptable decoded type: ${decodedType}`,
+              { acceptableContentTypes: Array.from(ACCEPTABLE_CONTENT_TYPES) },
             );
           }
 
