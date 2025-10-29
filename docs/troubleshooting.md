@@ -4,7 +4,11 @@
 
 ### No traces being recorded
 
-1. **Check sampling rate**: Ensure `sampling_rate` in `.tusk/config.yaml` is 1.0
+1. **Check sampling rate**: Verify your sampling rate configuration is set to 1.0 for 100% recording. The SDK checks in this order:
+   - `samplingRate` in `TuskDrift.initialize()` (highest priority)
+   - `TUSK_SAMPLING_RATE` environment variable
+   - `sampling_rate` in `.tusk/config.yaml`
+   - Default: 1.0
 2. **Verify app readiness**: Make sure you're calling `TuskDrift.markAppAsReady()`
 3. **Use debug mode in SDK**: Add `logLevel: 'debug'` to the initialization parameters
 
