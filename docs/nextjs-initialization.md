@@ -34,6 +34,14 @@ module.exports = withTuskDrift(
 );
 ```
 
+### Install Required Dependencies
+
+Before using `withTuskDrift`, you need to install the required peer dependencies:
+
+```bash
+npm install jsonpath require-in-the-middle
+```
+
 ### What `withTuskDrift` Does
 
 The `withTuskDrift` wrapper automatically:

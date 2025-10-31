@@ -92,31 +92,12 @@ export function withTuskDrift(
         // Core packages that must be external for instrumentation
         const coreExternals = ["require-in-the-middle", "jsonpath"];
 
-        // Create externals mapping that resolves to SDK's node_modules
-        // This ensures these packages are loaded from the SDK's dependencies rather than
-        // requiring consumers to install them. By providing explicit paths to the SDK's
-        // node_modules, webpack will use the bundled versions instead of searching in the
-        // consumer's node_modules, not requiring them to be installed in the consumer's project
+        // Create externals mapping - since SDK's node_modules aren't published,
+        // we rely on these packages being available in the consumer's node_modules
         const externalsMapping: Record<string, string> = {};
-        try {
-          const sdkPath = require.resolve("@use-tusk/drift-node-sdk");
-          const sdkNodeModules = require("path").resolve(sdkPath, "../..", "node_modules");
-
-          for (const pkg of coreExternals) {
-            const pkgPath = require("path").join(sdkNodeModules, pkg);
-            externalsMapping[pkg] = `commonjs ${pkgPath}`;
-            debugLog(debug, `Mapped external ${pkg} -> ${pkgPath}`);
-          }
-        } catch (e) {
-          // Fallback to regular externals if we can't resolve SDK path
-          // Should never happen
-          warn(
-            suppressAllWarnings || false,
-            `Could not resolve SDK path, falling back to regular externals: ${e instanceof Error ? e.message : String(e)}`,
-          );
-          for (const pkg of coreExternals) {
-            externalsMapping[pkg] = `commonjs ${pkg}`;
-          }
+        for (const pkg of coreExternals) {
+          externalsMapping[pkg] = `commonjs ${pkg}`;
+          debugLog(debug, `Mapped external ${pkg} -> commonjs ${pkg}`);
         }
 
         // Add our externals mapping
