@@ -12,9 +12,12 @@ services:
       - "${APP_PORT:-3000}:3000"
     environment:
       - PORT=3000
+      - NODE_PATH=/sdk/node_modules
     volumes:
       # Mount SDK source for hot reload (this is what package.json expects)
       - ../../../../../..:/sdk:ro
+      # Mount SDK's node_modules into the symlinked package location
+      - ../../../../../../node_modules:/app/node_modules/@use-tusk/drift-node-sdk/node_modules:ro
       # Mount .tusk folder to persist traces
       - ./.tusk:/app/.tusk
       # Mount app source for development

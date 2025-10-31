@@ -34,14 +34,6 @@ module.exports = withTuskDrift(
 );
 ```
 
-### Install Required Dependencies
-
-Before using `withTuskDrift`, you need to install the required peer dependencies:
-
-```bash
-npm install jsonpath require-in-the-middle
-```
-
 ### What `withTuskDrift` Does
 
 The `withTuskDrift` wrapper automatically:
@@ -86,7 +78,7 @@ The `withTuskDrift` wrapper automatically:
 
 ## Step 2: Create Instrumentation File
 
-Create an `instrumentation.ts` (or `.js`) file at the **root of your Next.js project**, at the same level as `next.config.js`:
+Create an `instrumentation.ts` (or `.js`) file at the **root of your Next.js project** (or inside the `src` folder if using one):
 
 ```typescript
 // instrumentation.ts
