@@ -8,6 +8,8 @@ Wrap your Next.js configuration with the `withTuskDrift` function in your `next.
 
 ### Basic Configuration
 
+#### CommonJS (next.config.js)
+
 ```javascript
 // next.config.js
 const { withTuskDrift } = require("@use-tusk/drift-node-sdk");
@@ -17,13 +19,43 @@ module.exports = withTuskDrift({
 });
 ```
 
+#### ESM (next.config.mjs)
+
+```javascript
+// next.config.mjs
+import { withTuskDrift } from "@use-tusk/drift-node-sdk";
+
+export default withTuskDrift({
+  // Your Next.js config
+});
+```
+
 ### With Debug Logging for Next.js Integration
+
+#### CommonJS (next.config.js)
 
 ```javascript
 // next.config.js
 const { withTuskDrift } = require("@use-tusk/drift-node-sdk");
 
 module.exports = withTuskDrift(
+  {
+    // Your Next.js config
+  },
+  {
+    // Tusk Drift options
+    debug: true, // Enable debug logging
+  },
+);
+```
+
+#### ESM (next.config.mjs)
+
+```javascript
+// next.config.mjs
+import { withTuskDrift } from "@use-tusk/drift-node-sdk";
+
+export default withTuskDrift(
   {
     // Your Next.js config
   },
