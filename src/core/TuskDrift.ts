@@ -256,10 +256,10 @@ export class TuskDriftCore {
       mode: this.mode,
     });
 
-    new PostgresInstrumentation({
-      enabled: true,
-      mode: this.mode,
-    });
+    // new PostgresInstrumentation({
+    //   enabled: true,
+    //   mode: this.mode,
+    // });
 
     new Mysql2Instrumentation({
       enabled: true,
@@ -636,6 +636,10 @@ export class TuskDriftCore {
 
   getTracer(): Tracer {
     return trace.getTracer(TD_INSTRUMENTATION_LIBRARY_NAME);
+  }
+
+  getProtobufCommunicator(): ProtobufCommunicator | undefined {
+    return this.communicator;
   }
 }
 

@@ -1,43 +1,9 @@
-import { TuskDriftCore } from "../TuskDrift";
+import { TuskDriftCore, TuskDriftMode } from "../TuskDrift";
 import { SDK_VERSION } from "../../version";
 import { logger } from "../utils/logger";
 
-interface AnalyticsPayload {
-  distinctId: string;
-  event: string;
-  properties: Record<string, any>;
-}
-
-export function sendAnalyticsPayload(payload: AnalyticsPayload): void {
-  try {
-    // Only send analytics in production and if explicitly enabled
-    if (TuskDriftCore.getInstance().getConfig().recording?.enable_analytics) {
-      // TODO: implement this
-    }
-  } catch (e) {
-    logger.error("Error sending analytics event:", e);
-  }
-}
-
-export function sendTdAnalytics(eventName: string, properties: Record<string, any> = {}): void {
-  const serviceId = TuskDriftCore.getInstance().getConfig().service?.id || "unknown-service";
-
-  const payload: AnalyticsPayload = {
-    distinctId: `tusk-drift:${serviceId}`,
-    event: `${eventName}`,
-    properties: {
-      serviceId,
-      tdMode: TuskDriftCore.getInstance().getMode(),
-      sdkVersion: SDK_VERSION,
-      ...properties,
-    },
-  };
-
-  sendAnalyticsPayload(payload);
-}
-
 /**
- * NOTE: analytics has not been implemented yet, so this function does nothing
+ * Send version mismatch alert to CLI (only in REPLAY mode)
  */
 export function sendVersionMismatchAlert({
   moduleName,
@@ -48,38 +14,53 @@ export function sendVersionMismatchAlert({
   foundVersion: string | undefined;
   supportedVersions: string[];
 }): void {
+  logger.info("[SSK] Sending version mismatch alert", {
+    moduleName,
+    foundVersion: foundVersion,
+    supportedVersions,
+  });
   try {
-    sendTdAnalytics("version_mismatch", {
-      moduleName,
-      foundVersion: foundVersion || "unknown",
-      supportedVersions: supportedVersions.join(", "),
-    });
+    // Only send in replay mode
+    const mode = TuskDriftCore.getInstance().getMode();
+    if (mode !== TuskDriftMode.REPLAY) {
+      return;
+    }
+
+    const protobufComm = TuskDriftCore.getInstance().getProtobufCommunicator();
+    if (protobufComm) {
+      protobufComm.sendInstrumentationVersionMismatchAlert({
+        moduleName,
+        requestedVersion: foundVersion,
+        supportedVersions,
+      });
+    }
   } catch (e) {
     logger.error("Error sending version mismatch alert:", e);
   }
 }
 
 /**
- * NOTE: analytics has not been implemented yet, so this function does nothing
+ * Send unpatched dependency alert to CLI
  */
 export function sendUnpatchedDependencyAlert({
-  method,
-  spanId,
-  traceId,
+  traceTestServerSpanId,
   stackTrace,
 }: {
-  method: string;
-  spanId: string;
-  traceId: string;
+  traceTestServerSpanId: string;
   stackTrace?: string;
 }): void {
+  logger.info("[SSK] Sending unpatched dependency alert", {
+    traceTestServerSpanId,
+    stackTrace,
+  });
   try {
-    sendTdAnalytics("unpatched_dependency", {
-      method,
-      spanId,
-      traceId,
-      stackTrace: stackTrace ? stackTrace.split("\n").slice(0, 10).join("\n") : undefined, // Limit stack trace size
-    });
+    const protobufComm = TuskDriftCore.getInstance().getProtobufCommunicator();
+    if (protobufComm && stackTrace) {
+      protobufComm.sendUnpatchedDependencyAlert({
+        stackTrace,
+        traceTestServerSpanId,
+      });
+    }
   } catch (e) {
     logger.error("Error sending unpatched dependency alert:", e);
   }
