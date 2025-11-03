@@ -256,10 +256,10 @@ export class TuskDriftCore {
       mode: this.mode,
     });
 
-    // new PostgresInstrumentation({
-    //   enabled: true,
-    //   mode: this.mode,
-    // });
+    new PostgresInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
 
     new Mysql2Instrumentation({
       enabled: true,
