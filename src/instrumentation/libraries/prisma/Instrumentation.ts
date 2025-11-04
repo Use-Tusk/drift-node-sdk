@@ -45,10 +45,6 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
   }
 
   private _patchPrismaModule(prismaModule: PrismaModuleExports): PrismaModuleExports {
-    logger.debug(
-      `[PrismaInstrumentation] Patching Prisma module in ${this.mode} mode. Module keys: ${Object.keys(prismaModule).join(", ")}`,
-    );
-
     if (this.isModulePatched(prismaModule)) {
       logger.debug(`[PrismaInstrumentation] Prisma module already patched, skipping`);
       return prismaModule;
@@ -99,10 +95,6 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
   }
 
   private _storePrismaErrorClasses(moduleExports: PrismaModuleExports): void {
-    logger.debug(
-      `[PrismaInstrumentation] Storing Prisma error classes. Available exports: ${Object.keys(moduleExports).join(", ")}`,
-    );
-
     // In ESM, error classes are in moduleExports.Prisma.*
     // In CJS, error classes are directly on moduleExports.*
     const prismaNamespace = moduleExports.Prisma || {};
@@ -129,8 +121,7 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
       {
         name: PrismaErrorClassName.PrismaClientValidationError,
         errorClass:
-          moduleExports.PrismaClientValidationError ||
-          prismaNamespace.PrismaClientValidationError,
+          moduleExports.PrismaClientValidationError || prismaNamespace.PrismaClientValidationError,
       },
       {
         name: PrismaErrorClassName.PrismaClientRustPanicError,
@@ -142,13 +133,6 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
         errorClass: moduleExports.NotFoundError || prismaNamespace.NotFoundError,
       },
     ];
-
-    // Log which error classes were successfully stored
-    for (const errorInfo of this.prismaErrorClasses) {
-      logger.debug(
-        `[PrismaInstrumentation] Error class ${errorInfo.name}: ${errorInfo.errorClass ? "available" : "MISSING"}`,
-      );
-    }
   }
 
   private _handlePrismaOperation({
@@ -254,8 +238,6 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
         logger.error(`[PrismaInstrumentation] error adding span attributes:`, spanError);
       }
 
-      logger.debug(`[PrismaInstrumentation] Prisma operation recorded successfully`);
-
       return result;
     } catch (error: any) {
       logger.debug(`[PrismaInstrumentation] Prisma operation error: ${error.message}`);
@@ -300,8 +282,6 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
     inputValue: PrismaInputValue,
     stackTrace?: string,
   ): Promise<any> {
-    logger.debug(`[PrismaInstrumentation] Replaying Prisma operation`);
-
     const mockData = await findMockResponseAsync({
       mockRequestData: {
         traceId: spanInfo.traceId,

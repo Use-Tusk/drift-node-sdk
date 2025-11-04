@@ -19,7 +19,7 @@ services:
       dockerfile: src/instrumentation/libraries/prisma/e2e-tests/cjs-prisma/Dockerfile
     environment:
       DATABASE_URL: "postgresql://testuser:testpass@postgres:5432/testdb?schema=public"
-      PORT: "${APP_PORT:-3000}"
+      PORT: 3000
     ports:
       - "${APP_PORT:-3000}:3000"
     volumes:
