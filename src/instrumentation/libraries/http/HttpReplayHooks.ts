@@ -61,7 +61,7 @@ export class HttpReplayHooks {
       auth: requestOptions.auth || undefined,
       agent: requestOptions.agent || undefined,
       protocol,
-      hostname: requestOptions.hostname || undefined,
+      hostname: requestOptions.hostname || requestOptions.host || undefined,
       port: requestOptions.port ? Number(requestOptions.port) : undefined,
       method,
     };

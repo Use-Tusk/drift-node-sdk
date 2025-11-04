@@ -870,59 +870,71 @@ export class HttpInstrumentation extends TdInstrumentationBase {
         readable: res.readable,
       };
 
-      // Capture response body
-      const responseChunks: (string | Buffer)[] = [];
+      // Capture response body using dual-mode consumption strategy
+      // This handles both read() and pipe() consumption patterns
+      const responseChunks: Buffer[] = [];
+      let streamConsumptionMode: "NOT_CONSUMING" | "READ" | "PIPE" = "NOT_CONSUMING";
 
-      if (res.readable) {
-        res.on("data", (chunk: any) => {
-          responseChunks.push(chunk);
-        });
+      // Patch res.read to capture body chunks when application calls read()
+      const originalRead = res.read?.bind(res);
+      if (originalRead) {
+        res.read = function read(size?: number) {
+          const chunk = originalRead(size);
+          if (
+            chunk &&
+            (streamConsumptionMode === "READ" || streamConsumptionMode === "NOT_CONSUMING")
+          ) {
+            streamConsumptionMode = "READ";
+            responseChunks.push(Buffer.from(chunk));
+          }
+          return chunk;
+        };
+      }
 
-        res.on("end", async () => {
-          if (responseChunks.length > 0) {
-            try {
-              // Combine all chunks into a single buffer
-              const responseBuffer = combineChunks(responseChunks);
-
-              // Capture raw headers before processing
-              const rawHeaders = this._captureHeadersFromRawHeaders(res.rawHeaders);
-
-              // Store the raw headers
-              outputValue.headers = rawHeaders;
-
-              // Parse response body
-              const contentEncoding = rawHeaders["content-encoding"];
-              const encodedBody = await httpBodyEncoder({
-                bodyBuffer: responseBuffer,
-                contentEncoding,
-              });
-
-              // Store parsed body data
-              outputValue.body = encodedBody;
-              outputValue.bodySize = responseBuffer.length;
-
-              this._addOutputAttributesToSpan({
-                spanInfo,
-                outputValue,
-                statusCode: res.statusCode || 1,
-                outputSchemaMerges: {
-                  body: {
-                    encoding: EncodingType.BASE64,
-                    decodedType: getDecodedType(outputValue.headers["content-type"] || ""),
-                  },
-                  headers: {
-                    matchImportance: 0,
-                  },
-                },
-                inputValue: completeInputValue,
-              });
-            } catch (error) {
-              logger.error(`[HttpInstrumentation] Error processing response body:`, error);
-            }
+      // Listen for 'resume' event to know when streaming starts
+      res.once("resume", () => {
+        res.on("data", (chunk: string | Buffer) => {
+          if (
+            chunk &&
+            (streamConsumptionMode === "PIPE" || streamConsumptionMode === "NOT_CONSUMING")
+          ) {
+            streamConsumptionMode = "PIPE";
+            responseChunks.push(Buffer.from(chunk));
           }
         });
-      } else {
+      });
+
+      // Always attach end listener to ensure span gets ended
+      res.on("end", async (chunk?: string | Buffer) => {
+        // Capture final chunk if provided
+        if (chunk && typeof chunk !== "function") {
+          responseChunks.push(Buffer.from(chunk));
+        }
+
         try {
+          if (responseChunks.length > 0) {
+            // Combine all chunks into a single buffer
+            const responseBuffer = Buffer.concat(responseChunks);
+
+            // Capture raw headers before processing
+            const rawHeaders = this._captureHeadersFromRawHeaders(res.rawHeaders);
+
+            // Store the raw headers
+            outputValue.headers = rawHeaders;
+
+            // Parse response body
+            const contentEncoding = rawHeaders["content-encoding"];
+            const encodedBody = await httpBodyEncoder({
+              bodyBuffer: responseBuffer,
+              contentEncoding,
+            });
+
+            // Store parsed body data
+            outputValue.body = encodedBody;
+            outputValue.bodySize = responseBuffer.length;
+          }
+
+          // Always end the span, even if there's no response body
           this._addOutputAttributesToSpan({
             spanInfo,
             outputValue,
@@ -939,9 +951,9 @@ export class HttpInstrumentation extends TdInstrumentationBase {
             inputValue: completeInputValue,
           });
         } catch (error) {
-          logger.error(`[HttpInstrumentation] Error adding output attributes to span:`, error);
+          logger.error(`[HttpInstrumentation] Error processing response body:`, error);
         }
-      }
+      });
     });
 
     req.on("error", (error: Error) => {
