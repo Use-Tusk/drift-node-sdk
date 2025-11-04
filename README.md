@@ -28,6 +28,7 @@ Tusk Drift currently supports the following packages and versions:
 - **MySQL**: `mysql2@3.x`
 - **IORedis**: `ioredis@4.x-5.x`
 - **GraphQL**: `graphql@15.x-16.x`
+- **Prisma**: `prisma@5.x-6.x`
 - **JSON Web Tokens**: `jsonwebtoken@5.x-9.x`
 - **JWKS RSA**: `jwks-rsa@1.x-3.x`
 
