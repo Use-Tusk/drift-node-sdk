@@ -1,0 +1,73 @@
+// Prisma schema for comprehensive e2e testing
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Simple model for basic CRUD operations
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String
+  age       Int?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations for testing includes/selects
+  posts     Post[]
+  profile   Profile?
+}
+
+// One-to-many relation testing
+model Post {
+  id          Int      @id @default(autoincrement())
+  title       String
+  content     String?
+  published   Boolean  @default(false)
+  viewCount   Int      @default(0)
+  authorId    Int
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  // Many-to-many relations
+  categories  Category[]
+  tags        Tag[]
+}
+
+// One-to-one relation testing
+model Profile {
+  id        Int     @id @default(autoincrement())
+  bio       String?
+  avatarUrl String?
+  userId    Int     @unique
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Many-to-many relation testing
+model Category {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  posts Post[]
+}
+
+model Tag {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  posts Post[]
+}
+
+// For testing aggregations and groupBy
+model Order {
+  id          Int      @id @default(autoincrement())
+  orderNumber String   @unique
+  total       Decimal  @db.Decimal(10, 2)
+  status      String   // "pending", "completed", "cancelled"
+  customerId  Int
+  createdAt   DateTime @default(now())
+}
