@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432"
+
+  app:
+    build:
+      context: ../../../../../../
+      dockerfile: src/instrumentation/libraries/prisma/e2e-tests/cjs-prisma/Dockerfile
+    environment:
+      DATABASE_URL: "postgresql://testuser:testpass@postgres:5432/testdb?schema=public"
+      PORT: 3000
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      # Mount the SDK source code (read-only)
+      - ../../../../../../:/sdk:ro
+      # Mount .tusk directory for persistence
+      - ./.tusk:/app/.tusk
+      # Mount src for development
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: tail -f /dev/null

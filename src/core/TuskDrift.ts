@@ -18,6 +18,7 @@ import {
   GrpcInstrumentation,
   FirestoreInstrumentation,
   NextjsInstrumentation,
+  PrismaInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
 import { trace, Tracer } from "@opentelemetry/api";
@@ -282,6 +283,11 @@ export class TuskDriftCore {
     });
 
     new NextjsInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
+
+    new PrismaInstrumentation({
       enabled: true,
       mode: this.mode,
     });

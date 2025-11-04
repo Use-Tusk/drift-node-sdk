@@ -1,8 +1,8 @@
-version: 1 # version of the config file format
+version: 1
 
 service:
-  id: "cjs-pg-e2e-test-id"
-  name: "cjs-pg-e2e-test"
+  id: "esm-prisma-e2e-test"
+  name: "ESM Prisma E2E Test"
   port: 3000
   start:
     command: "npm run dev"
