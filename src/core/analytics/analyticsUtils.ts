@@ -14,7 +14,7 @@ export function sendVersionMismatchAlert({
   foundVersion: string | undefined;
   supportedVersions: string[];
 }): void {
-  logger.info("[SSK] Sending version mismatch alert", {
+  logger.info("Sending version mismatch alert", {
     moduleName,
     foundVersion: foundVersion,
     supportedVersions,
@@ -49,7 +49,7 @@ export function sendUnpatchedDependencyAlert({
   traceTestServerSpanId: string;
   stackTrace?: string;
 }): void {
-  logger.info("[SSK] Sending unpatched dependency alert", {
+  logger.info("Sending unpatched dependency alert", {
     traceTestServerSpanId,
     stackTrace,
   });

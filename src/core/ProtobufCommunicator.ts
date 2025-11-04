@@ -552,6 +552,7 @@ try {
           moduleName: params.moduleName,
           requestedVersion: params.requestedVersion || "",
           supportedVersions: params.supportedVersions,
+          sdkVersion: SDK_VERSION,
         }),
       },
     });
@@ -571,6 +572,7 @@ try {
         unpatchedDependency: UnpatchedDependencyAlert.create({
           stackTrace: params.stackTrace,
           traceTestServerSpanId: params.traceTestServerSpanId,
+          sdkVersion: SDK_VERSION,
         }),
       },
     });
