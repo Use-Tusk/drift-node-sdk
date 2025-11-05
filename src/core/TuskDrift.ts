@@ -643,6 +643,10 @@ export class TuskDriftCore {
   getTracer(): Tracer {
     return trace.getTracer(TD_INSTRUMENTATION_LIBRARY_NAME);
   }
+
+  getProtobufCommunicator(): ProtobufCommunicator | undefined {
+    return this.communicator;
+  }
 }
 
 // These JSDoc comments are exposed in the type definitions

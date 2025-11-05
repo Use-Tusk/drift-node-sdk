@@ -12,6 +12,9 @@ import {
   ConnectRequest,
   SDKMessage,
   SendInboundSpanForReplayRequest,
+  SendAlertRequest,
+  InstrumentationVersionMismatchAlert,
+  UnpatchedDependencyAlert,
 } from "@use-tusk/drift-schemas/core/communication";
 import { context, Context, SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { Value } from "@use-tusk/drift-schemas/google/protobuf/struct";
@@ -504,6 +507,76 @@ try {
     });
 
     await this.sendProtobufMessage(sdkMessage);
+  }
+
+  /**
+   * Send an alert to the CLI (fire-and-forget, no response expected)
+   */
+  private async sendAlert(alert: SendAlertRequest): Promise<void> {
+    if (!this.client || !this.protobufContext) {
+      logger.debug("[ProtobufCommunicator] Not connected to CLI, skipping alert");
+      return;
+    }
+
+    const sdkMessage = SDKMessage.create({
+      type: MessageType.ALERT,
+      requestId: this.generateRequestId(),
+      payload: {
+        oneofKind: "sendAlertRequest",
+        sendAlertRequest: alert,
+      },
+    });
+
+    // Fire-and-forget - don't wait for response
+    try {
+      await this.sendProtobufMessage(sdkMessage);
+      logger.debug("[ProtobufCommunicator] Alert sent to CLI");
+    } catch (error) {
+      logger.debug("[ProtobufCommunicator] Failed to send alert to CLI:", error);
+      // Swallow error - alerts are non-critical
+    }
+  }
+
+  /**
+   * Send instrumentation version mismatch alert to CLI
+   */
+  async sendInstrumentationVersionMismatchAlert(params: {
+    moduleName: string;
+    requestedVersion: string | undefined;
+    supportedVersions: string[];
+  }): Promise<void> {
+    const alert = SendAlertRequest.create({
+      alert: {
+        oneofKind: "versionMismatch",
+        versionMismatch: InstrumentationVersionMismatchAlert.create({
+          moduleName: params.moduleName,
+          requestedVersion: params.requestedVersion || "",
+          supportedVersions: params.supportedVersions,
+          sdkVersion: SDK_VERSION,
+        }),
+      },
+    });
+    await this.sendAlert(alert);
+  }
+
+  /**
+   * Send unpatched dependency alert to CLI
+   */
+  async sendUnpatchedDependencyAlert(params: {
+    stackTrace: string;
+    traceTestServerSpanId: string;
+  }): Promise<void> {
+    const alert = SendAlertRequest.create({
+      alert: {
+        oneofKind: "unpatchedDependency",
+        unpatchedDependency: UnpatchedDependencyAlert.create({
+          stackTrace: params.stackTrace,
+          traceTestServerSpanId: params.traceTestServerSpanId,
+          sdkVersion: SDK_VERSION,
+        }),
+      },
+    });
+    await this.sendAlert(alert);
   }
 
   private handleIncomingData(data: Buffer): void {
