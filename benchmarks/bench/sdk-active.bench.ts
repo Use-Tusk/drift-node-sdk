@@ -32,6 +32,8 @@ TuskDriftCore.getInstance().spanExporter?.addAdapter(adapter);
 
 TuskDrift.markAppAsReady();
 
+process.env.BENCHMARK_RESULT_LABEL = "sdk-active";
+
 const common = require("./common.ts");
 
 common.default();

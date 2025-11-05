@@ -2,18 +2,24 @@ import test from "ava";
 import { Bench, hrtimeNow, Task } from "tinybench";
 import { TestServer } from "../server/test-server";
 import * as os from "os";
+import * as fs from "fs";
+import * as path from "path";
+import { randomUUID } from "crypto";
+import {
+  BenchmarkRunResult,
+  CpuStatsSummary,
+  HistogramBucket,
+  MemoryMetric,
+  MemorySample,
+  MemoryStats,
+  MetricSummary,
+  TaskBenchmarkResult,
+  TaskResourceStats,
+  resolveResultPath,
+} from "./result-utils";
 
 let server: TestServer;
 let serverUrl: string;
-
-interface MemorySample {
-  rss: number;
-  heapTotal: number;
-  heapUsed: number;
-  external: number;
-  arrayBuffers: number;
-  sharedArrayBuffers: number;
-}
 
 interface ResourceSample {
   timestamp: number;
@@ -23,25 +29,6 @@ interface ResourceSample {
   };
   loadAverage: number[];
   memory: MemorySample;
-}
-
-type MemoryMetric = keyof MemorySample;
-
-interface CpuStatsSummary {
-  avgUser: number;
-  avgSystem: number;
-  avgTotal: number;
-  maxUser: number;
-  maxSystem: number;
-  maxTotal: number;
-}
-
-type MemoryStats = Record<MemoryMetric, { avg: number; max: number }>;
-
-interface TaskResourceStats {
-  cpu: CpuStatsSummary;
-  memory: MemoryStats;
-  avgLoad: number[];
 }
 
 class ResourceMonitor {
@@ -191,6 +178,7 @@ class ResourceMonitor {
       },
       memory: memoryStats,
       avgLoad,
+      sampleCount: samples.length,
     };
   }
 
@@ -199,112 +187,185 @@ class ResourceMonitor {
   }
 }
 
-function formatNs(ns?: number): string {
-  if (ns === undefined) return "undefined";
-  if (ns < 1000) return `${ns.toFixed(0)}ns`;
-  if (ns < 1_000_000) return `${(ns / 1000).toFixed(2)}μs`;
-  if (ns < 1_000_000_000) return `${(ns / 1_000_000).toFixed(2)}ms`;
-  return `${(ns / 1_000_000_000).toFixed(2)}s`;
+function toNanoseconds(value: number | undefined | null): number | null {
+  if (value === undefined || value === null || Number.isNaN(value)) {
+    return null;
+  }
+  return value * 1_000_000_000;
 }
 
-function formatBytes(bytes: number): string {
-  const megabytes = bytes / (1024 * 1024);
-  return `${megabytes.toFixed(2)} MB`;
+function safeNumber(value: number | undefined | null): number | null {
+  if (value === undefined || value === null || Number.isNaN(value)) {
+    return null;
+  }
+  return value;
 }
 
-function printResourceStats(resourceMonitor: ResourceMonitor, tasks: Task[]): void {
-  console.log("\n" + "=".repeat(80));
-  console.log("RESOURCE UTILIZATION PER TASK");
-  console.log("=".repeat(80));
-  console.log(`CPU Cores: ${os.cpus().length}`);
+function buildLatencyHistogram(samples: number[]): HistogramBucket[] | null {
+  if (samples.length === 0) {
+    return null;
+  }
 
-  for (const task of tasks) {
-    if (!task.result) continue;
+  const sorted = [...samples].sort((a, b) => a - b);
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
 
-    const stats = resourceMonitor.getTaskStats(task.name);
-    if (!stats) {
-      console.log(`\n${task.name}`);
-      console.log("-".repeat(80));
-      console.log("  No resource data collected");
-      continue;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return null;
+  }
+
+  if (min === max) {
+    return [
+      {
+        minNs: toNanoseconds(min) ?? 0,
+        maxNs: toNanoseconds(max) ?? 0,
+        count: samples.length,
+      },
+    ];
+  }
+
+  const bucketCount = 20;
+  const range = max - min;
+  const bucketSize = range / bucketCount;
+  const counts = new Array<number>(bucketCount).fill(0);
+
+  for (const sample of samples) {
+    let bucketIndex = Math.floor((sample - min) / bucketSize);
+    if (!Number.isFinite(bucketIndex) || bucketIndex < 0) {
+      bucketIndex = 0;
     }
+    if (bucketIndex >= bucketCount) {
+      bucketIndex = bucketCount - 1;
+    }
+    counts[bucketIndex]!++;
+  }
 
-    const { cpu, memory } = stats;
-
-    console.log(`\n${task.name}`);
-    console.log("-".repeat(80));
-    console.log(`  Process CPU Usage:`);
-    console.log(`    Average User:   ${cpu.avgUser.toFixed(2)}%`);
-    console.log(`    Average System: ${cpu.avgSystem.toFixed(2)}%`);
-    console.log(`    Average Total:  ${cpu.avgTotal.toFixed(2)}%`);
-    console.log(`    Max User:       ${cpu.maxUser.toFixed(2)}%`);
-    console.log(`    Max System:     ${cpu.maxSystem.toFixed(2)}%`);
-    console.log(`    Max Total:      ${cpu.maxTotal.toFixed(2)}%`);
-
-    console.log(`  Process Memory Usage:`);
-    const memoryLabels: Record<MemoryMetric, string> = {
-      rss: "RSS",
-      heapTotal: "Heap Total",
-      heapUsed: "Heap Used",
-      external: "External",
-      arrayBuffers: "Array Buffers",
-      sharedArrayBuffers: "Shared Array Buffers",
+  return counts.map((count, index) => {
+    const bucketMin = min + index * bucketSize;
+    const isLast = index === bucketCount - 1;
+    const bucketMax = isLast ? max : min + (index + 1) * bucketSize;
+    return {
+      minNs: toNanoseconds(bucketMin) ?? 0,
+      maxNs: toNanoseconds(bucketMax) ?? 0,
+      count,
     };
-
-    for (const metric of Object.keys(memoryLabels) as MemoryMetric[]) {
-      const label = memoryLabels[metric];
-      const { avg, max } = memory[metric];
-      console.log(
-        `    ${label.padEnd(16)} Avg: ${formatBytes(avg).padStart(10)}  Max: ${formatBytes(max).padStart(10)}`,
-      );
-    }
-
-    console.log(
-      `  Average Load (1m,5m,15m): ${stats.avgLoad.map((value) => value.toFixed(2)).join(", ")}`,
-    );
-  }
-
-  console.log("\n" + "=".repeat(80));
+  });
 }
 
-function printHistogram(tasks: Task[]): void {
-  for (const task of tasks) {
-    const result = task.result;
-    if (!result) continue;
-    const values = result.latency.samples;
-    if (values.length === 0) continue;
+function buildMetricSummary(
+  unit: MetricSummary["unit"],
+  stats: {
+    mean: number;
+    p50?: number;
+    min: number;
+    max: number;
+    sd: number;
+    sem: number;
+    moe: number;
+    rme: number;
+  },
+  transform?: (value: number | undefined) => number | null,
+  tail?: { percentile: number; value?: number },
+): MetricSummary {
+  const convert = transform ?? ((value?: number) => safeNumber(value ?? null));
+  const summary: MetricSummary = {
+    unit,
+    mean: convert(stats.mean),
+    median: convert(stats.p50),
+    min: convert(stats.min),
+    max: convert(stats.max),
+    standardDeviation: convert(stats.sd),
+    standardError: convert(stats.sem),
+    marginOfError: convert(stats.moe),
+    relativeMarginOfError: safeNumber(stats.rme),
+  };
 
-    console.log(`\n${task.name}`);
-    console.log("-".repeat(80));
-
-    const sorted = [...values].sort((a, b) => a - b);
-    const min = sorted[0];
-    const max = sorted[sorted.length - 1];
-    const range = max - min;
-
-    // Create 20 buckets
-    const buckets = 20;
-    const bucketSize = range / buckets;
-    const counts = new Array(buckets).fill(0);
-
-    for (const val of values) {
-      const bucketIndex = Math.min(Math.floor((val - min) / bucketSize), buckets - 1);
-      counts[bucketIndex]++;
-    }
-
-    const lines: string[] = [];
-
-    for (let i = 0; i < buckets; i++) {
-      const bucketMin = min + i * bucketSize;
-      const bucketMax = min + (i + 1) * bucketSize;
-      const count = counts[i];
-      const label = `${formatNs(bucketMin).padStart(10)} - ${formatNs(bucketMax).padEnd(10)}`;
-      const countLabel = count.toString().padStart(6);
-      lines.push(`${label} │ ${countLabel}`);
-    }
-
-    console.log(lines.join("\n"));
+  if (tail) {
+    summary.tail = {
+      percentile: tail.percentile,
+      value: convert(tail.value),
+    };
   }
+
+  return summary;
+}
+
+function createTaskBenchmarkResult(
+  task: Task,
+  resourceMonitor: ResourceMonitor,
+): TaskBenchmarkResult | null {
+  if (!task.result) {
+    return null;
+  }
+
+  const { latency, throughput } = task.result;
+  const resourceStats = resourceMonitor.getTaskStats(task.name) ?? null;
+
+  return {
+    name: task.name,
+    samples: latency.samples.length,
+    latency: buildMetricSummary("ns", latency, toNanoseconds, {
+      percentile: 99,
+      value: latency.p99,
+    }),
+    throughput: buildMetricSummary("ops/s", throughput),
+    resource: resourceStats,
+    histogram: buildLatencyHistogram(latency.samples),
+  };
+}
+
+function createBenchmarkRunResult(
+  bench: Bench,
+  resourceMonitor: ResourceMonitor,
+  durationMs: number,
+  label: string,
+): BenchmarkRunResult {
+  const tasks = bench.tasks
+    .map((task) => createTaskBenchmarkResult(task, resourceMonitor))
+    .filter((taskResult): taskResult is TaskBenchmarkResult => taskResult !== null);
+
+  return {
+    id: randomUUID(),
+    label,
+    timestamp: new Date().toISOString(),
+    durationMs,
+    options: {
+      time: bench.opts.time,
+      warmupTime: bench.opts.warmupTime,
+      warmupIterations: bench.opts.warmupIterations,
+      iterations: bench.opts.iterations,
+    },
+    system: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      cpuCount: os.cpus().length,
+      totalMemory: os.totalmem(),
+      freeMemory: os.freemem(),
+      loadAverage: os.loadavg(),
+    },
+    tasks,
+  };
+}
+
+export function resolveResultPath(label: string): string {
+  const explicitPath = process.env.BENCHMARK_RESULT_PATH;
+  if (explicitPath && explicitPath.trim().length > 0) {
+    return explicitPath;
+  }
+
+  const resultDir = process.env.BENCHMARK_RESULT_DIR ?? path.join(__dirname, "..", "results");
+  const sanitizedLabel = label.replace(/[^a-zA-Z0-9-_]+/g, "-") || "benchmark";
+  const fileName = `${sanitizedLabel}.json`;
+  return path.join(resultDir, fileName);
+}
+
+function persistBenchmarkResult(result: BenchmarkRunResult): string {
+  const outputPath = resolveResultPath(result.label);
+  const directory = path.dirname(outputPath);
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(outputPath, JSON.stringify(result, null, 2));
+  return outputPath;
 }
 
 test.before(async () => {
@@ -471,15 +532,23 @@ function main() {
     });
 
     resourceMonitor.start(100);
+    const runStartedAt = Date.now();
     await bench.run();
+    const benchmarkDurationMs = Date.now() - runStartedAt;
 
     // End tracking for the last task
     resourceMonitor.endTask();
     resourceMonitor.stop();
 
-    console.table(bench.table());
-    printResourceStats(resourceMonitor, bench.tasks);
-    printHistogram(bench.tasks);
+    const label = process.env.BENCHMARK_RESULT_LABEL ?? "benchmark";
+    const benchmarkResult = createBenchmarkRunResult(
+      bench,
+      resourceMonitor,
+      benchmarkDurationMs,
+      label,
+    );
+    const outputPath = persistBenchmarkResult(benchmarkResult);
+    console.log(`Benchmark results saved to ${outputPath}`);
     t.pass();
   });
 }
