@@ -8,6 +8,9 @@ export const TD_INSTRUMENTATION_LIBRARY_NAME = "tusk-drift-sdk";
 export const REPLAY_TRACE_ID_CONTEXT_KEY = createContextKey("td.replayTraceId");
 export const SPAN_KIND_CONTEXT_KEY = createContextKey("td.spanKind");
 export const IS_PRE_APP_START_CONTEXT_KEY = createContextKey("td.isPreAppStart");
+export const STOP_RECORDING_CHILD_SPANS_CONTEXT_KEY = createContextKey(
+  "td.stopRecordingChildSpans",
+);
 export const CALLING_LIBRARY_CONTEXT_KEY = createContextKey("td.callingLibrary");
 
 export enum TdSpanAttributes {

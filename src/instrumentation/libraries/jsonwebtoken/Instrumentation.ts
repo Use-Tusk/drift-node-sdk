@@ -117,8 +117,18 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
         // Handle replay mode (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
           const stackTrace = captureStackTrace(["JsonwebtokenInstrumentation"]);
-          
+
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              const hasCallback = !!verifyConfig.callback;
+              if (hasCallback) {
+                process.nextTick(() => verifyConfig.callback!(null, undefined));
+                return;
+              } else {
+                return undefined;
+              }
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               // Create span in replay mode
               return SpanUtils.createAndExecuteSpan(
@@ -207,8 +217,18 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
         // Handle replay mode (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
           const stackTrace = captureStackTrace(["JsonwebtokenInstrumentation"]);
-          
+
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              const hasCallback = !!signConfig.callback;
+              if (hasCallback) {
+                process.nextTick(() => signConfig.callback!(null, undefined));
+                return;
+              } else {
+                return undefined;
+              }
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               // Create span in replay mode
               return SpanUtils.createAndExecuteSpan(
@@ -530,14 +550,10 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[JsonwebtokenInstrumentation] No mock data found for JWT verify: ${verifyConfig.token}`,
       );
-      const error = new Error("No mock data found");
 
-      if (hasCallback) {
-        process.nextTick(() => verifyConfig.callback!(error));
-        return;
-      } else {
-        throw error;
-      }
+      throw new Error(
+        `[JsonwebtokenInstrumentation] No matching mock found for JWT verify: ${verifyConfig.token}`,
+      );
     }
 
     // Handle errors from the mock data (errors are embedded in the result)
@@ -608,14 +624,7 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
 
     if (!mockData) {
       logger.warn(`[JsonwebtokenInstrumentation] No mock data found for JWT sign`);
-      const error = new Error("No mock data found");
-
-      if (hasCallback) {
-        process.nextTick(() => signConfig.callback!(error));
-        return;
-      } else {
-        throw error;
-      }
+      throw new Error(`[JsonwebtokenInstrumentation] No matching mock found for JWT sign`);
     }
 
     // Handle errors from the mock data (errors are embedded in the result)

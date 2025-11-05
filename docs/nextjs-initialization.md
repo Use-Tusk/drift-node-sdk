@@ -8,6 +8,8 @@ Wrap your Next.js configuration with the `withTuskDrift` function in your `next.
 
 ### Basic Configuration
 
+#### CommonJS (next.config.js)
+
 ```javascript
 // next.config.js
 const { withTuskDrift } = require("@use-tusk/drift-node-sdk");
@@ -17,13 +19,43 @@ module.exports = withTuskDrift({
 });
 ```
 
+#### ESM (next.config.mjs)
+
+```javascript
+// next.config.mjs
+import { withTuskDrift } from "@use-tusk/drift-node-sdk";
+
+export default withTuskDrift({
+  // Your Next.js config
+});
+```
+
 ### With Debug Logging for Next.js Integration
+
+#### CommonJS (next.config.js)
 
 ```javascript
 // next.config.js
 const { withTuskDrift } = require("@use-tusk/drift-node-sdk");
 
 module.exports = withTuskDrift(
+  {
+    // Your Next.js config
+  },
+  {
+    // Tusk Drift options
+    debug: true, // Enable debug logging
+  },
+);
+```
+
+#### ESM (next.config.mjs)
+
+```javascript
+// next.config.mjs
+import { withTuskDrift } from "@use-tusk/drift-node-sdk";
+
+export default withTuskDrift(
   {
     // Your Next.js config
   },
@@ -78,7 +110,7 @@ The `withTuskDrift` wrapper automatically:
 
 ## Step 2: Create Instrumentation File
 
-Create an `instrumentation.ts` (or `.js`) file at the **root of your Next.js project**, at the same level as `next.config.js`:
+Create an `instrumentation.ts` (or `.js`) file at the **root of your Next.js project** (or inside the `src` folder if using one):
 
 ```typescript
 // instrumentation.ts
@@ -87,7 +119,7 @@ export async function register() {
     const { TuskDrift } = await import("@use-tusk/drift-node-sdk");
 
     TuskDrift.initialize({
-      apiKey: process.env.TUSK_DRIFT_API_KEY,
+      apiKey: process.env.TUSK_API_KEY,
       env: process.env.NODE_ENV,
       logLevel: "debug",
     });
@@ -130,6 +162,12 @@ More context on setting up instrumentations for Next.js apps can be found [here]
       <td><code>'info'</code></td>
       <td>The logging level for the Tusk Drift SDK.</td>
     </tr>
+    <tr>
+      <td><code>samplingRate</code></td>
+      <td><code>number</code></td>
+      <td><code>1.0</code></td>
+      <td>Override sampling rate (0.0 - 1.0) for recording. Takes precedence over <code>TUSK_SAMPLING_RATE</code> env var and config file.</td>
+    </tr>
   </tbody>
 </table>
 
@@ -144,7 +182,50 @@ More context on setting up instrumentations for Next.js apps can be found [here]
 }
 ```
 
-## Step 3: Update Configuration File
+## Step 3: Configure Sampling Rate
+
+The sampling rate determines what percentage of requests are recorded during replay tests. Tusk Drift supports three ways to configure the sampling rate, with the following precedence (highest to lowest):
+
+1. **Init Parameter**
+2. **Environment Variable** (`TUSK_SAMPLING_RATE`)
+3. **Configuration File** (`.tusk/config.yaml`)
+
+If not specified, the default sampling rate is `1.0` (100%).
+
+### Method 1: Init Parameter
+
+Set the sampling rate directly in your initialization code:
+
+```typescript
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { TuskDrift } = await import("@use-tusk/drift-node-sdk");
+
+    TuskDrift.initialize({
+      apiKey: process.env.TUSK_API_KEY,
+      env: process.env.NODE_ENV,
+      samplingRate: 0.1, // 10% of requests
+    });
+
+    TuskDrift.markAppAsReady();
+  }
+}
+```
+
+### Method 2: Environment Variable
+
+Set the `TUSK_SAMPLING_RATE` environment variable:
+
+```bash
+# Development - record everything
+TUSK_SAMPLING_RATE=1.0 npm run dev
+
+# Production - sample 10% of requests
+TUSK_SAMPLING_RATE=0.1 npm start
+```
+
+### Method 3: Configuration File
 
 Update the `.tusk/config.yaml` file in your project root to include recording configuration:
 
@@ -157,7 +238,7 @@ recording:
   enable_env_var_recording: true
 ```
 
-### Configuration Options
+### Additional Recording Configuration Options
 
 <table>
   <thead>

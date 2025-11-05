@@ -12,7 +12,13 @@ import type {
   ServerResponse,
 } from "http";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
-import { combineChunks, getDecodedType, httpBodyEncoder, normalizeHeaders } from "./utils";
+import {
+  combineChunks,
+  getDecodedType,
+  httpBodyEncoder,
+  normalizeHeaders,
+  ACCEPTABLE_CONTENT_TYPES,
+} from "./utils";
 import { HttpReplayHooks } from "./HttpReplayHooks";
 import {
   HttpClientInputValue,
@@ -47,6 +53,7 @@ import {
 import { EnvVarTracker } from "../../core/trackers";
 import { HttpSpanData, HttpTransformEngine } from "./HttpTransformEngine";
 import { TransformConfigs } from "../types";
+import { TraceBlockingManager } from "src/core/tracing/TraceBlockingManager";
 
 export interface HttpInstrumentationConfig extends TdInstrumentationConfig {
   requestHook?: (request: any) => void;
@@ -169,6 +176,13 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     // Handle replay mode using replay hooks (only if app is ready)
     if (this.mode === TuskDriftMode.REPLAY) {
       return handleReplayMode({
+        // Shouldn't be used for server requests
+        noOpRequestHandler: () => {
+          throw new Error(
+            `[HttpInstrumentation] Should never call noOpRequestHandler for server requests`,
+          );
+        },
+        isServerRequest: true,
         replayModeHandler: () => {
           // Remove accept-encoding header to prevent compression during replay
           // since we're providing already-decompressed data
@@ -443,8 +457,6 @@ export class HttpInstrumentation extends TdInstrumentationBase {
             outputValue.bodySize = responseBuffer.length;
           } catch (error) {
             logger.error(`[HttpInstrumentation] Error processing server response body:`, error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            outputValue.bodyProcessingError = errorMessage;
           }
         }
 
@@ -467,9 +479,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
             outputSchemaMerges: {
               body: {
                 encoding: EncodingType.BASE64,
-                decodedType: getDecodedType(
-                  (spanData.outputValue as any).headers?.["content-type"] || "",
-                ),
+                decodedType: getDecodedType(spanData.outputValue?.headers?.["content-type"] || ""),
               },
               headers: {
                 matchImportance: 0,
@@ -492,6 +502,19 @@ export class HttpInstrumentation extends TdInstrumentationBase {
               : { code: SpanStatusCode.OK };
 
           SpanUtils.setStatus(spanInfo.span, status);
+
+          // Ignore static asset responses
+          // Must check this before ending the span
+          const decodedType = getDecodedType(outputValue.headers?.["content-type"] || "");
+          if (decodedType && !ACCEPTABLE_CONTENT_TYPES.has(decodedType)) {
+            const traceBlockingManager = TraceBlockingManager.getInstance();
+            traceBlockingManager.blockTrace(spanInfo.traceId);
+            logger.debug(
+              `[HttpInstrumentation] Blocking trace ${spanInfo.traceId} because it is not an acceptable decoded type: ${decodedType}`,
+              { acceptableContentTypes: Array.from(ACCEPTABLE_CONTENT_TYPES) },
+            );
+          }
+
           SpanUtils.endSpan(spanInfo.span);
         } catch (error) {
           logger.error(`[HttpInstrumentation] Error adding response attributes to span:`, error);
@@ -847,59 +870,71 @@ export class HttpInstrumentation extends TdInstrumentationBase {
         readable: res.readable,
       };
 
-      // Capture response body
-      const responseChunks: (string | Buffer)[] = [];
+      // Capture response body using dual-mode consumption strategy
+      // This handles both read() and pipe() consumption patterns
+      const responseChunks: Buffer[] = [];
+      let streamConsumptionMode: "NOT_CONSUMING" | "READ" | "PIPE" = "NOT_CONSUMING";
 
-      if (res.readable) {
-        res.on("data", (chunk: any) => {
-          responseChunks.push(chunk);
-        });
+      // Patch res.read to capture body chunks when application calls read()
+      const originalRead = res.read?.bind(res);
+      if (originalRead) {
+        res.read = function read(size?: number) {
+          const chunk = originalRead(size);
+          if (
+            chunk &&
+            (streamConsumptionMode === "READ" || streamConsumptionMode === "NOT_CONSUMING")
+          ) {
+            streamConsumptionMode = "READ";
+            responseChunks.push(Buffer.from(chunk));
+          }
+          return chunk;
+        };
+      }
 
-        res.on("end", async () => {
-          if (responseChunks.length > 0) {
-            try {
-              // Combine all chunks into a single buffer
-              const responseBuffer = combineChunks(responseChunks);
-
-              // Capture raw headers before processing
-              const rawHeaders = this._captureHeadersFromRawHeaders(res.rawHeaders);
-
-              // Store the raw headers
-              outputValue.headers = rawHeaders;
-
-              // Parse response body
-              const contentEncoding = rawHeaders["content-encoding"];
-              const encodedBody = await httpBodyEncoder({
-                bodyBuffer: responseBuffer,
-                contentEncoding,
-              });
-
-              // Store parsed body data
-              outputValue.body = encodedBody;
-              outputValue.bodySize = responseBuffer.length;
-
-              this._addOutputAttributesToSpan({
-                spanInfo,
-                outputValue,
-                statusCode: res.statusCode || 1,
-                outputSchemaMerges: {
-                  body: {
-                    encoding: EncodingType.BASE64,
-                    decodedType: getDecodedType(outputValue.headers["content-type"] || ""),
-                  },
-                  headers: {
-                    matchImportance: 0,
-                  },
-                },
-                inputValue: completeInputValue,
-              });
-            } catch (error) {
-              logger.error(`[HttpInstrumentation] Error processing response body:`, error);
-            }
+      // Listen for 'resume' event to know when streaming starts
+      res.once("resume", () => {
+        res.on("data", (chunk: string | Buffer) => {
+          if (
+            chunk &&
+            (streamConsumptionMode === "PIPE" || streamConsumptionMode === "NOT_CONSUMING")
+          ) {
+            streamConsumptionMode = "PIPE";
+            responseChunks.push(Buffer.from(chunk));
           }
         });
-      } else {
+      });
+
+      // Always attach end listener to ensure span gets ended
+      res.on("end", async (chunk?: string | Buffer) => {
+        // Capture final chunk if provided
+        if (chunk && typeof chunk !== "function") {
+          responseChunks.push(Buffer.from(chunk));
+        }
+
         try {
+          if (responseChunks.length > 0) {
+            // Combine all chunks into a single buffer
+            const responseBuffer = Buffer.concat(responseChunks);
+
+            // Capture raw headers before processing
+            const rawHeaders = this._captureHeadersFromRawHeaders(res.rawHeaders);
+
+            // Store the raw headers
+            outputValue.headers = rawHeaders;
+
+            // Parse response body
+            const contentEncoding = rawHeaders["content-encoding"];
+            const encodedBody = await httpBodyEncoder({
+              bodyBuffer: responseBuffer,
+              contentEncoding,
+            });
+
+            // Store parsed body data
+            outputValue.body = encodedBody;
+            outputValue.bodySize = responseBuffer.length;
+          }
+
+          // Always end the span, even if there's no response body
           this._addOutputAttributesToSpan({
             spanInfo,
             outputValue,
@@ -916,9 +951,9 @@ export class HttpInstrumentation extends TdInstrumentationBase {
             inputValue: completeInputValue,
           });
         } catch (error) {
-          logger.error(`[HttpInstrumentation] Error adding output attributes to span:`, error);
+          logger.error(`[HttpInstrumentation] Error processing response body:`, error);
         }
-      }
+      });
     });
 
     req.on("error", (error: Error) => {
@@ -1051,6 +1086,17 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           const stackTrace = captureStackTrace(["HttpInstrumentation"]);
 
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              // Calling with no spanInfo since this is a background request
+              // handleOutboundReplayRequest will return a 200 OK response with no mock data
+              return self.replayHooks.handleOutboundReplayRequest({
+                method,
+                requestOptions,
+                protocol: requestProtocol,
+                args,
+              });
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               // Build input value object for replay mode
               const headers = normalizeHeaders(requestOptions.headers || {});
@@ -1187,6 +1233,17 @@ export class HttpInstrumentation extends TdInstrumentationBase {
         // Handle replay mode using replay hooks (only if app is ready)
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              // Calling with no spanInfo since this is a background request
+              // handleOutboundReplayRequest will return a 200 OK response with no mock data
+              return self.replayHooks.handleOutboundReplayRequest({
+                method,
+                requestOptions,
+                protocol: requestProtocol,
+                args,
+              });
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               // Build input value object for replay mode
               const headers = normalizeHeaders(requestOptions.headers || {});

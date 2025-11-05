@@ -41,7 +41,7 @@ export class TdMockClientRequest extends EventEmitter {
   public method?: string;
   public finished: boolean = false;
   private tuskDrift: TuskDriftCore;
-  private spanInfo: SpanInfo;
+  private spanInfo?: SpanInfo;
   private stackTrace?: string;
 
   private requestBodyBuffers: Buffer[] = [];
@@ -51,7 +51,7 @@ export class TdMockClientRequest extends EventEmitter {
 
   constructor(
     options: TdMockClientRequestOptions,
-    spanInfo: SpanInfo,
+    spanInfo?: SpanInfo,
     callback?: (res: IncomingMessage) => void,
     stackTrace?: string,
   ) {
@@ -266,6 +266,32 @@ export class TdMockClientRequest extends EventEmitter {
     this.playbackStarted = true;
 
     try {
+      // For background requests (no traceId), skip mock fetching and return 200 OK immediately
+      if (!this.spanInfo) {
+        logger.debug(
+          `[TdMockClientRequest] Background request detected (no spanInfo), returning 200 OK without mock lookup`,
+        );
+
+        const emptyResponse: HttpClientOutputValue = {
+          statusCode: 200,
+          statusMessage: "OK",
+          headers: {},
+          httpVersion: "1.1",
+          httpVersionMajor: 1,
+          httpVersionMinor: 1,
+          complete: true,
+          readable: false,
+        };
+
+        this.emit("finish");
+
+        // Play the empty response
+        process.nextTick(() => {
+          this.playResponse(emptyResponse);
+        });
+        return;
+      }
+
       // Build input value for matching
       const rawInputValue: HttpClientInputValue = {
         method: this.method || "GET",
@@ -311,7 +337,9 @@ export class TdMockClientRequest extends EventEmitter {
         inputValueSchemaMerges: {
           body: {
             encoding: EncodingType.BASE64,
-            decodedType: getDecodedType((rawInputValue.headers["content-type"] as string | string[]) || ""),
+            decodedType: getDecodedType(
+              (rawInputValue.headers["content-type"] as string | string[]) || "",
+            ),
           },
           headers: {
             matchImportance: 0,
@@ -319,7 +347,10 @@ export class TdMockClientRequest extends EventEmitter {
         },
       });
       if (!mockData) {
-        throw new Error(`No matching mock found for ${this.method} ${this.path}`);
+        logger.warn(`[TdMockClientRequest] No mock data found for ${this.method} ${this.path}`);
+        throw new Error(
+          `[TdMockClientRequest] No matching mock found for ${this.method} ${this.path}`,
+        );
       }
 
       this.emit("finish");

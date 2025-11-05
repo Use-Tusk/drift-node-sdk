@@ -1,5 +1,4 @@
 import { SpanInfo } from "../../../core/tracing/SpanUtils";
-import { TuskDrift } from "../../../core/TuskDrift";
 import { TdMockClientRequest, TdMockClientRequestOptions } from "./mocks/TdMockClientRequest";
 import type { RequestOptions } from "http";
 import { logger } from "../../../core/utils/logger";
@@ -37,7 +36,7 @@ export class HttpReplayHooks {
     requestOptions: RequestOptions;
     protocol: "http" | "https";
     args: any[];
-    spanInfo: SpanInfo;
+    spanInfo?: SpanInfo;
     stackTrace?: string;
   }): TdMockClientRequest | undefined {
     logger.debug(
@@ -62,7 +61,7 @@ export class HttpReplayHooks {
       auth: requestOptions.auth || undefined,
       agent: requestOptions.agent || undefined,
       protocol,
-      hostname: requestOptions.hostname || undefined,
+      hostname: requestOptions.hostname || requestOptions.host || undefined,
       port: requestOptions.port ? Number(requestOptions.port) : undefined,
       method,
     };
@@ -72,7 +71,7 @@ export class HttpReplayHooks {
 
     // For GET/HEAD requests, automatically call .end() to match native http.get() behavior
     // Native http.get() and https.get() are convenience methods that automatically call .end()
-    if (method === 'GET' || method === 'HEAD') {
+    if (method === "GET" || method === "HEAD") {
       // Schedule .end() call after constructor completes
       process.nextTick(() => {
         mockRequest.end();

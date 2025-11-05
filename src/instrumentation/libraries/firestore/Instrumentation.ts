@@ -156,6 +156,15 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              const emptyDocumentResult: FirestoreDocumentResult = {
+                exists: false,
+                id: "",
+                path: "",
+              };
+              return new TdFirestoreDocumentMock(emptyDocumentResult);
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -169,6 +178,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayDocumentGet(spanInfo, inputValue);
@@ -192,6 +202,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordDocumentGet(spanInfo, originalGet, this);
@@ -267,7 +278,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[FirestoreInstrumentation] No mock data found for document.get: ${inputValue.path}`,
       );
-      return Promise.reject(new Error("No mock data found"));
+      throw new Error(`[FirestoreInstrumentation] No matching mock found for document.get`);
     }
 
     const documentResult = mockData.result as FirestoreDocumentResult;
@@ -290,6 +301,17 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              const now = Date.now();
+              const emptyWriteResult: FirestoreWriteResult = {
+                writeTime: {
+                  seconds: Math.floor(now / 1000),
+                  nanoseconds: (now % 1000) * 1000000,
+                },
+              };
+              return new TdFirestoreWriteResultMock(emptyWriteResult);
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -303,6 +325,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayDocumentWrite(spanInfo, inputValue);
@@ -326,6 +349,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordDocumentWrite(spanInfo, originalCreate, this, data);
@@ -358,6 +382,17 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              const now = Date.now();
+              const emptyWriteResult: FirestoreWriteResult = {
+                writeTime: {
+                  seconds: Math.floor(now / 1000),
+                  nanoseconds: (now % 1000) * 1000000,
+                },
+              };
+              return new TdFirestoreWriteResultMock(emptyWriteResult);
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -371,6 +406,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayDocumentWrite(spanInfo, inputValue);
@@ -394,6 +430,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordDocumentWrite(
@@ -432,6 +469,17 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              const now = Date.now();
+              const emptyWriteResult: FirestoreWriteResult = {
+                writeTime: {
+                  seconds: Math.floor(now / 1000),
+                  nanoseconds: (now % 1000) * 1000000,
+                },
+              };
+              return new TdFirestoreWriteResultMock(emptyWriteResult);
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -445,6 +493,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayDocumentWrite(spanInfo, inputValue);
@@ -468,6 +517,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordDocumentWrite(spanInfo, originalUpdate, this, ...args);
@@ -499,6 +549,17 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              const now = Date.now();
+              const emptyWriteResult: FirestoreWriteResult = {
+                writeTime: {
+                  seconds: Math.floor(now / 1000),
+                  nanoseconds: (now % 1000) * 1000000,
+                },
+              };
+              return new TdFirestoreWriteResultMock(emptyWriteResult);
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -512,6 +573,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayDocumentWrite(spanInfo, inputValue);
@@ -535,6 +597,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordDocumentWrite(
@@ -609,7 +672,9 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[FirestoreInstrumentation] No mock data found for ${inputValue.operation}: ${inputValue.path}`,
       );
-      return Promise.reject(new Error("No mock data found"));
+      throw new Error(
+        `[FirestoreInstrumentation] No matching mock found for ${inputValue.operation}`,
+      );
     }
 
     // Return mock write result with proper API
@@ -633,6 +698,14 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (!this.originalCollectionDocFn) {
+                logger.error(`[FirestoreInstrumentation] Original doc function not available`);
+                return Promise.reject(new Error("Original doc function not available"));
+              }
+              return this.originalCollectionDocFn.call(this, "");
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -646,6 +719,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayCollectionAdd(spanInfo, inputValue, this);
@@ -669,6 +743,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordCollectionAdd(spanInfo, originalAdd, this, data);
@@ -733,7 +808,8 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[FirestoreInstrumentation] No mock data found for collection.add: ${inputValue.path}`,
       );
-      return Promise.reject(new Error("No mock data found"));
+
+      throw new Error(`[FirestoreInstrumentation] No matching mock found for collection.add`);
     }
 
     // Return a DocumentReference with the recorded ID
@@ -761,6 +837,10 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
 
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              return originalDoc.call(this, "");
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -775,6 +855,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   // doc is a sync function so we need to fetch the mock syncronously
@@ -799,8 +880,9 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                     logger.warn(
                       `[FirestoreInstrumentation] No mock data found for collection.doc: ${collectionPath}`,
                     );
-                    // Fallback to original behavior
-                    throw new Error("No mock data found for collection.doc");
+                    throw new Error(
+                      `[FirestoreInstrumentation] No matching mock found for collection.doc`,
+                    );
                   }
 
                   // Use the recorded ID (this ensures deterministic replay)
@@ -834,6 +916,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   // Record the ID (whether auto-generated or provided)
@@ -884,6 +967,15 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
+            noOpRequestHandler: () => {
+              const emptyQueryResult: FirestoreQueryResult = {
+                size: 0,
+                empty: true,
+                docs: [],
+              };
+              return new TdFirestoreQueryMock(emptyQueryResult);
+            },
+            isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
                 self.mode,
@@ -897,6 +989,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleReplayQueryGet(spanInfo, inputValue);
@@ -920,6 +1013,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart,
+                  stopRecordingChildSpans: true,
                 },
                 (spanInfo) => {
                   return self._handleRecordQueryGet(spanInfo, originalGet, this);
@@ -1005,7 +1099,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
       logger.warn(
         `[FirestoreInstrumentation] No mock data found for query.get: ${inputValue.path}`,
       );
-      return Promise.reject(new Error("No mock data found"));
+      throw new Error(`[FirestoreInstrumentation] No matching mock found for query.get`);
     }
 
     const queryResult = mockData.result as FirestoreQueryResult;

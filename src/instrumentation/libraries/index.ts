@@ -13,3 +13,4 @@ export * from "./ioredis";
 export * from "./grpc";
 export * from "./firestore";
 export * from "./nextjs";
+export * from "./prisma";

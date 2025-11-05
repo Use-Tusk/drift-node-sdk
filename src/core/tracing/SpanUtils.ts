@@ -13,6 +13,7 @@ import {
   MetadataObject,
   REPLAY_TRACE_ID_CONTEXT_KEY,
   SPAN_KIND_CONTEXT_KEY,
+  STOP_RECORDING_CHILD_SPANS_CONTEXT_KEY,
   TdSpanAttributes,
 } from "../types";
 import { TuskDriftCore, TuskDriftMode } from "../TuskDrift";
@@ -49,6 +50,7 @@ export interface SpanExecutorOptions {
   isPreAppStart: boolean;
   inputSchemaMerges?: SchemaMerges;
   metadata?: MetadataObject;
+  stopRecordingChildSpans?: boolean;
 }
 
 export interface AddSpanAttributesOptions {
@@ -157,6 +159,20 @@ export class SpanUtils {
     options: SpanExecutorOptions,
     fn: (spanInfo: SpanInfo) => T,
   ): T {
+    // Check if we should stop recording child spans for this span
+    const spanContext = trace.getActiveSpan()?.spanContext();
+    if (spanContext) {
+      const stopRecordingChildSpans = context
+        .active()
+        .getValue(STOP_RECORDING_CHILD_SPANS_CONTEXT_KEY) as boolean;
+      if (stopRecordingChildSpans) {
+        logger.debug(
+          `[SpanUtils] Stopping recording of child spans for span ${spanContext.spanId}, packageName: ${options.packageName}, instrumentationName: ${options.instrumentationName}`,
+        );
+        return originalFunctionCall();
+      }
+    }
+
     const {
       name,
       kind,
@@ -168,6 +184,7 @@ export class SpanUtils {
       inputSchemaMerges,
       isPreAppStart,
       metadata,
+      stopRecordingChildSpans,
     } = options;
 
     let spanInfo: SpanInfo | null = null;
@@ -207,6 +224,11 @@ export class SpanUtils {
         // Call the original function, don't want SDK errors to propagate to the user
         return originalFunctionCall();
       }
+    }
+
+    // Set the stopRecordingChildSpans context value if it is true
+    if (stopRecordingChildSpans) {
+      spanInfo.context = spanInfo.context.setValue(STOP_RECORDING_CHILD_SPANS_CONTEXT_KEY, true);
     }
 
     // Execute function within span context

@@ -12,8 +12,8 @@ import { captureStackTrace } from "src/instrumentation/core/utils";
  */
 export class TdMysql2ConnectionMock extends EventEmitter {
   private mysql2Instrumentation: Mysql2Instrumentation;
-  private spanInfo: SpanInfo;
   private clientType: "connection" | "pool" | "poolConnection"; // Add this property
+  private spanInfo?: SpanInfo;
 
   // MySQL2 connection properties
   public threadId: number | null = null;
@@ -25,9 +25,9 @@ export class TdMysql2ConnectionMock extends EventEmitter {
   };
 
   constructor(
-    mysql2Instrumentation: Mysql2Instrumentation, 
-    spanInfo: SpanInfo,
-    clientType: "connection" | "pool" | "poolConnection" = "poolConnection" // Add parameter with default
+    mysql2Instrumentation: Mysql2Instrumentation,
+    clientType: "connection" | "pool" | "poolConnection" = "poolConnection", // Add parameter with default
+    spanInfo?: SpanInfo,
   ) {
     super();
     this.mysql2Instrumentation = mysql2Instrumentation;
@@ -64,7 +64,18 @@ export class TdMysql2ConnectionMock extends EventEmitter {
 
     const inputValue = createMockInputValue(rawInputValue);
 
-    return this.mysql2Instrumentation.handleReplayQuery(queryConfig, inputValue, this.spanInfo, stackTrace);
+    if (this.spanInfo) {
+      return this.mysql2Instrumentation.handleReplayQuery(
+        queryConfig,
+        inputValue,
+        this.spanInfo,
+        stackTrace,
+      );
+    } else {
+      // Background query
+      // Return an EventEmitter that immediately completes with empty results
+      return this.mysql2Instrumentation.handleNoOpReplayQuery(queryConfig);
+    }
   }
 
   execute(...args: any[]) {
@@ -95,7 +106,18 @@ export class TdMysql2ConnectionMock extends EventEmitter {
 
     const inputValue = createMockInputValue(rawInputValue);
 
-    return this.mysql2Instrumentation.handleReplayQuery(queryConfig, inputValue, this.spanInfo, stackTrace);
+    if (this.spanInfo) {
+      return this.mysql2Instrumentation.handleReplayQuery(
+        queryConfig,
+        inputValue,
+        this.spanInfo,
+        stackTrace,
+      );
+    } else {
+      // Background query
+      // Return an EventEmitter that immediately completes with empty results
+      return this.mysql2Instrumentation.handleNoOpReplayQuery(queryConfig);
+    }
   }
 
   release() {

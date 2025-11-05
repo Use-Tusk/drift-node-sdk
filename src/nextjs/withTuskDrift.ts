@@ -92,22 +92,24 @@ export function withTuskDrift(
         // Core packages that must be external for instrumentation
         const coreExternals = ["require-in-the-middle", "jsonpath"];
 
+        // Create externals mapping - since SDK's node_modules aren't published,
+        // we rely on these packages being available in the consumer's node_modules
+        const externalsMapping: Record<string, string> = {};
+        for (const pkg of coreExternals) {
+          externalsMapping[pkg] = `commonjs ${pkg}`;
+          debugLog(debug, `Mapped external ${pkg} -> commonjs ${pkg}`);
+        }
+
+        // Add our externals mapping
         if (!originalExternals) {
-          // No externals defined, create a new array
-          webpackConfig.externals = coreExternals;
-          debugLog(debug, "Created new externals array with core packages");
+          webpackConfig.externals = [externalsMapping];
+          debugLog(debug, "Created new externals with SDK paths");
         } else if (Array.isArray(originalExternals)) {
-          // Externals is already an array, add our packages if not present
-          for (const pkg of coreExternals) {
-            if (!originalExternals.includes(pkg)) {
-              originalExternals.push(pkg);
-              debugLog(debug, `Added ${pkg} to webpack externals`);
-            }
-          }
+          originalExternals.push(externalsMapping);
+          debugLog(debug, "Added SDK paths to existing externals array");
         } else {
-          // Externals is a function or other type, wrap it in an array with our packages
-          webpackConfig.externals = [originalExternals, ...coreExternals];
-          debugLog(debug, "Wrapped existing externals with core packages");
+          webpackConfig.externals = [originalExternals, externalsMapping];
+          debugLog(debug, "Wrapped existing externals with SDK paths");
         }
       }
 

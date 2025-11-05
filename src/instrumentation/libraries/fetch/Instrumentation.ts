@@ -104,6 +104,15 @@ export class FetchInstrumentation extends TdInstrumentationBase {
     // Handle replay mode (only if app is ready)
     if (this.mode === TuskDriftMode.REPLAY) {
       return handleReplayMode({
+        noOpRequestHandler: () => {
+          const mockResponse = new Response(null, {
+            status: 200,
+            statusText: "OK",
+          });
+
+          return Promise.resolve(mockResponse);
+        },
+        isServerRequest: false,
         replayModeHandler: () => {
           // Create span in replay mode
           return SpanUtils.createAndExecuteSpan(
@@ -276,9 +285,10 @@ export class FetchInstrumentation extends TdInstrumentationBase {
     });
 
     if (!mockData) {
-      throw new Error(
-        `No matching mock found for fetch request with input value: ${JSON.stringify(inputValue)}`,
+      logger.warn(
+        `[FetchInstrumentation] No mock data found for fetch request with input value: ${JSON.stringify(inputValue)}`,
       );
+      throw new Error(`[FetchInstrumentation] No matching mock found for fetch request`);
     }
 
     const { result } = mockData;
