@@ -2,6 +2,6 @@
  * All Benchmarks - SDK Disabled
  */
 
-import main from "./common.bench";
+import main from "./common";
 
 main();

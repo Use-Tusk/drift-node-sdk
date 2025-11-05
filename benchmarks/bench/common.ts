@@ -6,21 +6,47 @@ import * as os from "os";
 let server: TestServer;
 let serverUrl: string;
 
-interface CpuSample {
+interface MemorySample {
+  rss: number;
+  heapTotal: number;
+  heapUsed: number;
+  external: number;
+  arrayBuffers: number;
+  sharedArrayBuffers: number;
+}
+
+interface ResourceSample {
   timestamp: number;
-  user: number;
-  system: number;
+  cpu: {
+    user: number;
+    system: number;
+  };
   loadAverage: number[];
+  memory: MemorySample;
 }
 
-interface TaskCpuStats {
-  taskName: string;
-  samples: CpuSample[];
+type MemoryMetric = keyof MemorySample;
+
+interface CpuStatsSummary {
+  avgUser: number;
+  avgSystem: number;
+  avgTotal: number;
+  maxUser: number;
+  maxSystem: number;
+  maxTotal: number;
 }
 
-class CpuMonitor {
-  private currentTaskSamples: CpuSample[] = [];
-  private taskStats: Map<string, CpuSample[]> = new Map();
+type MemoryStats = Record<MemoryMetric, { avg: number; max: number }>;
+
+interface TaskResourceStats {
+  cpu: CpuStatsSummary;
+  memory: MemoryStats;
+  avgLoad: number[];
+}
+
+class ResourceMonitor {
+  private currentTaskSamples: ResourceSample[] = [];
+  private taskStats: Map<string, ResourceSample[]> = new Map();
   private intervalId: NodeJS.Timeout | null = null;
   private lastCpuUsage: NodeJS.CpuUsage | null = null;
   private lastTimestamp: number = 0;
@@ -47,11 +73,25 @@ class CpuMonitor {
         const userPercent = (userDiff / elapsedTime) * 100;
         const systemPercent = (systemDiff / elapsedTime) * 100;
 
-        const sample: CpuSample = {
+        const memoryUsage = process.memoryUsage() as NodeJS.MemoryUsage & {
+          sharedArrayBuffers?: number;
+        };
+
+        const sample: ResourceSample = {
           timestamp: now,
-          user: userPercent,
-          system: systemPercent,
+          cpu: {
+            user: userPercent,
+            system: systemPercent,
+          },
           loadAverage: os.loadavg(),
+          memory: {
+            rss: memoryUsage.rss,
+            heapTotal: memoryUsage.heapTotal,
+            heapUsed: memoryUsage.heapUsed,
+            external: memoryUsage.external ?? 0,
+            arrayBuffers: memoryUsage.arrayBuffers ?? 0,
+            sharedArrayBuffers: memoryUsage.sharedArrayBuffers ?? 0,
+          },
         };
 
         if (this.currentTaskName) {
@@ -95,23 +135,15 @@ class CpuMonitor {
     this.currentTaskSamples = [];
   }
 
-  getTaskStats(taskName: string): {
-    avgUser: number;
-    avgSystem: number;
-    avgTotal: number;
-    maxUser: number;
-    maxSystem: number;
-    maxTotal: number;
-    avgLoad: number[];
-  } | null {
+  getTaskStats(taskName: string): TaskResourceStats | null {
     const samples = this.taskStats.get(taskName);
     if (!samples || samples.length === 0) {
       return null;
     }
 
-    const userValues = samples.map((s) => s.user);
-    const systemValues = samples.map((s) => s.system);
-    const totalValues = samples.map((s) => s.user + s.system);
+    const userValues = samples.map((s) => s.cpu.user);
+    const systemValues = samples.map((s) => s.cpu.system);
+    const totalValues = samples.map((s) => s.cpu.user + s.cpu.system);
 
     const avgUser = userValues.reduce((a, b) => a + b, 0) / userValues.length;
     const avgSystem = systemValues.reduce((a, b) => a + b, 0) / systemValues.length;
@@ -121,7 +153,6 @@ class CpuMonitor {
     const maxSystem = Math.max(...systemValues);
     const maxTotal = Math.max(...totalValues);
 
-    // Average load across all samples
     const avgLoad = [0, 0, 0];
     for (const sample of samples) {
       avgLoad[0] += sample.loadAverage[0];
@@ -132,13 +163,33 @@ class CpuMonitor {
     avgLoad[1] /= samples.length;
     avgLoad[2] /= samples.length;
 
+    const memoryMetrics: MemoryMetric[] = [
+      "rss",
+      "heapTotal",
+      "heapUsed",
+      "external",
+      "arrayBuffers",
+      "sharedArrayBuffers",
+    ];
+
+    const memoryStats = memoryMetrics.reduce((acc, metric) => {
+      const values = samples.map((sample) => sample.memory[metric]);
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const max = Math.max(...values);
+      acc[metric] = { avg, max };
+      return acc;
+    }, {} as MemoryStats);
+
     return {
-      avgUser,
-      avgSystem,
-      avgTotal,
-      maxUser,
-      maxSystem,
-      maxTotal,
+      cpu: {
+        avgUser,
+        avgSystem,
+        avgTotal,
+        maxUser,
+        maxSystem,
+        maxTotal,
+      },
+      memory: memoryStats,
       avgLoad,
     };
   }
@@ -156,32 +207,61 @@ function formatNs(ns?: number): string {
   return `${(ns / 1_000_000_000).toFixed(2)}s`;
 }
 
-function printCpuStats(cpuMonitor: CpuMonitor, tasks: Task[]): void {
+function formatBytes(bytes: number): string {
+  const megabytes = bytes / (1024 * 1024);
+  return `${megabytes.toFixed(2)} MB`;
+}
+
+function printResourceStats(resourceMonitor: ResourceMonitor, tasks: Task[]): void {
   console.log("\n" + "=".repeat(80));
-  console.log("CPU UTILIZATION PER TASK");
+  console.log("RESOURCE UTILIZATION PER TASK");
   console.log("=".repeat(80));
   console.log(`CPU Cores: ${os.cpus().length}`);
 
   for (const task of tasks) {
     if (!task.result) continue;
 
-    const stats = cpuMonitor.getTaskStats(task.name);
+    const stats = resourceMonitor.getTaskStats(task.name);
     if (!stats) {
       console.log(`\n${task.name}`);
       console.log("-".repeat(80));
-      console.log("  No CPU data collected");
+      console.log("  No resource data collected");
       continue;
     }
+
+    const { cpu, memory } = stats;
 
     console.log(`\n${task.name}`);
     console.log("-".repeat(80));
     console.log(`  Process CPU Usage:`);
-    console.log(`    Average User:   ${stats.avgUser.toFixed(2)}%`);
-    console.log(`    Average System: ${stats.avgSystem.toFixed(2)}%`);
-    console.log(`    Average Total:  ${stats.avgTotal.toFixed(2)}%`);
-    console.log(`    Max User:       ${stats.maxUser.toFixed(2)}%`);
-    console.log(`    Max System:     ${stats.maxSystem.toFixed(2)}%`);
-    console.log(`    Max Total:      ${stats.maxTotal.toFixed(2)}%`);
+    console.log(`    Average User:   ${cpu.avgUser.toFixed(2)}%`);
+    console.log(`    Average System: ${cpu.avgSystem.toFixed(2)}%`);
+    console.log(`    Average Total:  ${cpu.avgTotal.toFixed(2)}%`);
+    console.log(`    Max User:       ${cpu.maxUser.toFixed(2)}%`);
+    console.log(`    Max System:     ${cpu.maxSystem.toFixed(2)}%`);
+    console.log(`    Max Total:      ${cpu.maxTotal.toFixed(2)}%`);
+
+    console.log(`  Process Memory Usage:`);
+    const memoryLabels: Record<MemoryMetric, string> = {
+      rss: "RSS",
+      heapTotal: "Heap Total",
+      heapUsed: "Heap Used",
+      external: "External",
+      arrayBuffers: "Array Buffers",
+      sharedArrayBuffers: "Shared Array Buffers",
+    };
+
+    for (const metric of Object.keys(memoryLabels) as MemoryMetric[]) {
+      const label = memoryLabels[metric];
+      const { avg, max } = memory[metric];
+      console.log(
+        `    ${label.padEnd(16)} Avg: ${formatBytes(avg).padStart(10)}  Max: ${formatBytes(max).padStart(10)}`,
+      );
+    }
+
+    console.log(
+      `  Average Load (1m,5m,15m): ${stats.avgLoad.map((value) => value.toFixed(2)).join(", ")}`,
+    );
   }
 
   console.log("\n" + "=".repeat(80));
@@ -245,7 +325,7 @@ function main() {
   test.serial("SDK Active", async (t) => {
     t.timeout(600_000);
 
-    const cpuMonitor = new CpuMonitor();
+    const resourceMonitor = new ResourceMonitor();
 
     const bench = new Bench({
       time: 10000,
@@ -265,12 +345,12 @@ function main() {
 
         // If this is a different task than last time, we've moved to the next task
         if (lastTaskName && lastTaskName !== currentTaskName) {
-          cpuMonitor.endTask();
+          resourceMonitor.endTask();
         }
 
         // Start tracking this task if we haven't already
         if (lastTaskName !== currentTaskName) {
-          cpuMonitor.startTask(currentTaskName);
+          resourceMonitor.startTask(currentTaskName);
           lastTaskName = currentTaskName;
         }
       }
@@ -390,15 +470,15 @@ function main() {
       await response.json();
     });
 
-    cpuMonitor.start(100);
+    resourceMonitor.start(100);
     await bench.run();
 
     // End tracking for the last task
-    cpuMonitor.endTask();
-    cpuMonitor.stop();
+    resourceMonitor.endTask();
+    resourceMonitor.stop();
 
     console.table(bench.table());
-    printCpuStats(cpuMonitor, bench.tasks);
+    printResourceStats(resourceMonitor, bench.tasks);
     printHistogram(bench.tasks);
     t.pass();
   });

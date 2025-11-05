@@ -63,6 +63,6 @@ TuskDriftCore.getInstance().spanExporter?.addAdapter(adapter);
 
 TuskDrift.markAppAsReady();
 
-const common = require("./common.bench.ts");
+const common = require("./common.ts");
 
 common.default();
