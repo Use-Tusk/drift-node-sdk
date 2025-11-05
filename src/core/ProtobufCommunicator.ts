@@ -15,6 +15,8 @@ import {
   SendAlertRequest,
   InstrumentationVersionMismatchAlert,
   UnpatchedDependencyAlert,
+  EnvVarRequest,
+  EnvVarResponse,
 } from "@use-tusk/drift-schemas/core/communication";
 import { context, Context, SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { Value } from "@use-tusk/drift-schemas/google/protobuf/struct";
@@ -34,11 +36,105 @@ interface MockResponseOutput {
 }
 
 export class ProtobufCommunicator {
+  /**
+   * Shared child process script for synchronous protobuf requests.
+   * This script establishes its own connection to the CLI and handles async socket communication.
+   */
+  private static readonly SYNC_CHILD_SCRIPT = `
+const net = require('net');
+const fs = require('fs');
+
+const requestFile = process.argv[2];
+const responseFile = process.argv[3];
+const config = JSON.parse(process.argv[4]);
+
+let responseReceived = false;
+let timeoutId;
+
+function cleanup(exitCode) {
+  if (timeoutId) clearTimeout(timeoutId);
+  process.exit(exitCode);
+}
+
+try {
+  // Read the request data
+  const requestData = fs.readFileSync(requestFile);
+
+  // Create connection based on config
+  const client = config.type === 'unix'
+    ? net.createConnection({ path: config.path })
+    : net.createConnection({ host: config.host, port: config.port });
+
+  const incomingChunks = [];
+  let incomingBuffer = Buffer.alloc(0);
+
+  // Set timeout
+  timeoutId = setTimeout(() => {
+    if (!responseReceived) {
+      console.error('Timeout waiting for response');
+      client.destroy();
+      cleanup(1);
+    }
+  }, 10000);
+
+  client.on('connect', () => {
+    // Send the request
+    client.write(requestData);
+  });
+
+  client.on('data', (data) => {
+    incomingBuffer = Buffer.concat([incomingBuffer, data]);
+
+    // Try to parse complete message (4 byte length prefix + message)
+    while (incomingBuffer.length >= 4) {
+      const messageLength = incomingBuffer.readUInt32BE(0);
+
+      if (incomingBuffer.length < 4 + messageLength) {
+        // Incomplete message, wait for more data
+        break;
+      }
+
+      // We have a complete message
+      const messageData = incomingBuffer.slice(4, 4 + messageLength);
+      incomingBuffer = incomingBuffer.slice(4 + messageLength);
+
+      // Write the complete response (including length prefix)
+      const lengthPrefix = Buffer.allocUnsafe(4);
+      lengthPrefix.writeUInt32BE(messageLength, 0);
+      fs.writeFileSync(responseFile, Buffer.concat([lengthPrefix, messageData]));
+
+      responseReceived = true;
+      client.destroy();
+      cleanup(0);
+      break;
+    }
+  });
+
+  client.on('error', (err) => {
+    if (!responseReceived) {
+      console.error('Connection error:', err.message);
+      cleanup(1);
+    }
+  });
+
+  client.on('close', () => {
+    if (!responseReceived) {
+      console.error('Connection closed without response');
+      cleanup(1);
+    }
+  });
+
+} catch (err) {
+  console.error('Script error:', err.message);
+  cleanup(1);
+}
+`;
+
   private client: net.Socket | null = null;
   private pendingRequests = new Map<
     string,
     {
-      resolve: (response: MockResponseOutput) => void;
+      resolve: (response: any) => void;
       reject: (error: Error) => void;
     }
   >();
@@ -196,6 +292,138 @@ export class ProtobufCommunicator {
   }
 
   /**
+   * Request environment variables from CLI synchronously using a child process.
+   * This blocks the main thread, so it should be used carefully.
+   * Similar to requestMockSync but for environment variables.
+   */
+  requestEnvVarsSync(traceTestServerSpanId: string): Record<string, string> {
+    const requestId = this.generateRequestId();
+
+    const envVarRequest = EnvVarRequest.create({
+      traceTestServerSpanId,
+    });
+
+    const sdkMessage = SDKMessage.create({
+      type: MessageType.ENV_VAR_REQUEST,
+      requestId: requestId,
+      payload: {
+        oneofKind: "envVarRequest",
+        envVarRequest,
+      },
+    });
+
+    logger.debug(
+      `[ProtobufCommunicator] Requesting env vars (sync) for trace: ${traceTestServerSpanId}`,
+    );
+
+    // Serialize the message to binary
+    const messageBytes = SDKMessage.toBinary(sdkMessage);
+
+    // Create temporary file for the request and response
+    const tempDir = os.tmpdir();
+    const requestFile = path.join(tempDir, `tusk-sync-envvar-request-${requestId}.bin`);
+    const responseFile = path.join(tempDir, `tusk-sync-envvar-response-${requestId}.bin`);
+    const scriptFile = path.join(tempDir, `tusk-sync-envvar-script-${requestId}.js`);
+
+    try {
+      // Write length prefix (4 bytes big-endian) + message to temp file
+      const lengthBuffer = Buffer.allocUnsafe(4);
+      lengthBuffer.writeUInt32BE(messageBytes.length, 0);
+      const fullMessage = Buffer.concat([lengthBuffer, Buffer.from(messageBytes)]);
+      fs.writeFileSync(requestFile, fullMessage);
+
+      // Determine connection method (Unix socket or TCP)
+      const mockSocket = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_SOCKET");
+      const mockHost = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_HOST");
+      const mockPort = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_PORT");
+
+      let connectionConfig: any;
+      if (mockSocket) {
+        connectionConfig = { type: "unix", path: mockSocket };
+      } else if (mockHost && mockPort) {
+        connectionConfig = { type: "tcp", host: mockHost, port: parseInt(mockPort, 10) };
+      } else {
+        const socketPath = path.join(os.tmpdir(), "tusk-connect.sock");
+        connectionConfig = { type: "unix", path: socketPath };
+      }
+
+      // Write the script to a file
+      fs.writeFileSync(scriptFile, ProtobufCommunicator.SYNC_CHILD_SCRIPT);
+
+      try {
+        // Execute the child process synchronously using execSync
+        execSync(
+          `node "${scriptFile}" "${requestFile}" "${responseFile}" '${JSON.stringify(connectionConfig)}'`,
+          {
+            timeout: 12000, // Slightly longer than the child's timeout
+            stdio: "pipe",
+          },
+        );
+
+        // Read the response from the file
+        const responseBuffer = fs.readFileSync(responseFile);
+
+        // Parse the response (4 byte length prefix + message)
+        if (responseBuffer.length < 4) {
+          throw new Error("Invalid response: too short");
+        }
+
+        const responseLength = responseBuffer.readUInt32BE(0);
+        if (responseBuffer.length < 4 + responseLength) {
+          throw new Error("Invalid response: incomplete message");
+        }
+
+        const responseData = responseBuffer.slice(4, 4 + responseLength);
+        const cliMessage = CLIMessage.fromBinary(responseData);
+
+        if (cliMessage.payload.oneofKind !== "envVarResponse") {
+          throw new Error(`Unexpected response type: ${cliMessage.type}`);
+        }
+
+        const envVarResponse = cliMessage.payload.envVarResponse;
+        if (!envVarResponse) {
+          throw new Error("No env var response received");
+        }
+
+        // Convert protobuf map to Record<string, string>
+        const envVars: Record<string, string> = {};
+        if (envVarResponse.envVars) {
+          Object.entries(envVarResponse.envVars).forEach(([key, value]) => {
+            envVars[key] = value;
+          });
+        }
+
+        logger.debug(
+          `[ProtobufCommunicator] Received env vars (sync), count: ${Object.keys(envVars).length}`,
+        );
+        return envVars;
+      } catch (error: any) {
+        logger.error("[ProtobufCommunicator] error in sync env var request child process:", error);
+        throw error;
+      }
+    } catch (error: any) {
+      throw new Error(`Sync env var request failed: ${error.message}`);
+    } finally {
+      // Clean up temp files
+      try {
+        if (fs.existsSync(requestFile)) fs.unlinkSync(requestFile);
+      } catch (e) {
+        logger.error("[ProtobufCommunicator] error cleaning up request file:", e);
+      }
+      try {
+        if (fs.existsSync(responseFile)) fs.unlinkSync(responseFile);
+      } catch (e) {
+        logger.error("[ProtobufCommunicator] error cleaning up response file:", e);
+      }
+      try {
+        if (fs.existsSync(scriptFile)) fs.unlinkSync(scriptFile);
+      } catch (e) {
+        logger.error("[ProtobufCommunicator] error cleaning up script file:", e);
+      }
+    }
+  }
+
+  /**
    * This function uses a separate Node.js child process to communicate with the CLI over a socket.
    * The child process creates its own connection and event loop, allowing proper async socket handling.
    * The parent process blocks synchronously waiting for the child to complete.
@@ -279,99 +507,8 @@ export class ProtobufCommunicator {
         connectionConfig = { type: "unix", path: socketPath };
       }
 
-      // Create a child process script that establishes its own connection
-      const childScript = `
-const net = require('net');
-const fs = require('fs');
-
-const requestFile = process.argv[2];
-const responseFile = process.argv[3];
-const config = JSON.parse(process.argv[4]);
-
-let responseReceived = false;
-let timeoutId;
-
-function cleanup(exitCode) {
-  if (timeoutId) clearTimeout(timeoutId);
-  process.exit(exitCode);
-}
-
-try {
-  // Read the request data
-  const requestData = fs.readFileSync(requestFile);
-  
-  // Create connection based on config
-  const client = config.type === 'unix' 
-    ? net.createConnection({ path: config.path })
-    : net.createConnection({ host: config.host, port: config.port });
-
-  const incomingChunks = [];
-  let incomingBuffer = Buffer.alloc(0);
-
-  // Set timeout
-  timeoutId = setTimeout(() => {
-    if (!responseReceived) {
-      console.error('Timeout waiting for response');
-      client.destroy();
-      cleanup(1);
-    }
-  }, 10000);
-
-  client.on('connect', () => {
-    // Send the request
-    client.write(requestData);
-  });
-
-  client.on('data', (data) => {
-    incomingBuffer = Buffer.concat([incomingBuffer, data]);
-    
-    // Try to parse complete message (4 byte length prefix + message)
-    while (incomingBuffer.length >= 4) {
-      const messageLength = incomingBuffer.readUInt32BE(0);
-      
-      if (incomingBuffer.length < 4 + messageLength) {
-        // Incomplete message, wait for more data
-        break;
-      }
-      
-      // We have a complete message
-      const messageData = incomingBuffer.slice(4, 4 + messageLength);
-      incomingBuffer = incomingBuffer.slice(4 + messageLength);
-      
-      // Write the complete response (including length prefix)
-      const lengthPrefix = Buffer.allocUnsafe(4);
-      lengthPrefix.writeUInt32BE(messageLength, 0);
-      fs.writeFileSync(responseFile, Buffer.concat([lengthPrefix, messageData]));
-      
-      responseReceived = true;
-      client.destroy();
-      cleanup(0);
-      break;
-    }
-  });
-
-  client.on('error', (err) => {
-    if (!responseReceived) {
-      console.error('Connection error:', err.message);
-      cleanup(1);
-    }
-  });
-
-  client.on('close', () => {
-    if (!responseReceived) {
-      console.error('Connection closed without response');
-      cleanup(1);
-    }
-  });
-
-} catch (err) {
-  console.error('Script error:', err.message);
-  cleanup(1);
-}
-`;
-
       // Write the script to a file
-      fs.writeFileSync(scriptFile, childScript);
+      fs.writeFileSync(scriptFile, ProtobufCommunicator.SYNC_CHILD_SCRIPT);
 
       try {
         // Execute the child process synchronously
@@ -670,6 +807,35 @@ try {
           error: mockResponse.error || "Mock not found",
         });
       }
+    }
+
+    if (message.payload.oneofKind === "envVarResponse") {
+      const envVarResponse = message.payload.envVarResponse;
+      logger.debug(
+        `[ProtobufCommunicator] Received env var response for requestId: ${requestId}`,
+      );
+      const pendingRequest = this.pendingRequests.get(requestId);
+
+      if (!pendingRequest) {
+        logger.warn(
+          "[ProtobufCommunicator] received env var response for unknown request:",
+          requestId,
+        );
+        return;
+      }
+
+      this.pendingRequests.delete(requestId);
+
+      // Convert protobuf map to Record<string, string>
+      const envVars: Record<string, string> = {};
+      if (envVarResponse?.envVars) {
+        Object.entries(envVarResponse.envVars).forEach(([key, value]) => {
+          envVars[key] = value;
+        });
+      }
+
+      pendingRequest.resolve(envVars);
+      return;
     }
   }
 
