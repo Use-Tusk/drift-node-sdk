@@ -133,13 +133,16 @@ export class TcpInstrumentation extends TdInstrumentationBase {
         },
       );
 
-      logger.warn(`[TcpInstrumentation] Full stack trace:\n${new Error().stack}`);
+      const stackTrace = new Error().stack || "";
+      const traceTestServerSpanId = SpanUtils.getCurrentReplayTraceId();
+      logger.warn(`[TcpInstrumentation] Full stack trace:\n${stackTrace}`, {
+        traceTestServerSpanId,
+      });
 
       Error.stackTraceLimit = 10;
       sendUnpatchedDependencyAlert({
-        method: methodName,
-        spanId: currentSpanInfo.spanId,
-        traceId: currentSpanInfo.traceId,
+        traceTestServerSpanId: traceTestServerSpanId || "",
+        stackTrace,
       });
 
       // Clean up old span entries periodically to prevent memory leaks
