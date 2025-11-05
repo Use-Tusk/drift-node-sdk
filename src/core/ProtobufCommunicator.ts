@@ -16,7 +16,6 @@ import {
   InstrumentationVersionMismatchAlert,
   UnpatchedDependencyAlert,
   EnvVarRequest,
-  EnvVarResponse,
 } from "@use-tusk/drift-schemas/core/communication";
 import { context, Context, SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { Value } from "@use-tusk/drift-schemas/google/protobuf/struct";
@@ -292,38 +291,26 @@ try {
   }
 
   /**
-   * Request environment variables from CLI synchronously using a child process.
-   * This blocks the main thread, so it should be used carefully.
-   * Similar to requestMockSync but for environment variables.
+   * Generic synchronous request handler that spawns a child process.
+   * @param sdkMessage The SDK message to send
+   * @param filePrefix Prefix for temporary files (e.g., 'envvar', 'mock')
+   * @param responseHandler Function to extract and return the desired response
    */
-  requestEnvVarsSync(traceTestServerSpanId: string): Record<string, string> {
-    const requestId = this.generateRequestId();
-
-    const envVarRequest = EnvVarRequest.create({
-      traceTestServerSpanId,
-    });
-
-    const sdkMessage = SDKMessage.create({
-      type: MessageType.ENV_VAR_REQUEST,
-      requestId: requestId,
-      payload: {
-        oneofKind: "envVarRequest",
-        envVarRequest,
-      },
-    });
-
-    logger.debug(
-      `[ProtobufCommunicator] Requesting env vars (sync) for trace: ${traceTestServerSpanId}`,
-    );
+  private executeSyncRequest<TResponse>(
+    sdkMessage: SDKMessage,
+    filePrefix: string,
+    responseHandler: (cliMessage: CLIMessage) => TResponse,
+  ): TResponse {
+    const requestId = sdkMessage.requestId;
 
     // Serialize the message to binary
     const messageBytes = SDKMessage.toBinary(sdkMessage);
 
-    // Create temporary file for the request and response
+    // Create temporary file paths
     const tempDir = os.tmpdir();
-    const requestFile = path.join(tempDir, `tusk-sync-envvar-request-${requestId}.bin`);
-    const responseFile = path.join(tempDir, `tusk-sync-envvar-response-${requestId}.bin`);
-    const scriptFile = path.join(tempDir, `tusk-sync-envvar-script-${requestId}.js`);
+    const requestFile = path.join(tempDir, `tusk-sync-${filePrefix}-request-${requestId}.bin`);
+    const responseFile = path.join(tempDir, `tusk-sync-${filePrefix}-response-${requestId}.bin`);
+    const scriptFile = path.join(tempDir, `tusk-sync-${filePrefix}-script-${requestId}.js`);
 
     try {
       // Write length prefix (4 bytes big-endian) + message to temp file
@@ -376,33 +363,17 @@ try {
         const responseData = responseBuffer.slice(4, 4 + responseLength);
         const cliMessage = CLIMessage.fromBinary(responseData);
 
-        if (cliMessage.payload.oneofKind !== "envVarResponse") {
-          throw new Error(`Unexpected response type: ${cliMessage.type}`);
-        }
-
-        const envVarResponse = cliMessage.payload.envVarResponse;
-        if (!envVarResponse) {
-          throw new Error("No env var response received");
-        }
-
-        // Convert protobuf map to Record<string, string>
-        const envVars: Record<string, string> = {};
-        if (envVarResponse.envVars) {
-          Object.entries(envVarResponse.envVars).forEach(([key, value]) => {
-            envVars[key] = value;
-          });
-        }
-
-        logger.debug(
-          `[ProtobufCommunicator] Received env vars (sync), count: ${Object.keys(envVars).length}`,
-        );
-        return envVars;
+        // Use the provided handler to extract the specific response
+        return responseHandler(cliMessage);
       } catch (error: any) {
-        logger.error("[ProtobufCommunicator] error in sync env var request child process:", error);
+        logger.error(
+          `[ProtobufCommunicator] error in sync ${filePrefix} request child process:`,
+          error,
+        );
         throw error;
       }
     } catch (error: any) {
-      throw new Error(`Sync env var request failed: ${error.message}`);
+      throw new Error(`Sync ${filePrefix} request failed: ${error.message}`);
     } finally {
       // Clean up temp files
       try {
@@ -421,6 +392,56 @@ try {
         logger.error("[ProtobufCommunicator] error cleaning up script file:", e);
       }
     }
+  }
+
+  /**
+   * Request environment variables from CLI synchronously using a child process.
+   * This blocks the main thread, so it should be used carefully.
+   * Similar to requestMockSync but for environment variables.
+   */
+  requestEnvVarsSync(traceTestServerSpanId: string): Record<string, string> {
+    const requestId = this.generateRequestId();
+
+    const envVarRequest = EnvVarRequest.create({
+      traceTestServerSpanId,
+    });
+
+    const sdkMessage = SDKMessage.create({
+      type: MessageType.ENV_VAR_REQUEST,
+      requestId: requestId,
+      payload: {
+        oneofKind: "envVarRequest",
+        envVarRequest,
+      },
+    });
+
+    logger.debug(
+      `[ProtobufCommunicator] Requesting env vars (sync) for trace: ${traceTestServerSpanId}`,
+    );
+
+    return this.executeSyncRequest(sdkMessage, "envvar", (cliMessage) => {
+      if (cliMessage.payload.oneofKind !== "envVarResponse") {
+        throw new Error(`Unexpected response type: ${cliMessage.type}`);
+      }
+
+      const envVarResponse = cliMessage.payload.envVarResponse;
+      if (!envVarResponse) {
+        throw new Error("No env var response received");
+      }
+
+      // Convert protobuf map to Record<string, string>
+      const envVars: Record<string, string> = {};
+      if (envVarResponse.envVars) {
+        Object.entries(envVarResponse.envVars).forEach(([key, value]) => {
+          envVars[key] = value;
+        });
+      }
+
+      logger.debug(
+        `[ProtobufCommunicator] Received env vars (sync), count: ${Object.keys(envVars).length}`,
+      );
+      return envVars;
+    });
   }
 
   /**
@@ -476,115 +497,33 @@ try {
       testId: mockRequest.testId,
     });
 
-    // Serialize the message to binary
-    const messageBytes = SDKMessage.toBinary(sdkMessage);
-
-    // Create temporary file for the request and response
-    const tempDir = os.tmpdir();
-    const requestFile = path.join(tempDir, `tusk-sync-request-${requestId}.bin`);
-    const responseFile = path.join(tempDir, `tusk-sync-response-${requestId}.bin`);
-    const scriptFile = path.join(tempDir, `tusk-sync-script-${requestId}.js`);
-
-    try {
-      // Write length prefix (4 bytes big-endian) + message to temp file
-      const lengthBuffer = Buffer.allocUnsafe(4);
-      lengthBuffer.writeUInt32BE(messageBytes.length, 0);
-      const fullMessage = Buffer.concat([lengthBuffer, Buffer.from(messageBytes)]);
-      fs.writeFileSync(requestFile, fullMessage);
-
-      // Determine connection method
-      const mockSocket = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_SOCKET");
-      const mockHost = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_HOST");
-      const mockPort = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_MOCK_PORT");
-
-      let connectionConfig: any;
-      if (mockSocket) {
-        connectionConfig = { type: "unix", path: mockSocket };
-      } else if (mockHost && mockPort) {
-        connectionConfig = { type: "tcp", host: mockHost, port: parseInt(mockPort, 10) };
-      } else {
-        const socketPath = path.join(os.tmpdir(), "tusk-connect.sock");
-        connectionConfig = { type: "unix", path: socketPath };
+    return this.executeSyncRequest(sdkMessage, "mock", (cliMessage) => {
+      if (cliMessage.payload.oneofKind !== "getMockResponse") {
+        throw new Error(`Unexpected response type: ${cliMessage.type}`);
       }
 
-      // Write the script to a file
-      fs.writeFileSync(scriptFile, ProtobufCommunicator.SYNC_CHILD_SCRIPT);
+      const mockResponse = cliMessage.payload.getMockResponse;
+      if (!mockResponse) {
+        throw new Error("No mock response received");
+      }
 
-      try {
-        // Execute the child process synchronously
-        execSync(
-          `node "${scriptFile}" "${requestFile}" "${responseFile}" '${JSON.stringify(connectionConfig)}'`,
-          {
-            timeout: 12000, // Slightly longer than the child's timeout
-            stdio: "pipe",
-          },
-        );
-
-        // Read the response
-        const responseBuffer = fs.readFileSync(responseFile);
-
-        // Parse the response
-        if (responseBuffer.length < 4) {
-          throw new Error("Invalid response: too short");
-        }
-
-        const responseLength = responseBuffer.readUInt32BE(0);
-        if (responseBuffer.length < 4 + responseLength) {
-          throw new Error("Invalid response: incomplete message");
-        }
-
-        const responseData = responseBuffer.slice(4, 4 + responseLength);
-        const cliMessage = CLIMessage.fromBinary(responseData);
-
-        if (cliMessage.payload.oneofKind !== "getMockResponse") {
-          throw new Error(`Unexpected response type: ${cliMessage.type}`);
-        }
-
-        const mockResponse = cliMessage.payload.getMockResponse;
-        if (!mockResponse) {
-          throw new Error("No mock response received");
-        }
-
-        if (mockResponse.found) {
-          try {
-            const responseData = this.extractResponseData(mockResponse);
-            return {
-              found: true,
-              response: responseData,
-            };
-          } catch (error) {
-            throw new Error(`Failed to extract response data: ${error}`);
-          }
-        } else {
+      if (mockResponse.found) {
+        try {
+          const responseData = this.extractResponseData(mockResponse);
           return {
-            found: false,
-            error: mockResponse.error || "Mock not found",
+            found: true,
+            response: responseData,
           };
+        } catch (error) {
+          throw new Error(`Failed to extract response data: ${error}`);
         }
-      } catch (error: any) {
-        logger.error("[ProtobufCommunicator] error in sync request child process:", error);
-        throw error;
+      } else {
+        return {
+          found: false,
+          error: mockResponse.error || "Mock not found",
+        };
       }
-    } catch (error: any) {
-      throw new Error(`Sync request failed: ${error.message}`);
-    } finally {
-      // Clean up temp files
-      try {
-        if (fs.existsSync(requestFile)) fs.unlinkSync(requestFile);
-      } catch (e) {
-        logger.error("[ProtobufCommunicator] error cleaning up request file:", e);
-      }
-      try {
-        if (fs.existsSync(responseFile)) fs.unlinkSync(responseFile);
-      } catch (e) {
-        logger.error("[ProtobufCommunicator] error cleaning up response file:", e);
-      }
-      try {
-        if (fs.existsSync(scriptFile)) fs.unlinkSync(scriptFile);
-      } catch (e) {
-        logger.error("[ProtobufCommunicator] error cleaning up script file:", e);
-      }
-    }
+    });
   }
 
   private async sendProtobufMessage(message: SDKMessage): Promise<void> {
@@ -811,9 +750,7 @@ try {
 
     if (message.payload.oneofKind === "envVarResponse") {
       const envVarResponse = message.payload.envVarResponse;
-      logger.debug(
-        `[ProtobufCommunicator] Received env var response for requestId: ${requestId}`,
-      );
+      logger.debug(`[ProtobufCommunicator] Received env var response for requestId: ${requestId}`);
       const pendingRequest = this.pendingRequests.get(requestId);
 
       if (!pendingRequest) {
