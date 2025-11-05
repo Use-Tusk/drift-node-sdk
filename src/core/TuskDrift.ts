@@ -563,6 +563,35 @@ export class TuskDriftCore {
     }
   }
 
+  /**
+   * Request environment variables from CLI for a specific trace (synchronously).
+   * This blocks the main thread, so it should be used carefully.
+   */
+  requestEnvVarsSync(traceTestServerSpanId: string): Record<string, string> {
+    if (!this.isConnectedWithCLI) {
+      logger.error("Requesting sync env vars but CLI is not ready yet");
+      throw new Error("Requesting sync env vars but CLI is not ready yet");
+    }
+
+    if (!this.communicator || this.mode !== TuskDriftMode.REPLAY) {
+      logger.debug("Cannot request env vars: not in replay mode or no CLI connection");
+      return {};
+    }
+
+    try {
+      logger.debug(`Requesting env vars (sync) for trace: ${traceTestServerSpanId}`);
+      const envVars = this.communicator.requestEnvVarsSync(traceTestServerSpanId);
+      logger.debug(`Received env vars from CLI, count: ${Object.keys(envVars).length}`);
+      logger.debug(
+        `First 10 env vars: ${JSON.stringify(Object.keys(envVars).slice(0, 10), null, 2)}`,
+      );
+      return envVars;
+    } catch (error) {
+      logger.error(`[TuskDrift] Error requesting env vars from CLI:`, error);
+      return {};
+    }
+  }
+
   requestMockSync(mockRequest: MockRequestInput): {
     found: boolean;
     response?: unknown;
