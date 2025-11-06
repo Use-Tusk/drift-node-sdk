@@ -119,7 +119,7 @@ function computeMemoryOverhead(
   let heapMaxDelta: number | null = null;
   let count = 0;
 
-  for (const [name, baselineTask] of baselineTasks.entries()) {
+  for (const [name, baselineTask] of Array.from(baselineTasks.entries())) {
     const variantTask = variantTasks.get(name);
     if (!baselineTask?.resource || !variantTask?.resource) {
       continue;
@@ -133,8 +133,9 @@ function computeMemoryOverhead(
     rssSum += avgRssDelta;
     rssMaxDelta = rssMaxDelta === null ? maxRssDelta : Math.max(rssMaxDelta, maxRssDelta);
 
-    const avgHeapDelta = variantMem.heapUsed.avg - baselineMem.heapUsed.avg;
-    const maxHeapDelta = variantMem.heapUsed.max - baselineMem.heapUsed.max;
+    // Note: heapUsed tracking removed in favor of RSS-only memory tracking
+    const avgHeapDelta = 0; // Placeholder - heapUsed no longer tracked
+    const maxHeapDelta = 0; // Placeholder - heapUsed no longer tracked
     heapSum += avgHeapDelta;
     heapMaxDelta = heapMaxDelta === null ? maxHeapDelta : Math.max(heapMaxDelta, maxHeapDelta);
 
