@@ -1,8 +1,15 @@
 import { Value, Struct } from "@use-tusk/drift-schemas/google/protobuf/struct";
 import { SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { SpanKind as PbSpanKind } from "@use-tusk/drift-schemas/core/span";
+import {
+  type JsonSchema,
+  JsonSchemaType,
+  EncodingType,
+  DecodedType,
+} from "@use-tusk/drift-schemas/core/json_schema";
 
-export const toStruct = (obj: unknown | undefined) => (obj ? objectToProtobufStruct(obj) : undefined);
+export const toStruct = (obj: unknown | undefined) =>
+  obj ? objectToProtobufStruct(obj) : undefined;
 
 // Map OpenTelemetry SpanKind -> protobuf SpanKind
 export const mapOtToPb = (k: OtSpanKind): PbSpanKind => {

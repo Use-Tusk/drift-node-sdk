@@ -253,11 +253,6 @@ try {
       cleanSpan.inputValue = objectToProtobufStruct(cleanSpan.inputValue);
     }
 
-    // Convert inputSchema to protobuf Struct format
-    if (cleanSpan?.inputSchema) {
-      cleanSpan.inputSchema = objectToProtobufStruct(cleanSpan.inputSchema);
-    }
-
     // Convert kind to protobuf format
     if (cleanSpan?.kind) {
       cleanSpan.kind = mapOtToPb(cleanSpan.kind as OtSpanKind);
@@ -463,11 +458,6 @@ try {
     // Convert inputValue to protobuf Struct format
     if (cleanSpan?.inputValue) {
       cleanSpan.inputValue = objectToProtobufStruct(cleanSpan.inputValue);
-    }
-
-    // Convert inputSchema to protobuf Struct format
-    if (cleanSpan?.inputSchema) {
-      cleanSpan.inputSchema = objectToProtobufStruct(cleanSpan.inputSchema);
     }
 
     // Convert kind to protobuf format
