@@ -14,6 +14,7 @@ import {
 } from "./types";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils";
+import { isEsm } from "../../../core/utils/runtimeDetectionUtils";
 
 const SUPPORTED_VERSIONS = [">=1.0.0"];
 
@@ -242,15 +243,24 @@ export class UpstashRedisInstrumentation extends TdInstrumentationBase {
       `[UpstashRedisInstrumentation] Patching @upstash/redis module in ${this.mode} mode`,
     );
 
+    if (this.mode === TuskDriftMode.DISABLED) {
+      logger.debug(`[UpstashRedisInstrumentation] Skipping patching in ${this.mode} mode`);
+      return moduleExports;
+    }
+
     if (this.isModulePatched(moduleExports)) {
       logger.debug(`[UpstashRedisInstrumentation] Module already patched, skipping`);
       return moduleExports;
     }
 
+    // Detect module type
+    const isEsmModule = isEsm(moduleExports);
+    logger.debug(
+      `[UpstashRedisInstrumentation] Module type detected: ${isEsmModule ? "ESM" : "CJS"}`,
+    );
+
     // Get the Redis class from module exports
-    // The module exports: { Redis, errors }
-    const OriginalRedis =
-      moduleExports.Redis || (moduleExports.default && moduleExports.default.Redis);
+    const OriginalRedis = moduleExports.Redis;
 
     if (!OriginalRedis || typeof OriginalRedis !== "function") {
       logger.debug(
@@ -279,17 +289,55 @@ export class UpstashRedisInstrumentation extends TdInstrumentationBase {
     Object.setPrototypeOf(WrappedRedis, OriginalRedis);
     WrappedRedis.prototype = OriginalRedis.prototype;
 
-    // Return a NEW moduleExports object with our wrapped Redis class
-    // This avoids the "Cannot set property Redis" error since the original exports have non-configurable getters
-    const newModuleExports: UpstashRedisModuleExports = {
-      ...moduleExports,
-      Redis: WrappedRedis,
-    };
+    // IMPORTANT: Handle ESM vs CJS differently due to how module interception works
+    //
+    // ESM uses import-in-the-middle (IITM):
+    //   - IITM wraps module exports with getter/setter pairs for tracking imports
+    //   - The setters are configurable and writable, allowing direct assignment
+    //   - Direct assignment works: moduleExports.Redis = WrappedRedis
+    //   - Spread operator BREAKS it: {...moduleExports} copies values but loses IITM's setters
+    //   - Result: We MUST mutate the original object to preserve IITM's tracking
+    //
+    // CJS uses require-in-the-middle (RITM):
+    //   - RITM does NOT add setters like IITM does
+    //   - Module authors often use Object.defineProperty with configurable: false and only a getter
+    //   - This means: property has only a getter (no setter) and cannot be redefined
+    //   - Direct assignment fails: moduleExports.Redis = WrappedRedis (Cannot set property which has only a getter)
+    //   - Object.defineProperty fails: Cannot redefine non-configurable property
+    //   - Spread operator works: {...moduleExports} copies values into a new object
+    //   - Result: We MUST return a new object when properties are non-configurable
+    if (isEsmModule) {
+      // For ESM: Mutate the original moduleExports object to preserve IITM's setter tracking
+      try {
+        // Try to set Redis property directly (should work in most ESM cases)
+        (moduleExports as any).Redis = WrappedRedis;
+      } catch (error) {
+        // Fallback: If direct assignment somehow fails, try Object.defineProperty
+        // This is a safety net but should rarely be needed for ESM with IITM
+        Object.defineProperty(moduleExports, "Redis", {
+          value: WrappedRedis,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      }
 
-    this.markModuleAsPatched(newModuleExports);
-    logger.debug(`[UpstashRedisInstrumentation] @upstash/redis module patching complete`);
+      this.markModuleAsPatched(moduleExports);
+      logger.debug(`[UpstashRedisInstrumentation] @upstash/redis module patching complete`);
+      return moduleExports;
+    } else {
+      // For CJS: Return a new object because the original has non-configurable properties
+      // The spread operator copies all property values (invoking getters) into a new plain object,
+      // then we override the Redis property with our wrapped version
+      const newModuleExports: UpstashRedisModuleExports = {
+        ...moduleExports,
+        Redis: WrappedRedis,
+      };
 
-    return newModuleExports;
+      this.markModuleAsPatched(newModuleExports);
+      logger.debug(`[UpstashRedisInstrumentation] @upstash/redis module patching complete`);
+      return newModuleExports;
+    }
   }
 
   private _wrapInstanceWithProxy(instance: any): any {
