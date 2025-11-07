@@ -351,16 +351,7 @@ export class TuskDriftCore {
       prefix: "TuskDrift",
     });
 
-    this.samplingRate = this.determineSamplingRate(initParams);
     this.initParams = initParams;
-
-    if (!this.initParams.env) {
-      const nodeEnv = OriginalGlobalUtils.getOriginalProcessEnvVar("NODE_ENV") || "development";
-      logger.warn(
-        `Environment not provided in initialization parameters. Using '${nodeEnv}' as the environment.`,
-      );
-      this.initParams.env = nodeEnv;
-    }
 
     if (this.initialized) {
       logger.debug("Already initialized, skipping...");
@@ -378,6 +369,23 @@ export class TuskDriftCore {
       return;
     }
 
+    if (this.mode === TuskDriftMode.DISABLED) {
+      logger.debug("SDK disabled via environment variable");
+      return;
+    }
+
+    logger.debug(`Initializing in ${this.mode} mode`);
+
+    if (!this.initParams.env) {
+      const nodeEnv = OriginalGlobalUtils.getOriginalProcessEnvVar("NODE_ENV") || "development";
+      logger.warn(
+        `Environment not provided in initialization parameters. Using '${nodeEnv}' as the environment.`,
+      );
+      this.initParams.env = nodeEnv;
+    }
+
+    this.samplingRate = this.determineSamplingRate(initParams);
+
     // Need to have observable service id if exporting spans to Tusk backend
     if (this.config.recording?.export_spans && !this.config.service?.id) {
       logger.error(
@@ -385,13 +393,6 @@ export class TuskDriftCore {
       );
       return;
     }
-
-    if (this.mode === TuskDriftMode.DISABLED) {
-      logger.debug("SDK disabled via environment variable");
-      return;
-    }
-
-    logger.debug(`Initializing in ${this.mode} mode`);
 
     if (this.mode === TuskDriftMode.REPLAY) {
       // Disable Sentry in replay mode

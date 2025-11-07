@@ -89,6 +89,10 @@ export function withTuskDrift(
         // Safely handle different externals formats (array, function, object, or undefined)
         const originalExternals = webpackConfig.externals;
 
+        // Check if we're in RECORD or REPLAY mode
+        const mode = process.env.TUSK_DRIFT_MODE?.toUpperCase();
+        const isRecordOrReplay = mode === "RECORD" || mode === "REPLAY";
+
         // Core packages that must be external for instrumentation
         //
         // Why these packages need to be external:
@@ -107,7 +111,12 @@ export function withTuskDrift(
         //    server starts, require-in-the-middle intercepts this runtime require() call, triggers our
         //    instrumentation's patch callback, and successfully returns the wrapped moduleExports with
         //    the instrumented upstash-redis class.
-        const coreExternals = ["require-in-the-middle", "jsonpath", "@upstash/redis"];
+        // Note: @upstash/redis is only added when TUSK_DRIFT_MODE is RECORD or REPLAY
+        const coreExternals = [
+          "require-in-the-middle",
+          "jsonpath",
+          ...(isRecordOrReplay ? ["@upstash/redis"] : []),
+        ];
 
         // Create externals mapping - since SDK's node_modules aren't published,
         // we rely on these packages being available in the consumer's node_modules
