@@ -38,4 +38,4 @@ TuskDrift.markAppAsReady();
 
 process.env.BENCHMARK_RESULT_LABEL = "sdk-active";
 
-main();
+main("SDK Active");

@@ -78,12 +78,7 @@ export interface BenchmarkRunResult {
 }
 
 export function resolveResultPath(label: string): string {
-  const explicitPath = process.env.BENCHMARK_RESULT_PATH;
-  if (explicitPath && explicitPath.trim().length > 0) {
-    return explicitPath;
-  }
-
-  const resultDir = process.env.BENCHMARK_RESULT_DIR ?? path.join(CURRENT_DIR, "..", "results");
+  const resultDir = path.join(CURRENT_DIR, "..", "results");
   const sanitizedLabel = label.replace(/[^a-zA-Z0-9-_]+/g, "-") || "benchmark";
   const fileName = `${sanitizedLabel}.json`;
   return path.join(resultDir, fileName);
@@ -203,7 +198,6 @@ export function createTaskBenchmarkResult(
 
   const { latency, throughput } = task.result;
 
-  // Check if latency and throughput exist
   if (!latency || !throughput) {
     console.warn(`Task ${task.name} missing latency or throughput results`);
     return null;
@@ -232,7 +226,10 @@ export function createBenchmarkRunResult(
 ): BenchmarkRunResult {
   const tasks = bench.tasks
     .map((task: Task) => createTaskBenchmarkResult(task, resourceMonitor))
-    .filter((taskResult: TaskBenchmarkResult | null): taskResult is TaskBenchmarkResult => taskResult !== null);
+    .filter(
+      (taskResult: TaskBenchmarkResult | null): taskResult is TaskBenchmarkResult =>
+        taskResult !== null,
+    );
 
   return {
     id: randomUUID(),

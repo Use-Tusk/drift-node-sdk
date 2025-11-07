@@ -36,7 +36,7 @@
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
     "test": "ava --workerThreads false",
-    "test:bench": "ava --workerThreads false benchmarks/bench/*.bench.ts&& tsx benchmarks/compare-benchmarks.ts",
+    "test:bench": "ava --workerThreads false benchmarks/bench/sdk-disabled.bench.ts && ava --workerThreads false benchmarks/bench/sdk-active.bench.ts && ava --workerThreads false benchmarks/bench/sdk-active-with-transforms.bench.ts && tsx benchmarks/compare-benchmarks.ts",
     "test:docker": "docker compose -f docker-compose.test.yml up -d --wait"
   },
   "keywords": [

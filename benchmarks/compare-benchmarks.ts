@@ -17,6 +17,11 @@ interface ImpactResult {
   variantThroughput: number | null;
   baselineTail: number | null;
   variantTail: number | null;
+  cpuUserDeltaPct: number | null;
+  cpuSystemDeltaPct: number | null;
+  cpuTotalDeltaPct: number | null;
+  baselineCpuTotal: number | null;
+  variantCpuTotal: number | null;
 }
 
 interface MemoryOverheadSummary {
@@ -27,9 +32,18 @@ interface MemoryOverheadSummary {
   samples: number;
 }
 
-const CPU_HEAVY_TASK = "High CPU: POST /api/compute-hash";
-const IO_HEAVY_TASK = "High IO, Low CPU: POST /api/io-bound";
-const TRANSFORM_TASK = "Transform endpoints";
+const CPU_HEAVY_TASK_BASE = "High CPU: POST /api/compute-hash";
+const IO_HEAVY_TASK_BASE = "High IO, Low CPU: POST /api/io-bound";
+const TRANSFORM_TASK_BASE = "Transform endpoints";
+
+function findTaskByBaseName(tasks: Map<string, TaskBenchmarkResult>, baseName: string): TaskBenchmarkResult | undefined {
+  for (const [taskName, taskResult] of tasks.entries()) {
+    if (taskName.startsWith(baseName + " (")) {
+      return taskResult;
+    }
+  }
+  return undefined;
+}
 
 function percentageChange(baseline: number | null, variant: number | null): number | null {
   if (baseline === null || variant === null) {
@@ -81,6 +95,13 @@ function formatBytes(bytes: number | null): string {
   return `${mb.toFixed(2)} MB`;
 }
 
+function formatCpuPercent(value: number | null): string {
+  if (value === null || Number.isNaN(value)) {
+    return "n/a";
+  }
+  return `${value.toFixed(1)}%`;
+}
+
 function computeImpact(
   label: string,
   baseline: TaskBenchmarkResult | undefined,
@@ -95,6 +116,13 @@ function computeImpact(
   const baselineTail = getTailLatency(baseline.latency);
   const variantTail = getTailLatency(variant.latency);
 
+  const baselineCpuUser = baseline.resource?.cpu?.userPercent ?? null;
+  const variantCpuUser = variant.resource?.cpu?.userPercent ?? null;
+  const baselineCpuSystem = baseline.resource?.cpu?.systemPercent ?? null;
+  const variantCpuSystem = variant.resource?.cpu?.systemPercent ?? null;
+  const baselineCpuTotal = baseline.resource?.cpu?.totalPercent ?? null;
+  const variantCpuTotal = variant.resource?.cpu?.totalPercent ?? null;
+
   return {
     label,
     throughputDeltaPct: percentageChange(baselineThroughput, variantThroughput),
@@ -103,6 +131,11 @@ function computeImpact(
     variantThroughput,
     baselineTail,
     variantTail,
+    cpuUserDeltaPct: percentageChange(baselineCpuUser, variantCpuUser),
+    cpuSystemDeltaPct: percentageChange(baselineCpuSystem, variantCpuSystem),
+    cpuTotalDeltaPct: percentageChange(baselineCpuTotal, variantCpuTotal),
+    baselineCpuTotal,
+    variantCpuTotal,
   };
 }
 
@@ -118,7 +151,11 @@ function computeMemoryOverhead(
   let count = 0;
 
   for (const [name, baselineTask] of Array.from(baselineTasks.entries())) {
-    const variantTask = variantTasks.get(name);
+    const variantTaskName = Array.from(variantTasks.keys()).find(vName =>
+      vName.replace(/ \([^)]+\)$/, '') === name.replace(/ \([^)]+\)$/, '')
+    );
+    const variantTask = variantTaskName ? variantTasks.get(variantTaskName) : undefined;
+
     if (!baselineTask?.resource || !variantTask?.resource) {
       continue;
     }
@@ -143,33 +180,6 @@ function computeMemoryOverhead(
   };
 }
 
-function printImpact(result: ImpactResult | null): void {
-  if (!result) {
-    console.log("  Data unavailable.\n");
-    return;
-  }
-
-  console.log(`  Throughput Δ: ${formatPercentage(result.throughputDeltaPct)} (baseline ${formatThroughput(result.baselineThroughput)}, variant ${formatThroughput(result.variantThroughput)})`);
-  console.log(
-    `  Tail latency Δ: ${formatPercentage(result.tailLatencyDeltaPct)} (baseline ${formatLatency(result.baselineTail)}, variant ${formatLatency(result.variantTail)})\n`,
-  );
-}
-
-function printMemorySummary(label: string, summary: MemoryOverheadSummary | null): void {
-  if (!summary) {
-    console.log(`  ${label}: data unavailable`);
-    return;
-  }
-
-  if (summary.samples === 0) {
-    console.log(`  ${label}: no overlapping resource samples`);
-    return;
-  }
-
-  console.log(
-    `  ${label}: Avg RSS Δ ${formatBytes(summary.avgRssDelta)}, Max RSS Δ ${formatBytes(summary.maxRssDelta)}, Avg HeapUsed Δ ${formatBytes(summary.avgHeapUsedDelta)}, Max HeapUsed Δ ${formatBytes(summary.maxHeapUsedDelta)}`,
-  );
-}
 
 function main(): void {
   const baselinePath = resolveResultPath("sdk-disabled");
@@ -190,46 +200,67 @@ function main(): void {
   const activeTasks = createTaskLookup(active);
   const transformTasks = transforms ? createTaskLookup(transforms) : null;
 
-  console.log("\n=== Benchmark Impact Summary ===\n");
 
-  console.log("CPU-bound workload (High CPU)");
-  printImpact(
-    computeImpact(
-      CPU_HEAVY_TASK,
-      baselineTasks.get(CPU_HEAVY_TASK),
-      activeTasks.get(CPU_HEAVY_TASK),
-    ),
+  console.log("\n## Benchmark Impact Summary\n");
+
+  const cpuImpact = computeImpact(
+    CPU_HEAVY_TASK_BASE,
+    findTaskByBaseName(baselineTasks, CPU_HEAVY_TASK_BASE),
+    findTaskByBaseName(activeTasks, CPU_HEAVY_TASK_BASE),
   );
 
-  console.log("IO-bound workload (High IO, Low CPU)");
-  printImpact(
-    computeImpact(
-      IO_HEAVY_TASK,
-      baselineTasks.get(IO_HEAVY_TASK),
-      activeTasks.get(IO_HEAVY_TASK),
-    ),
+  const ioImpact = computeImpact(
+    IO_HEAVY_TASK_BASE,
+    findTaskByBaseName(baselineTasks, IO_HEAVY_TASK_BASE),
+    findTaskByBaseName(activeTasks, IO_HEAVY_TASK_BASE),
   );
 
-  if (transformTasks) {
-    console.log("Transforms workload impact");
-    printImpact(
-      computeImpact(
-        TRANSFORM_TASK,
-        activeTasks.get(TRANSFORM_TASK),
-        transformTasks.get(TRANSFORM_TASK),
-      ),
-    );
+  const transformImpact = transformTasks ? computeImpact(
+    TRANSFORM_TASK_BASE,
+    findTaskByBaseName(activeTasks, TRANSFORM_TASK_BASE),
+    findTaskByBaseName(transformTasks, TRANSFORM_TASK_BASE),
+  ) : null;
+
+  // Print performance impact table
+  console.log("| Workload | Throughput Δ | Tail Latency Δ | User CPU Δ |");
+  console.log("|----------|-------------|---------------|-------------|");
+
+  if (cpuImpact) {
+    console.log(`| **CPU-bound** | ${formatPercentage(cpuImpact.throughputDeltaPct)} | ${formatPercentage(cpuImpact.tailLatencyDeltaPct)} | ${formatPercentage(cpuImpact.cpuUserDeltaPct)} |`);
   } else {
-    console.log("Transforms workload impact");
-    console.log("  Provide a transforms benchmark file to compute this comparison.\n");
+    console.log("| **CPU-bound** | N/A | N/A | N/A |");
   }
 
-  console.log("Memory overhead vs baseline");
+  if (ioImpact) {
+    console.log(`| **IO-bound** | ${formatPercentage(ioImpact.throughputDeltaPct)} | ${formatPercentage(ioImpact.tailLatencyDeltaPct)} | ${formatPercentage(ioImpact.cpuUserDeltaPct)} |`);
+  } else {
+    console.log("| **IO-bound** | N/A | N/A | N/A |");
+  }
+
+  if (transformImpact) {
+    console.log(`| **Transform endpoints** | ${formatPercentage(transformImpact.throughputDeltaPct)} | ${formatPercentage(transformImpact.tailLatencyDeltaPct)} | ${formatPercentage(transformImpact.cpuUserDeltaPct)} |`);
+  } else {
+    console.log("| **Transform endpoints** | N/A | N/A | N/A |");
+  }
+
+  // Print memory overhead table
   const activeMemory = computeMemoryOverhead(baseline, active);
-  printMemorySummary("SDK Active", activeMemory);
-  if (transforms) {
-    const transformMemory = computeMemoryOverhead(baseline, transforms);
-    printMemorySummary("SDK Active w/ Transforms", transformMemory);
+  const transformMemory = transforms ? computeMemoryOverhead(baseline, transforms) : null;
+
+  console.log("\n## Memory Overhead vs Baseline\n");
+  console.log("| Configuration | Avg RSS Δ | Max RSS Δ |");
+  console.log("|--------------|-----------|-----------|");
+
+  if (activeMemory && activeMemory.samples > 0) {
+    console.log(`| **SDK Active** | ${formatBytes(activeMemory.avgRssDelta)} | ${formatBytes(activeMemory.maxRssDelta)} |`);
+  } else {
+    console.log("| **SDK Active** | N/A | N/A |");
+  }
+
+  if (transformMemory && transformMemory.samples > 0) {
+    console.log(`| **SDK Active w/ Transforms** | ${formatBytes(transformMemory.avgRssDelta)} | ${formatBytes(transformMemory.maxRssDelta)} |`);
+  } else {
+    console.log("| **SDK Active w/ Transforms** | N/A | N/A |");
   }
 
   console.log("\nSummary complete.\n");

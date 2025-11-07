@@ -69,4 +69,4 @@ TuskDrift.markAppAsReady();
 
 process.env.BENCHMARK_RESULT_LABEL = "sdk-active-with-transforms";
 
-main();
+main("SDK Active with Transforms");

@@ -15,8 +15,14 @@ interface TaskStats {
   count: number;
 }
 
+interface CompletedTaskStats {
+  resourceStats: TaskResourceStats;
+  endTime: number;
+}
+
 export class ResourceMonitor {
   private taskStats: Map<string, TaskStats> = new Map();
+  private completedTaskStats: Map<string, CompletedTaskStats> = new Map();
   private intervalId: NodeJS.Timeout | null = null;
   private currentTaskName: string | null = null;
   private currentTaskStats: TaskStats | null = null;
@@ -50,13 +56,15 @@ export class ResourceMonitor {
 
   startTask(taskName: string): void {
     this.currentTaskName = taskName;
+    const startCpuUsage = process.cpuUsage();
+    const startTime = Date.now();
     const taskStats = {
       memory: {
         rssSum: 0,
         rssMax: 0,
       },
-      startCpuUsage: process.cpuUsage(),
-      startTime: Date.now(),
+      startCpuUsage,
+      startTime,
       count: 0,
     };
     this.taskStats.set(taskName, taskStats);
@@ -64,6 +72,45 @@ export class ResourceMonitor {
   }
 
   endTask(): void {
+    if (this.currentTaskName && this.currentTaskStats) {
+      const endTime = Date.now();
+      const totalElapsedMs = endTime - this.currentTaskStats.startTime;
+      const totalElapsedMicroseconds = totalElapsedMs * 1000;
+
+      const totalCpuUsage = process.cpuUsage(this.currentTaskStats.startCpuUsage);
+
+      const userPercent =
+        totalElapsedMicroseconds > 0 ? (totalCpuUsage.user / totalElapsedMicroseconds) * 100 : 0;
+      const systemPercent =
+        totalElapsedMicroseconds > 0 ? (totalCpuUsage.system / totalElapsedMicroseconds) * 100 : 0;
+      const totalPercent = userPercent + systemPercent;
+
+      const resourceStats: TaskResourceStats = {
+        cpu: {
+          userPercent,
+          systemPercent,
+          totalPercent,
+        },
+        memory: {
+          rss:
+            this.currentTaskStats.count > 0
+              ? {
+                  avg: this.currentTaskStats.memory.rssSum / this.currentTaskStats.count,
+                  max: this.currentTaskStats.memory.rssMax,
+                }
+              : {
+                  avg: 0,
+                  max: 0,
+                },
+        },
+      };
+
+      this.completedTaskStats.set(this.currentTaskName, {
+        resourceStats,
+        endTime,
+      });
+    }
+
     this.currentTaskName = null;
     this.currentTaskStats = null;
   }
@@ -81,44 +128,11 @@ export class ResourceMonitor {
   }
 
   getTaskStats(taskName: string): TaskResourceStats | null {
-    const stats = this.taskStats.get(taskName);
-    if (!stats) {
-      return null;
-    }
-
-    // Calculate total elapsed time from start to end
-    const totalElapsedMs = Date.now() - stats.startTime;
-    const totalElapsedMicroseconds = totalElapsedMs * 1000;
-
-    // Get total CPU usage directly from start to now - no sampling needed!
-    const totalCpuUsage = process.cpuUsage(stats.startCpuUsage);
-
-    // Calculate CPU percentages using the direct measurement
-    const userPercent =
-      totalElapsedMicroseconds > 0 ? (totalCpuUsage.user / totalElapsedMicroseconds) * 100 : 0;
-    const systemPercent =
-      totalElapsedMicroseconds > 0 ? (totalCpuUsage.system / totalElapsedMicroseconds) * 100 : 0;
-    const totalPercent = userPercent + systemPercent;
-
-    return {
-      cpu: {
-        userPercent,
-        systemPercent,
-        totalPercent,
-      },
-      memory: {
-        rss: stats.count > 0 ? {
-          avg: stats.memory.rssSum / stats.count,
-          max: stats.memory.rssMax,
-        } : {
-          avg: 0,
-          max: 0,
-        },
-      },
-    };
+    const completedStats = this.completedTaskStats.get(taskName);
+    return completedStats ? completedStats.resourceStats : null;
   }
 
   getAllTaskNames(): string[] {
-    return Array.from(this.taskStats.keys());
+    return Array.from(this.completedTaskStats.keys());
   }
 }
