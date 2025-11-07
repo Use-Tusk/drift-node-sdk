@@ -132,6 +132,19 @@ export class DateInstrumentation extends TdInstrumentationBase {
     return (OriginalDate: typeof Date) => {
       function _TdDate(this: any, ...args: any[]): Date | string {
         const isConstructorCall = new.target !== undefined;
+
+        // If this is a subclass constructor call, use Reflect.construct to properly
+        // create an instance of the subclass with the correct prototype chain
+        if (isConstructorCall && new.target !== _TdDate && new.target !== globalThis.Date) {
+          logger.debug(`Using Reflect.construct for subclass: ${new.target?.name}`);
+          // Reflect.construct(target, args, newTarget) does three things:
+          // 1. Calls the original Date constructor with the provided arguments
+          // 2. Sets up the instance with newTarget's prototype (e.g., PreciseDate.prototype)
+          // 3. Returns a properly constructed instance of the subclass with all its methods intact
+          // This ensures that new PreciseDate() returns a PreciseDate instance, not just a Date
+          return Reflect.construct(self.originalDate!, args, new.target);
+        }
+
         return self._handleDateCall(args, isConstructorCall);
       }
       return _TdDate;
