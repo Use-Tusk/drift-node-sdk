@@ -52,7 +52,7 @@ export class ApiSpanAdapter implements SpanExportAdapter {
   async exportSpans(spans: CleanSpanData[]): Promise<ExportResult> {
     try {
       // Transform spans to protobuf format
-      const protoSpans: Span[] = spans.map(span => this.transformSpanToProtobuf(span));
+      const protoSpans: Span[] = spans.map((span) => this.transformSpanToProtobuf(span));
 
       const request: ExportSpansRequest = {
         observableServiceId: this.observableServiceId,
