@@ -9,12 +9,16 @@ import { TuskDrift, TuskDriftCore } from "../../src/core/TuskDrift";
 import { FilesystemSpanAdapter } from "../../src/core/tracing/adapters/FilesystemSpanAdapter";
 import * as path from "path";
 import * as fs from "fs";
+import main from "./common.js";
 
 const BENCHMARK_TRACE_DIR = path.join(__dirname, "..", ".benchmark-traces");
 
-// Clean up any existing benchmark traces
 if (fs.existsSync(BENCHMARK_TRACE_DIR)) {
-  fs.rmSync(BENCHMARK_TRACE_DIR, { recursive: true, force: true });
+  try {
+    fs.rmSync(BENCHMARK_TRACE_DIR, { recursive: true, force: true });
+  } catch (error) {
+    console.warn(`Failed to clean benchmark trace directory: ${error}`);
+  }
 }
 
 const adapter = new FilesystemSpanAdapter({
@@ -65,6 +69,4 @@ TuskDrift.markAppAsReady();
 
 process.env.BENCHMARK_RESULT_LABEL = "sdk-active-with-transforms";
 
-const common = require("./common.ts");
-
-common.default();
+main();

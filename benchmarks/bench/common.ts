@@ -25,7 +25,6 @@ function main() {
   test.serial("SDK Active", async (t) => {
     t.timeout(600_000);
 
-    // Enable/disable memory tracking via environment variable for performance testing
     const enableMemoryTracking = process.env.BENCHMARK_ENABLE_MEMORY !== "false";
     const resourceMonitor = new ResourceMonitor({
       intervalMs: 100,
@@ -39,12 +38,9 @@ function main() {
       now: hrtimeNow,
     });
 
-    // Hook into bench events to track CPU per task
-    // Track which task is currently running
     let lastTaskName: string | null = null;
 
     bench.addEventListener("cycle", (e) => {
-      // Cycle event fires after each task completes a benchmark cycle
       if (e.task) {
         const currentTaskName = e.task.name;
 
@@ -61,6 +57,9 @@ function main() {
 
     bench.add("High Throughput: GET /api/simple", async () => {
       const response = await fetch(`${serverUrl}/api/simple`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
@@ -70,6 +69,9 @@ function main() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: "test-data", timestamp: Date.now() }),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
@@ -79,6 +81,9 @@ function main() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: "sensitive-data-to-hash", iterations: 1000 }),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
@@ -88,11 +93,17 @@ function main() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jobs: 5, delayMs: 5 }),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
     bench.add("Large Payload: GET /api/small (100KB)", async () => {
       const response = await fetch(`${serverUrl}/api/small`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
@@ -105,11 +116,17 @@ function main() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(smallPostPayload),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
     bench.add("Large Payload: GET /api/medium (1MB)", async () => {
       const response = await fetch(`${serverUrl}/api/medium`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
@@ -122,11 +139,17 @@ function main() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(mediumPostPayload),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
     bench.add("Large Payload: GET /api/large (2MB)", async () => {
       const response = await fetch(`${serverUrl}/api/large`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
@@ -139,6 +162,9 @@ function main() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(largePostPayload),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
@@ -170,6 +196,9 @@ function main() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(endpoint.body),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await response.json();
     });
 
@@ -178,7 +207,6 @@ function main() {
     await bench.run();
     const benchmarkDurationMs = Date.now() - runStartedAt;
 
-    // End tracking for the last task
     resourceMonitor.endTask();
     resourceMonitor.stop();
 
@@ -192,7 +220,6 @@ function main() {
     const outputPath = persistBenchmarkResult(benchmarkResult);
     console.log(`Benchmark results saved to ${outputPath}`);
 
-    // Report CPU utilization summary
     console.log("\n=== CPU Utilization Summary ===");
     for (const task of benchmarkResult.tasks) {
       if (task.resource?.cpu) {

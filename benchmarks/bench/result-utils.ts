@@ -2,6 +2,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { randomUUID } from "crypto";
+import type { Bench, Task } from "tinybench";
+import type { ResourceMonitor } from "./resource-monitor";
 
 // Use process.cwd() as the base directory for the benchmarks
 const CURRENT_DIR = path.join(process.cwd(), "benchmarks", "bench");
@@ -192,8 +194,8 @@ export function buildMetricSummary(
 }
 
 export function createTaskBenchmarkResult(
-  task: any, // Task from tinybench
-  resourceMonitor: any, // ResourceMonitor
+  task: Task,
+  resourceMonitor: ResourceMonitor,
 ): TaskBenchmarkResult | null {
   if (!task.result) {
     return null;
@@ -223,14 +225,14 @@ export function createTaskBenchmarkResult(
 }
 
 export function createBenchmarkRunResult(
-  bench: any, // Bench from tinybench
-  resourceMonitor: any, // ResourceMonitor
+  bench: Bench,
+  resourceMonitor: ResourceMonitor,
   durationMs: number,
   label: string,
 ): BenchmarkRunResult {
   const tasks = bench.tasks
-    .map((task: any) => createTaskBenchmarkResult(task, resourceMonitor))
-    .filter((taskResult: any): taskResult is TaskBenchmarkResult => taskResult !== null);
+    .map((task: Task) => createTaskBenchmarkResult(task, resourceMonitor))
+    .filter((taskResult: TaskBenchmarkResult | null): taskResult is TaskBenchmarkResult => taskResult !== null);
 
   return {
     id: randomUUID(),

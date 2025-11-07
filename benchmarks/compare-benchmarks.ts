@@ -115,8 +115,6 @@ function computeMemoryOverhead(
 
   let rssSum = 0;
   let rssMaxDelta: number | null = null;
-  let heapSum = 0;
-  let heapMaxDelta: number | null = null;
   let count = 0;
 
   for (const [name, baselineTask] of Array.from(baselineTasks.entries())) {
@@ -133,20 +131,14 @@ function computeMemoryOverhead(
     rssSum += avgRssDelta;
     rssMaxDelta = rssMaxDelta === null ? maxRssDelta : Math.max(rssMaxDelta, maxRssDelta);
 
-    // Note: heapUsed tracking removed in favor of RSS-only memory tracking
-    const avgHeapDelta = 0; // Placeholder - heapUsed no longer tracked
-    const maxHeapDelta = 0; // Placeholder - heapUsed no longer tracked
-    heapSum += avgHeapDelta;
-    heapMaxDelta = heapMaxDelta === null ? maxHeapDelta : Math.max(heapMaxDelta, maxHeapDelta);
-
     count++;
   }
 
   return {
     avgRssDelta: count ? rssSum / count : null,
     maxRssDelta: rssMaxDelta,
-    avgHeapUsedDelta: count ? heapSum / count : null,
-    maxHeapUsedDelta: heapMaxDelta,
+    avgHeapUsedDelta: null,
+    maxHeapUsedDelta: null,
     samples: count,
   };
 }
