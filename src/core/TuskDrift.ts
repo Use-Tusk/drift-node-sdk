@@ -15,6 +15,7 @@ import {
   PostgresInstrumentation,
   Mysql2Instrumentation,
   IORedisInstrumentation,
+  UpstashRedisInstrumentation,
   GrpcInstrumentation,
   FirestoreInstrumentation,
   NextjsInstrumentation,
@@ -268,6 +269,11 @@ export class TuskDriftCore {
     });
 
     new IORedisInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
+
+    new UpstashRedisInstrumentation({
       enabled: true,
       mode: this.mode,
     });
