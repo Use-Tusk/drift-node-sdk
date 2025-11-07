@@ -37,28 +37,6 @@ function main(testName: string = "SDK Active") {
 
     let currentTaskName: string | null = null;
 
-    /*
-    bench.add(`High Throughput: GET /api/simple (${testName})`, async () => {
-      const response = await fetch(`${serverUrl}/api/simple`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      await response.json();
-    });
-
-    bench.add(`High Throughput: POST /api/simple-post (${testName})`, async () => {
-      const response = await fetch(`${serverUrl}/api/simple-post`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: "test-data", timestamp: Date.now() }),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      await response.json();
-    });
-    */
-
     bench.add(
       `High CPU: POST /api/compute-hash (${testName})`,
       async () => {
@@ -114,77 +92,6 @@ function main(testName: string = "SDK Active") {
         },
       },
     );
-
-    /*
-    bench.add(`Large Payload: GET /api/small (100KB) (${testName})`, async () => {
-      const response = await fetch(`${serverUrl}/api/small`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      await response.json();
-    });
-
-    const smallPayloadSize = 100 * 1024;
-    const smallPostPayload = { data: "x".repeat(smallPayloadSize), timestamp: Date.now() };
-
-    bench.add(`Large Payload: POST /api/small-post (100KB) (${testName})`, async () => {
-      const response = await fetch(`${serverUrl}/api/small-post`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(smallPostPayload),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      await response.json();
-    });
-
-    bench.add(`Large Payload: GET /api/medium (1MB) (${testName})`, async () => {
-      const response = await fetch(`${serverUrl}/api/medium`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      await response.json();
-    });
-
-    const mediumPayloadSize = 1024 * 1024;
-    const mediumPostPayload = { data: "x".repeat(mediumPayloadSize), timestamp: Date.now() };
-
-    bench.add(`Large Payload: POST /api/medium-post (1MB) (${testName})`, async () => {
-      const response = await fetch(`${serverUrl}/api/medium-post`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mediumPostPayload),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      await response.json();
-    });
-
-    bench.add(`Large Payload: GET /api/large (2MB) (${testName})`, async () => {
-      const response = await fetch(`${serverUrl}/api/large`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      await response.json();
-    });
-
-    const largePayloadSize = 2 * 1024 * 1024;
-    const largePostPayload = { data: "x".repeat(largePayloadSize), timestamp: Date.now() };
-
-    bench.add(`Large Payload: POST /api/large-post (2MB) (${testName})`, async () => {
-      const response = await fetch(`${serverUrl}/api/large-post`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(largePostPayload),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      await response.json();
-    });
-    */
 
     const transformEndpoints = [
       {
