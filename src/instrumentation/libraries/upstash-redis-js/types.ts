@@ -24,21 +24,6 @@ export interface UpstashRedisInstrumentationConfig extends TdInstrumentationConf
   mode?: TuskDriftMode;
 }
 
-export interface UpstashRequest {
-  path?: string[];
-  body?: unknown;
-  headers?: Record<string, string>;
-  upstashSyncToken?: string;
-  onMessage?: (data: string) => void;
-  isStreaming?: boolean;
-  signal?: AbortSignal;
-}
-
-export interface UpstashResponse<TResult> {
-  result?: TResult;
-  error?: string;
-}
-
 export interface UpstashRedisOutputValue extends Record<string, unknown> {
   result?: any;
   error?: string;

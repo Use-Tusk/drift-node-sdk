@@ -10,14 +10,207 @@ import {
   UpstashRedisModuleExports,
   UpstashRedisInputValue,
   UpstashRedisInstrumentationConfig,
-  UpstashRequest,
-  UpstashResponse,
   UpstashRedisOutputValue,
 } from "./types";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
-import { logger, isEsm } from "../../../core/utils";
+import { logger } from "../../../core/utils";
 
 const SUPPORTED_VERSIONS = [">=1.0.0"];
+
+// List of Redis commands to instrument at the method level
+const REDIS_COMMANDS = [
+  // String operations
+  "get",
+  "set",
+  "getdel",
+  "getset",
+  "setex",
+  "setnx",
+  "mget",
+  "mset",
+  "msetnx",
+  "append",
+  "getrange",
+  "setrange",
+  "strlen",
+  "incr",
+  "incrby",
+  "incrbyfloat",
+  "decr",
+  "decrby",
+
+  // Hash operations
+  "hget",
+  "hset",
+  "hsetnx",
+  "hmget",
+  "hmset",
+  "hgetall",
+  "hdel",
+  "hexists",
+  "hincrby",
+  "hincrbyfloat",
+  "hkeys",
+  "hlen",
+  "hvals",
+  "hscan",
+
+  // List operations
+  "lpush",
+  "rpush",
+  "lpop",
+  "rpop",
+  "llen",
+  "lrange",
+  "lindex",
+  "lset",
+  "linsert",
+  "lrem",
+  "ltrim",
+  "blpop",
+  "brpop",
+  "brpoplpush",
+  "rpoplpush",
+  "lpos",
+  "lmove",
+  "blmove",
+
+  // Set operations
+  "sadd",
+  "srem",
+  "smembers",
+  "sismember",
+  "scard",
+  "sdiff",
+  "sdiffstore",
+  "sinter",
+  "sinterstore",
+  "sunion",
+  "sunionstore",
+  "spop",
+  "srandmember",
+  "smove",
+  "sscan",
+
+  // Sorted set operations
+  "zadd",
+  "zrem",
+  "zscore",
+  "zincrby",
+  "zcard",
+  "zcount",
+  "zrange",
+  "zrevrange",
+  "zrangebyscore",
+  "zrevrangebyscore",
+  "zrank",
+  "zrevrank",
+  "zremrangebyrank",
+  "zremrangebyscore",
+  "zpopmin",
+  "zpopmax",
+  "bzpopmin",
+  "bzpopmax",
+  "zdiff",
+  "zdiffstore",
+  "zinter",
+  "zinterstore",
+  "zunion",
+  "zunionstore",
+  "zscan",
+  "zrangebylex",
+  "zrevrangebylex",
+  "zremrangebylex",
+
+  // Key operations
+  "del",
+  "exists",
+  "expire",
+  "expireat",
+  "ttl",
+  "pttl",
+  "persist",
+  "keys",
+  "scan",
+  "randomkey",
+  "rename",
+  "renamenx",
+  "type",
+  "dump",
+  "restore",
+  "touch",
+  "unlink",
+
+  // Pub/Sub operations
+  "publish",
+  "subscribe",
+  "unsubscribe",
+  "psubscribe",
+  "punsubscribe",
+
+  // Geo operations
+  "geoadd",
+  "geodist",
+  "geohash",
+  "geopos",
+  "georadius",
+  "georadiusbymember",
+  "geosearch",
+  "geosearchstore",
+
+  // HyperLogLog operations
+  "pfadd",
+  "pfcount",
+  "pfmerge",
+
+  // Bitmap operations
+  "getbit",
+  "setbit",
+  "bitcount",
+  "bitpos",
+  "bitop",
+  "bitfield",
+
+  // Script operations
+  "eval",
+  "evalsha",
+  "script",
+
+  // Transaction operations
+  "multi",
+  "exec",
+  "discard",
+  "watch",
+  "unwatch",
+
+  // Server operations
+  "flushdb",
+  "flushall",
+  "dbsize",
+  "ping",
+  "echo",
+  "select",
+  "quit",
+  "info",
+  "config",
+  "time",
+
+  // Stream operations
+  "xadd",
+  "xlen",
+  "xrange",
+  "xrevrange",
+  "xread",
+  "xreadgroup",
+  "xack",
+  "xpending",
+  "xclaim",
+  "xautoclaim",
+  "xdel",
+  "xtrim",
+  "xgroup",
+  "xinfo",
+];
 
 export class UpstashRedisInstrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "UpstashRedisInstrumentation";
@@ -77,17 +270,9 @@ export class UpstashRedisInstrumentation extends TdInstrumentationBase {
       // Call original constructor with proper context
       const instance = Reflect.construct(OriginalRedis, args, new.target || WrappedRedis);
 
-      // Wrap the client.request method on this instance
-      if (instance && instance.client && typeof instance.client.request === "function") {
-        self._wrapClientRequest(instance.client);
-        logger.debug(`[UpstashRedisInstrumentation] Wrapped client.request on Redis instance`);
-      } else {
-        logger.debug(
-          `[UpstashRedisInstrumentation] client.request not found on Redis instance. Has client: ${!!instance?.client}`,
-        );
-      }
-
-      return instance;
+      // Since Upstash Redis uses dynamic property access for commands (not prototype methods),
+      // we need to wrap the instance with a Proxy to intercept command calls
+      return self._wrapInstanceWithProxy(instance);
     } as any;
 
     // Copy static properties and prototype from original Redis class
@@ -97,9 +282,8 @@ export class UpstashRedisInstrumentation extends TdInstrumentationBase {
     // Return a NEW moduleExports object with our wrapped Redis class
     // This avoids the "Cannot set property Redis" error since the original exports have non-configurable getters
     const newModuleExports: UpstashRedisModuleExports = {
+      ...moduleExports,
       Redis: WrappedRedis,
-      errors: moduleExports.errors,
-      __esModule: true,
     };
 
     this.markModuleAsPatched(newModuleExports);
@@ -108,199 +292,168 @@ export class UpstashRedisInstrumentation extends TdInstrumentationBase {
     return newModuleExports;
   }
 
-  private _wrapClientRequest(client: any): void {
-    if (this.isModulePatched(client)) {
-      return;
-    }
-
-    this._wrap(client, "request", this._getRequestPatchFn());
-    this.markModuleAsPatched(client);
-  }
-
-  private _getRequestPatchFn() {
+  private _wrapInstanceWithProxy(instance: any): any {
     const self = this;
+    const redisCommandsSet = new Set(REDIS_COMMANDS);
 
-    return (originalRequest: Function) => {
-      return function request<TResult>(
-        this: any,
-        req: UpstashRequest,
-      ): Promise<UpstashResponse<TResult>> {
-        // Extract command information from request
-        const inputValue: UpstashRedisInputValue = {
-          command: self._extractCommand(req.body),
-          commands: self._extractCommands(req.body, req.path),
-          path: req.path,
-          connectionInfo: {
-            baseUrl: this.baseUrl,
-          },
-        };
+    logger.debug(`[UpstashRedisInstrumentation] Creating Proxy wrapper for Redis instance`);
 
-        // Determine operation name based on path and body
-        const operationName = self._determineOperationName(req.path, req.body);
-        const submoduleName = self._determineSubmoduleName(req.path);
+    return new Proxy(instance, {
+      get(target: any, prop: string | symbol, receiver: any) {
+        const originalValue = Reflect.get(target, prop, receiver);
 
-        // Handle replay mode
-        if (self.mode === TuskDriftMode.REPLAY) {
-          const stackTrace = captureStackTrace(["UpstashRedisInstrumentation"]);
+        // Only intercept if:
+        // 1. It's a string property (not a symbol)
+        // 2. It's a known Redis command
+        // 3. The original value is a function
+        if (
+          typeof prop === "string" &&
+          redisCommandsSet.has(prop.toLowerCase()) &&
+          typeof originalValue === "function"
+        ) {
+          logger.debug(`[UpstashRedisInstrumentation] Proxy intercepted command: ${prop}`);
 
-          return handleReplayMode({
-            noOpRequestHandler: () => {
-              return { result: undefined } as UpstashResponse<TResult>;
-            },
-            isServerRequest: false,
-            replayModeHandler: () => {
-              return SpanUtils.createAndExecuteSpan(
-                self.mode,
-                () => originalRequest.apply(this, arguments),
-                {
-                  name: operationName,
-                  kind: SpanKind.CLIENT,
-                  submodule: submoduleName,
-                  packageType: PackageType.REDIS,
-                  packageName: "@upstash/redis",
-                  instrumentationName: self.INSTRUMENTATION_NAME,
-                  inputValue: inputValue,
-                  isPreAppStart: false,
+          // Return a wrapped version of the function
+          return function (this: any, ...args: any[]) {
+            const commandName = prop;
+            const operationName = `upstash-redis.${commandName.toLowerCase()}`;
+            const submoduleName = "command";
+
+            // Create input value with command arguments
+            const inputValue: UpstashRedisInputValue = {
+              command: [
+                commandName.toUpperCase(),
+                ...args.filter((arg) => typeof arg !== "function"),
+              ],
+              connectionInfo: {
+                baseUrl: target.client?.baseUrl,
+              },
+            };
+
+            // Handle replay mode
+            if (self.mode === TuskDriftMode.REPLAY) {
+              const stackTrace = captureStackTrace(["UpstashRedisInstrumentation"]);
+
+              return handleReplayMode({
+                noOpRequestHandler: () => {
+                  return undefined;
                 },
-                (spanInfo) => {
-                  return self._handleReplayRequest(
-                    spanInfo,
-                    inputValue,
-                    operationName,
-                    submoduleName,
-                    stackTrace,
+                isServerRequest: false,
+                replayModeHandler: () => {
+                  return SpanUtils.createAndExecuteSpan(
+                    self.mode,
+                    () => originalValue.apply(this === receiver ? target : this, args),
+                    {
+                      name: operationName,
+                      kind: SpanKind.CLIENT,
+                      submodule: submoduleName,
+                      packageType: PackageType.REDIS,
+                      packageName: "@upstash/redis",
+                      instrumentationName: self.INSTRUMENTATION_NAME,
+                      inputValue: inputValue,
+                      isPreAppStart: false,
+                    },
+                    (spanInfo) => {
+                      return self._handleReplayCommand(
+                        spanInfo,
+                        inputValue,
+                        operationName,
+                        submoduleName,
+                        stackTrace,
+                      );
+                    },
                   );
                 },
-              );
-            },
-          });
-        } else if (self.mode === TuskDriftMode.RECORD) {
-          return handleRecordMode({
-            originalFunctionCall: () => originalRequest.apply(this, arguments),
-            recordModeHandler: ({ isPreAppStart }) => {
-              return SpanUtils.createAndExecuteSpan(
-                self.mode,
-                () => originalRequest.apply(this, arguments),
-                {
-                  name: operationName,
-                  kind: SpanKind.CLIENT,
-                  submodule: submoduleName,
-                  packageType: PackageType.REDIS,
-                  packageName: "@upstash/redis",
-                  instrumentationName: self.INSTRUMENTATION_NAME,
-                  inputValue: inputValue,
-                  isPreAppStart,
-                  stopRecordingChildSpans: true,
+              });
+            } else if (self.mode === TuskDriftMode.RECORD) {
+              return handleRecordMode({
+                originalFunctionCall: () =>
+                  originalValue.apply(this === receiver ? target : this, args),
+                recordModeHandler: ({ isPreAppStart }) => {
+                  return SpanUtils.createAndExecuteSpan(
+                    self.mode,
+                    () => originalValue.apply(this === receiver ? target : this, args),
+                    {
+                      name: operationName,
+                      kind: SpanKind.CLIENT,
+                      submodule: submoduleName,
+                      packageType: PackageType.REDIS,
+                      packageName: "@upstash/redis",
+                      instrumentationName: self.INSTRUMENTATION_NAME,
+                      inputValue: inputValue,
+                      isPreAppStart,
+                      stopRecordingChildSpans: true,
+                    },
+                    (spanInfo) => {
+                      return self._handleRecordCommand(
+                        spanInfo,
+                        originalValue,
+                        this === receiver ? target : this,
+                        args,
+                      );
+                    },
+                  );
                 },
-                (spanInfo) => {
-                  return self._handleRecordRequest(spanInfo, originalRequest, this, req);
-                },
-              );
-            },
-            spanKind: SpanKind.CLIENT,
-          });
-        } else {
-          return originalRequest.apply(this, arguments);
+                spanKind: SpanKind.CLIENT,
+              });
+            } else {
+              return originalValue.apply(this === receiver ? target : this, args);
+            }
+          };
         }
-      };
-    };
+
+        // For all other properties, return as-is
+        return originalValue;
+      },
+    });
   }
 
-  private _extractCommand(body: unknown): string | string[] | undefined {
-    if (Array.isArray(body)) {
-      // Single command is an array like ["GET", "key"]
-      return body;
-    }
-    return undefined;
-  }
-
-  private _extractCommands(body: unknown, path?: string[]): string[][] | undefined {
-    // Pipeline/multi-exec commands are sent to /pipeline or /multi-exec endpoints
-    // and the body is an array of command arrays
-    if (path && (path.includes("pipeline") || path.includes("multi-exec"))) {
-      if (Array.isArray(body)) {
-        return body as string[][];
-      }
-    }
-    return undefined;
-  }
-
-  private _determineOperationName(path: string[] | undefined, body: unknown): string {
-    // If it's a pipeline operation
-    if (path && path.length > 0) {
-      if (path.includes("pipeline")) {
-        return "upstash-redis.pipeline";
-      }
-      if (path.includes("multi-exec")) {
-        return "upstash-redis.multi";
-      }
-    }
-
-    // Single command - extract command name from body
-    if (Array.isArray(body) && body.length > 0 && typeof body[0] === "string") {
-      return `upstash-redis.${body[0].toLowerCase()}`;
-    }
-
-    return "upstash-redis.command";
-  }
-
-  private _determineSubmoduleName(path: string[] | undefined): string {
-    if (path && path.length > 0) {
-      if (path.includes("pipeline")) {
-        return "pipeline";
-      }
-      if (path.includes("multi-exec")) {
-        return "multi";
-      }
-    }
-    return "command";
-  }
-
-  private async _handleRecordRequest<TResult>(
+  private async _handleRecordCommand(
     spanInfo: SpanInfo,
-    originalRequest: Function,
+    originalMethod: Function,
     thisContext: any,
-    req: UpstashRequest,
-  ): Promise<UpstashResponse<TResult>> {
+    args: any[],
+  ): Promise<any> {
     try {
-      const result: UpstashResponse<TResult> = await originalRequest.call(thisContext, req);
+      const result = await originalMethod.apply(thisContext, args);
 
-      logger.debug(
-        `[UpstashRedisInstrumentation] Request completed successfully (${SpanUtils.getTraceInfo()})`,
-      );
+      logger.debug(`[UpstashRedisInstrumentation] Command completed successfully`);
 
       const outputValue: UpstashRedisOutputValue = {
-        result: result.result,
-        error: result.error,
+        result: result,
       };
 
-      SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
-      SpanUtils.endSpan(spanInfo.span, {
-        code: result.error ? SpanStatusCode.ERROR : SpanStatusCode.OK,
-        message: result.error,
-      });
+      try {
+        SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
+        SpanUtils.endSpan(spanInfo.span, {
+          code: SpanStatusCode.OK,
+        });
+      } catch (error) {
+        logger.error(`[UpstashRedisInstrumentation] Error adding span attributes: ${error}`);
+      }
 
       return result;
-    } catch (error: any) {
-      logger.debug(
-        `[UpstashRedisInstrumentation] Request error: ${error.message} (${SpanUtils.getTraceInfo()})`,
-      );
-      SpanUtils.endSpan(spanInfo.span, {
-        code: SpanStatusCode.ERROR,
-        message: error.message,
-      });
+    } catch (error) {
+      logger.debug(`[UpstashRedisInstrumentation] Command error: ${error}`);
+      try {
+        SpanUtils.endSpan(spanInfo.span, {
+          code: SpanStatusCode.ERROR,
+        });
+      } catch (error) {
+        logger.error(`[UpstashRedisInstrumentation] Error ending span: ${error}`);
+      }
       throw error;
     }
   }
 
-  private async _handleReplayRequest<TResult>(
+  private async _handleReplayCommand(
     spanInfo: SpanInfo,
     inputValue: UpstashRedisInputValue,
     operationName: string,
     submoduleName: string,
     stackTrace?: string,
-  ): Promise<UpstashResponse<TResult>> {
-    logger.debug(`[UpstashRedisInstrumentation] Replaying request: ${operationName}`);
+  ): Promise<any> {
+    logger.debug(`[UpstashRedisInstrumentation] Replaying command: ${operationName}`);
 
     const mockData = await findMockResponseAsync({
       mockRequestData: {
@@ -318,28 +471,17 @@ export class UpstashRedisInstrumentation extends TdInstrumentationBase {
     });
 
     if (!mockData) {
-      logger.warn(
-        `[UpstashRedisInstrumentation] No mock data found for operation: ${operationName}`,
-      );
+      logger.warn(`[UpstashRedisInstrumentation] No mock data found for command: ${operationName}`);
       throw new Error(
-        `[UpstashRedisInstrumentation] No matching mock found for operation: ${operationName}`,
+        `[UpstashRedisInstrumentation] No matching mock found for command: ${operationName}`,
       );
     }
 
     logger.debug(
-      `[UpstashRedisInstrumentation] Found mock data for operation ${operationName}: ${JSON.stringify(mockData)}`,
+      `[UpstashRedisInstrumentation] Found mock data for command ${operationName}: ${JSON.stringify(mockData)}`,
     );
 
-    // Return the mocked response in the expected format
-    const response: UpstashResponse<TResult> = {
-      result: mockData.result?.result,
-      error: mockData.result?.error,
-    };
-
-    return response;
-  }
-
-  private _wrap(target: any, propertyName: string, wrapper: (original: any) => any): void {
-    wrap(target, propertyName, wrapper);
+    // Return the mocked result directly (not wrapped in UpstashResponse)
+    return mockData.result?.result;
   }
 }

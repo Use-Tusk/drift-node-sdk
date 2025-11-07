@@ -90,7 +90,24 @@ export function withTuskDrift(
         const originalExternals = webpackConfig.externals;
 
         // Core packages that must be external for instrumentation
-        const coreExternals = ["require-in-the-middle", "jsonpath"];
+        //
+        // Why these packages need to be external:
+        //
+        // 1. require-in-the-middle & jsonpath:
+        //    Required for the instrumentation infrastructure itself.
+        //
+        // 2. @upstash/redis:
+        //    By default, Next.js webpack bundles @upstash/redis into the server bundle at build time.
+        //    Once bundled, there's no runtime require('@upstash/redis') call for require-in-the-middle
+        //    to intercept. The instrumentation's patch callback never executes because module loading
+        //    has already happened during the webpack build process, not at runtime.
+        //
+        //    By adding it to webpack externals, we tell webpack to exclude this package from bundling.
+        //    Instead, webpack leaves it as a runtime require('@upstash/redis') call. When the Next.js
+        //    server starts, require-in-the-middle intercepts this runtime require() call, triggers our
+        //    instrumentation's patch callback, and successfully returns the wrapped moduleExports with
+        //    the instrumented upstash-redis class.
+        const coreExternals = ["require-in-the-middle", "jsonpath", "@upstash/redis"];
 
         // Create externals mapping - since SDK's node_modules aren't published,
         // we rely on these packages being available in the consumer's node_modules
