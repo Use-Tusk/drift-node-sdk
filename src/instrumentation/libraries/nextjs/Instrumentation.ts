@@ -168,10 +168,18 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
 
               logger.debug(`[NextjsInstrumentation] Setting replay trace id`, replayTraceId);
 
-              // Set env vars for current trace
-              const envVars = self.replayHooks.extractEnvVarsFromHeaders(req);
-              if (envVars) {
-                EnvVarTracker.setEnvVars(replayTraceId, envVars);
+              // Fetch env vars from CLI if requested
+              const shouldFetch = self.replayHooks.extractShouldFetchEnvVars(req);
+              if (shouldFetch) {
+                try {
+                  const envVars = self.tuskDrift.requestEnvVarsSync(replayTraceId);
+                  EnvVarTracker.setEnvVars(replayTraceId, envVars);
+                  logger.debug(
+                    `[NextjsInstrumentation] Fetched env vars from CLI for trace ${replayTraceId}`,
+                  );
+                } catch (error) {
+                  logger.error(`[NextjsInstrumentation] Failed to fetch env vars from CLI:`, error);
+                }
               }
 
               const ctxWithReplayTraceId = SpanUtils.setCurrentReplayTraceId(replayTraceId);

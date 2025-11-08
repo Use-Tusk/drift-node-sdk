@@ -212,10 +212,16 @@ export class HttpInstrumentation extends TdInstrumentationBase {
 
           logger.debug(`[HttpInstrumentation] Setting replay trace id`, replayTraceId);
 
-          // Set env vars for current trace
-          const envVars = this.replayHooks.extractEnvVarsFromHeaders(req);
-          if (envVars) {
-            EnvVarTracker.setEnvVars(replayTraceId, envVars);
+          // Fetch env vars from CLI if requested
+          const shouldFetch = this.replayHooks.extractShouldFetchEnvVars(req);
+          if (shouldFetch) {
+            try {
+              const envVars = this.tuskDrift.requestEnvVarsSync(replayTraceId);
+              EnvVarTracker.setEnvVars(replayTraceId, envVars);
+              logger.debug(`[HttpInstrumentation] Fetched env vars from CLI for trace ${replayTraceId}`);
+            } catch (error) {
+              logger.error(`[HttpInstrumentation] Failed to fetch env vars from CLI:`, error);
+            }
           }
 
           const ctxWithReplayTraceId = SpanUtils.setCurrentReplayTraceId(replayTraceId);

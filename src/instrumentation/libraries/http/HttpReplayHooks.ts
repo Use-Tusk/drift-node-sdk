@@ -15,9 +15,12 @@ export class HttpReplayHooks {
     return traceIdHeader ? String(traceIdHeader) : null;
   }
 
-  extractEnvVarsFromHeaders(req: any): Record<string, string | undefined> | undefined {
-    const envVarsHeader = req.headers["x-td-env-vars"] || req.headers["X-TD-ENV-VARS"];
-    return envVarsHeader ? JSON.parse(String(envVarsHeader)) : undefined;
+  /**
+   * Check if we should fetch env vars from CLI
+   */
+  extractShouldFetchEnvVars(req: any): boolean {
+    const fetchHeader = req.headers["x-td-fetch-env-vars"] || req.headers["X-TD-FETCH-ENV-VARS"];
+    return fetchHeader === "true" || fetchHeader === true;
   }
 
   /**
