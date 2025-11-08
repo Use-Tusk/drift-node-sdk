@@ -8,26 +8,29 @@ The `TUSK_DRIFT_MODE` environment variable controls how the SDK operates in your
 
 ### Available Modes
 
-| Mode | Description | When to Use |
-|------|-------------|-------------|
-| `RECORD` | Records traces for all instrumented operations | Set this in environments where you want to capture API traces (e.g., staging, production) |
-| `REPLAY` | Replays previously recorded traces | Automatically set by the Tusk CLI when running `tusk run` - you should NOT set this manually |
-| `DISABLED` | Disables all instrumentation and recording | Use when you want to completely disable Tusk with no performance impact |
-| Unset | Same as `DISABLED` - no instrumentation or recording | Default state when the variable is not set |
+| Mode       | Description                                          | When to Use                                                                                  |
+| ---------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `RECORD`   | Records traces for all instrumented operations       | Set this in environments where you want to capture API traces (e.g., staging, production)    |
+| `REPLAY`   | Replays previously recorded traces                   | Automatically set by the Tusk CLI when running `tusk run` - you should NOT set this manually |
+| `DISABLED` | Disables all instrumentation and recording           | Use when you want to completely disable Tusk with no performance impact                      |
+| Unset      | Same as `DISABLED` - no instrumentation or recording | Default state when the variable is not set                                                   |
 
 ### Important Notes
 
 **Recording Traces:**
+
 - Set `TUSK_DRIFT_MODE=RECORD` in any environment where you want to record traces
 - This is typically staging, production, or local development environments
 - Traces will be saved according to your `recording` configuration in `.tusk/config.yaml`
 
 **Replaying Traces:**
+
 - `TUSK_DRIFT_MODE` is automatically set to `REPLAY` by the Tusk CLI when you run `tusk run`
 - **Do NOT** manually set `TUSK_DRIFT_MODE=REPLAY` in your application startup commands
 - The start command specified in your `.tusk/config.yaml` should NOT cause `TUSK_DRIFT_MODE` to be set to anything - the CLI handles this automatically
 
 **Disabling Tusk:**
+
 - If `TUSK_DRIFT_MODE` is unset or set to `DISABLED`, the SDK will not add any instrumentation
 - No data will be recorded and there should be **no performance impact**
 - This is useful for environments where you don't need Tusk functionality
@@ -35,29 +38,34 @@ The `TUSK_DRIFT_MODE` environment variable controls how the SDK operates in your
 ### Examples
 
 **Recording in development:**
+
 ```bash
 TUSK_DRIFT_MODE=RECORD npm run dev
 ```
 
 **Recording in production (via environment variable):**
+
 ```bash
 # In your .env file or deployment configuration
 TUSK_DRIFT_MODE=RECORD
 ```
 
 **Start command in config.yaml (correct):**
+
 ```yaml
 # .tusk/config.yaml
-start_command: "npm run dev"  # Do NOT include TUSK_DRIFT_MODE here
+start_command: "npm run dev" # Do NOT include TUSK_DRIFT_MODE here
 ```
 
 **Replaying traces (handled by CLI):**
+
 ```bash
 # The CLI automatically sets TUSK_DRIFT_MODE=REPLAY
 tusk run
 ```
 
 **Disabling Tusk:**
+
 ```bash
 # Either unset the variable or explicitly disable
 TUSK_DRIFT_MODE=DISABLED npm start
@@ -100,7 +108,7 @@ Your Tusk Drift API key, required when using Tusk Cloud for storing and managing
   tusk login
   ```
 
-  This will securely store your API key for future replay sessions.
+  This will securely store your auth key for future replay sessions.
 
 ## TUSK_SAMPLING_RATE
 
@@ -111,6 +119,7 @@ Controls what percentage of requests are recorded during trace collection.
 - **Precedence:** This environment variable is overridden by the `samplingRate` parameter in `TuskDrift.initialize()`, but takes precedence over the `sampling_rate` setting in `.tusk/config.yaml`
 
 **Examples:**
+
 ```bash
 # Record all requests (100%)
 TUSK_SAMPLING_RATE=1.0 npm start
