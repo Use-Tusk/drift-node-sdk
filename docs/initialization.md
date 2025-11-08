@@ -117,6 +117,8 @@ export { TuskDrift };
   </tbody>
 </table>
 
+> **See also:** [Environment Variables guide](./environment-variables.md) for detailed information about environment variables.
+
 ## 2. Import SDK at Application Entry Point
 
 ### For CommonJS Applications
