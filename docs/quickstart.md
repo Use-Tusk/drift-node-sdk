@@ -14,6 +14,8 @@ Run your server in record mode using the `TUSK_DRIFT_MODE` environment variable:
 TUSK_DRIFT_MODE=RECORD node server.js
 ```
 
+> **Note:** See the [Environment Variables guide](./environment-variables.md#tusk_drift_mode) for more details about `TUSK_DRIFT_MODE` and other environment variables.
+
 You should see logs indicating Tusk Drift is active:
 
 ```text
