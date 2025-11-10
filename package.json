@@ -36,6 +36,7 @@
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
     "test": "ava --workerThreads false",
+    "test:bench": "ava --workerThreads false benchmarks/bench/sdk-disabled.bench.ts && ava --workerThreads false benchmarks/bench/sdk-active.bench.ts && ava --workerThreads false benchmarks/bench/sdk-active-with-transforms.bench.ts && tsx benchmarks/compare-benchmarks.ts",
     "test:docker": "docker compose -f docker-compose.test.yml up -d --wait"
   },
   "keywords": [
@@ -66,7 +67,7 @@
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
-    "@use-tusk/drift-schemas": "^0.1.16",
+    "@use-tusk/drift-schemas": "^0.1.18",
     "ava": "^6.4.1",
     "axios": "^1.6.0",
     "eslint": "^8.57.1",
@@ -84,6 +85,7 @@
     "postgres": "^3.4.7",
     "prettier": "^3.2.4",
     "supertest": "^7.0.0",
+    "tinybench": "^5.0.1",
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.16",
     "tsdown": "^0.15.0",
@@ -92,12 +94,15 @@
   },
   "dependencies": {
     "import-in-the-middle": "^1.14.4",
-    "require-in-the-middle": "^7.0.0",
+    "js-yaml": "^4.1.0",
     "jsonpath": "^1.1.1",
-    "semver": "^7.7.2",
-    "js-yaml": "^4.1.0"
+    "require-in-the-middle": "^7.0.0",
+    "semver": "^7.7.2"
   },
   "engines": {
     "node": ">=16.0.0"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-linux-x64-gnu": "^1.0.0-beta.47"
   }
 }
