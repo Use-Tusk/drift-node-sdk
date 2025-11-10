@@ -89,8 +89,51 @@ export function withTuskDrift(
         // Safely handle different externals formats (array, function, object, or undefined)
         const originalExternals = webpackConfig.externals;
 
+        // Check if we're in RECORD or REPLAY mode
+        const mode = process.env.TUSK_DRIFT_MODE?.toUpperCase();
+        const isRecordOrReplay = mode === "RECORD" || mode === "REPLAY";
+
         // Core packages that must be external for instrumentation
-        const coreExternals = ["require-in-the-middle", "jsonpath"];
+        //
+        // Why these packages need to be external:
+        //
+        // 1. require-in-the-middle & jsonpath:
+        //    Required for the instrumentation infrastructure itself.
+        //
+        // 2. Others:
+        //    By default, Next.js webpack bundles other packages into the server bundle at build time.
+        //    Once bundled, there's no runtime require() call for require-in-the-middle to intercept.
+        //    The instrumentation's patch callback never executes because module loading has already
+        //    happened during the webpack build process, not at runtime.
+        //
+        //    By adding it to webpack externals, we tell webpack to exclude these packages from bundling.
+        //    Instead, webpack leaves these packages as a runtime require() call. When the Next.js server starts,
+        //    require-in-the-middle intercepts these runtime require() calls, triggers our instrumentation's
+        //    patch callback, and successfully returns the wrapped moduleExports with the instrumented class.
+
+        //    Next.js externalizes some packages by default, see: https://nextjs.org/docs/app/api-reference/config/next-config-js/serverExternalPackages
+        //    Others we need to add ourselves.
+
+        // Note: Other packages are only added when TUSK_DRIFT_MODE is RECORD or REPLAY
+        const coreExternals = [
+          "require-in-the-middle",
+          "jsonpath",
+          ...(isRecordOrReplay
+            ? [
+                "@upstash/redis",
+                "ioredis",
+                "pg",
+                "postgres",
+                "mysql2",
+                "@prisma/client",
+                "@google-cloud/firestore",
+                "@grpc/grpc-js",
+                "graphql",
+                "jsonwebtoken",
+                "jwks-rsa",
+              ]
+            : []),
+        ];
 
         // Create externals mapping - since SDK's node_modules aren't published,
         // we rely on these packages being available in the consumer's node_modules

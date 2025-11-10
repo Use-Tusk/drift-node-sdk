@@ -64,7 +64,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
       return self._handleFetchRequest(input, init, stackTrace);
     } as typeof globalThis.fetch;
 
-    logger.debug("Global fetch patching complete");
+    logger.debug("[FetchInstrumentation] Global fetch patching complete");
   }
 
   private async _handleFetchRequest(
@@ -83,7 +83,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
       normalizedHeaders = this._normalizeHeaders(headers);
       encodedBody = init?.body ? ((await this._encodeRequestBody(init?.body)) as any) : init?.body;
     } catch (error) {
-      logger.error(`FetchInstrumentation error normalizing headers:`, error);
+      logger.error(`[FetchInstrumentation] error normalizing headers:`, error);
     }
 
     // Ignore SDK's own drift export calls
@@ -231,7 +231,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
 
               SpanUtils.endSpan(spanInfo.span, status);
             } catch (error) {
-              logger.error(`FetchInstrumentation error processing response body:`, error);
+              logger.error(`[FetchInstrumentation] error processing response body:`, error);
             }
             return response;
           })
@@ -242,7 +242,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
                 message: error.message,
               });
             } catch (error) {
-              logger.error(`FetchInstrumentation error ending span:`, error);
+              logger.error(`[FetchInstrumentation] error ending span:`, error);
             }
             throw error;
           });

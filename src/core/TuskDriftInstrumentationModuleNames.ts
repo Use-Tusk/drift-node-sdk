@@ -9,7 +9,9 @@ export const TuskDriftInstrumentationModuleNames = [
   "jwks-rsa",
   "mysql2",
   "ioredis",
+  "@upstash/redis",
   "@grpc/grpc-js",
+  "@prisma/client",
   "@google-cloud/firestore",
   // Note: "next" is intentionally excluded from this list because Next.js is always
   // required before SDK initialization in Next.js apps.

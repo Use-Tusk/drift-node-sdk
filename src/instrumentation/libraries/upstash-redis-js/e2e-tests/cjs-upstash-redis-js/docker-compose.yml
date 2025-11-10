@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: ../../../../../..
+      dockerfile: src/instrumentation/libraries/upstash-redis-js/e2e-tests/cjs-upstash-redis-js/Dockerfile
+      args:
+        - CACHEBUST=${CACHEBUST:-1}
+        - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - UPSTASH_REDIS_REST_URL=${UPSTASH_REDIS_REST_URL}
+      - UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}
+    volumes:
+      - ../../../../../..:/sdk:ro
+      - ./.tusk:/app/.tusk
+      - ./src:/app/src
+    working_dir: /app
+    command: tail -f /dev/null
