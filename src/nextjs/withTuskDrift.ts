@@ -100,22 +100,39 @@ export function withTuskDrift(
         // 1. require-in-the-middle & jsonpath:
         //    Required for the instrumentation infrastructure itself.
         //
-        // 2. @upstash/redis:
-        //    By default, Next.js webpack bundles @upstash/redis into the server bundle at build time.
-        //    Once bundled, there's no runtime require('@upstash/redis') call for require-in-the-middle
-        //    to intercept. The instrumentation's patch callback never executes because module loading
-        //    has already happened during the webpack build process, not at runtime.
+        // 2. Others:
+        //    By default, Next.js webpack bundles other packages into the server bundle at build time.
+        //    Once bundled, there's no runtime require() call for require-in-the-middle to intercept.
+        //    The instrumentation's patch callback never executes because module loading has already
+        //    happened during the webpack build process, not at runtime.
         //
-        //    By adding it to webpack externals, we tell webpack to exclude this package from bundling.
-        //    Instead, webpack leaves it as a runtime require('@upstash/redis') call. When the Next.js
-        //    server starts, require-in-the-middle intercepts this runtime require() call, triggers our
-        //    instrumentation's patch callback, and successfully returns the wrapped moduleExports with
-        //    the instrumented upstash-redis class.
-        // Note: @upstash/redis is only added when TUSK_DRIFT_MODE is RECORD or REPLAY
+        //    By adding it to webpack externals, we tell webpack to exclude these packages from bundling.
+        //    Instead, webpack leaves these packages as a runtime require() call. When the Next.js server starts,
+        //    require-in-the-middle intercepts these runtime require() calls, triggers our instrumentation's
+        //    patch callback, and successfully returns the wrapped moduleExports with the instrumented class.
+
+        //    Next.js externalizes some packages by default, see: https://nextjs.org/docs/app/api-reference/config/next-config-js/serverExternalPackages
+        //    Others we need to add ourselves.
+
+        // Note: Other packages are only added when TUSK_DRIFT_MODE is RECORD or REPLAY
         const coreExternals = [
           "require-in-the-middle",
           "jsonpath",
-          ...(isRecordOrReplay ? ["@upstash/redis"] : []),
+          ...(isRecordOrReplay
+            ? [
+                "@upstash/redis",
+                "ioredis",
+                "pg",
+                "postgres",
+                "mysql2",
+                "@prisma/client",
+                "@google-cloud/firestore",
+                "@grpc/grpc-js",
+                "graphql",
+                "jsonwebtoken",
+                "jwks-rsa",
+              ]
+            : []),
         ];
 
         // Create externals mapping - since SDK's node_modules aren't published,
