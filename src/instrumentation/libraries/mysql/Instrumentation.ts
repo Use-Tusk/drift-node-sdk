@@ -2,15 +2,12 @@ import { TdInstrumentationBase } from "../../core/baseClasses/TdInstrumentationB
 import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrumentationNodeModule";
 import { TdInstrumentationNodeModuleFile } from "../../core/baseClasses/TdInstrumentationNodeModuleFile";
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
-import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { context, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
 import { captureStackTrace, wrap, isWrapped } from "../../core/utils";
-import { findMockResponseAsync } from "../../core/utils/mockResponseUtils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
 import {
-  MysqlModuleExports,
   MysqlQueryInputValue,
-  MysqlConnectionInputValue,
   MysqlTransactionInputValue,
   MysqlInstrumentationConfig,
   MysqlOutputValue,
@@ -26,13 +23,11 @@ import { TdMysqlQueryMock } from "./mocks/TdMysqlQueryMock";
 export class MysqlInstrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "MysqlInstrumentation";
   private mode: TuskDriftMode;
-  private tuskDrift: TuskDriftCore;
   private queryMock: TdMysqlQueryMock;
 
   constructor(config: MysqlInstrumentationConfig = {}) {
     super("mysql", config);
     this.mode = config.mode || TuskDriftMode.DISABLED;
-    this.tuskDrift = TuskDriftCore.getInstance();
     this.queryMock = new TdMysqlQueryMock();
   }
 
@@ -74,7 +69,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     // Wrap Connection.prototype.query
     if (ConnectionClass.prototype && ConnectionClass.prototype.query) {
       if (!isWrapped(ConnectionClass.prototype.query)) {
-        this._wrap(ConnectionClass.prototype, "query", this._getQueryPatchFn("connection"));
+        this._wrap(ConnectionClass.prototype, "query", this._getQueryPatchFn());
         logger.debug(`[MysqlInstrumentation] Wrapped Connection.prototype.query`);
       }
     }
@@ -135,7 +130,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     // Wrap Pool.prototype.query
     if (PoolClass.prototype && PoolClass.prototype.query) {
       if (!isWrapped(PoolClass.prototype.query)) {
-        this._wrap(PoolClass.prototype, "query", this._getQueryPatchFn("pool"));
+        this._wrap(PoolClass.prototype, "query", this._getQueryPatchFn());
         logger.debug(`[MysqlInstrumentation] Wrapped Pool.prototype.query`);
       }
     }
@@ -157,7 +152,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   /**
    * Get wrapper function for query method (prototype-level patching)
    */
-  private _getQueryPatchFn(clientType: "connection" | "pool" | "poolConnection") {
+  private _getQueryPatchFn() {
     const self = this;
 
     return (originalQuery: Function) => {
@@ -189,6 +184,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           }
         } else {
           // Unknown signature, just pass through
+          logger.debug(`[MysqlInstrumentation] Unknown query signature, passing through:`, args);
           return originalQuery.apply(this, args);
         }
 
@@ -220,7 +216,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.query",
                   kind: SpanKind.CLIENT,
                   submodule: "query",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
@@ -248,7 +244,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.query",
                   kind: SpanKind.CLIENT,
                   submodule: "query",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
@@ -324,8 +320,6 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         };
 
         if (self.mode === TuskDriftMode.REPLAY) {
-          const stackTrace = captureStackTrace(["MysqlInstrumentation"]);
-
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
@@ -341,14 +335,14 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.beginTransaction",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(spanInfo, inputValue, stackTrace, callback);
+                  return self._handleReplayTransaction(inputValue, callback);
                 },
               );
             },
@@ -364,7 +358,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.beginTransaction",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
@@ -402,8 +396,6 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         };
 
         if (self.mode === TuskDriftMode.REPLAY) {
-          const stackTrace = captureStackTrace(["MysqlInstrumentation"]);
-
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
@@ -419,14 +411,14 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.commit",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(spanInfo, inputValue, stackTrace, callback);
+                  return self._handleReplayTransaction(inputValue, callback);
                 },
               );
             },
@@ -442,7 +434,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.commit",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
@@ -480,8 +472,6 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         };
 
         if (self.mode === TuskDriftMode.REPLAY) {
-          const stackTrace = captureStackTrace(["MysqlInstrumentation"]);
-
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
@@ -497,14 +487,14 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.rollback",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(spanInfo, inputValue, stackTrace, callback);
+                  return self._handleReplayTransaction(inputValue, callback);
                 },
               );
             },
@@ -520,7 +510,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.rollback",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
@@ -685,7 +675,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.query",
                   kind: SpanKind.CLIENT,
                   submodule: "query",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
@@ -719,7 +709,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.query",
                   kind: SpanKind.CLIENT,
                   submodule: "query",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
@@ -794,16 +784,24 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           };
 
           if (error) {
-            SpanUtils.endSpan(spanInfo.span, {
-              code: SpanStatusCode.ERROR,
-              message: error.message,
-            });
+            try {
+              SpanUtils.endSpan(spanInfo.span, {
+                code: SpanStatusCode.ERROR,
+                message: error.message,
+              });
+            } catch (error) {
+              logger.error(`[MysqlInstrumentation] error ending span:`, error);
+            }
           } else {
-            SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
-            SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+            try {
+              SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
+              SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+            } catch (error) {
+              logger.error(`[MysqlInstrumentation] error ending span:`, error);
+            }
           }
 
-          logger.debug(`[MysqlInstrumentation] Query completed (${SpanUtils.getTraceInfo()})`);
+          logger.debug(`[MysqlInstrumentation] Query completed`);
         });
 
       return queryEmitter;
@@ -814,20 +812,28 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
 
       args[callbackIndex] = function (err: any, results: any, fields: any) {
         if (err) {
-          SpanUtils.endSpan(spanInfo.span, {
-            code: SpanStatusCode.ERROR,
-            message: err.message,
-          });
+          try {
+            SpanUtils.endSpan(spanInfo.span, {
+              code: SpanStatusCode.ERROR,
+              message: err.message,
+            });
+          } catch (error) {
+            logger.error(`[MysqlInstrumentation] error ending span:`, error);
+          }
         } else {
-          const outputValue: MysqlOutputValue = {
-            results: results,
-            fields: fields,
-          };
-          SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
-          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+          try {
+            const outputValue: MysqlOutputValue = {
+              results: results,
+              fields: fields,
+            };
+            SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
+            SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+          } catch (error) {
+            logger.error(`[MysqlInstrumentation] error ending span:`, error);
+          }
         }
 
-        logger.debug(`[MysqlInstrumentation] Query completed (${SpanUtils.getTraceInfo()})`);
+        logger.debug(`[MysqlInstrumentation] Query completed`);
 
         return originalCallback.apply(this, arguments);
       };
@@ -887,8 +893,6 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         };
 
         if (self.mode === TuskDriftMode.REPLAY) {
-          const stackTrace = captureStackTrace(["MysqlInstrumentation"]);
-
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
@@ -904,14 +908,14 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.beginTransaction",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(spanInfo, inputValue, stackTrace, callback);
+                  return self._handleReplayTransaction(inputValue, callback);
                 },
               );
             },
@@ -927,7 +931,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.beginTransaction",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
@@ -962,8 +966,6 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         };
 
         if (self.mode === TuskDriftMode.REPLAY) {
-          const stackTrace = captureStackTrace(["MysqlInstrumentation"]);
-
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
@@ -979,14 +981,14 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.commit",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(spanInfo, inputValue, stackTrace, callback);
+                  return self._handleReplayTransaction(inputValue, callback);
                 },
               );
             },
@@ -1002,7 +1004,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.commit",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
@@ -1037,8 +1039,6 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         };
 
         if (self.mode === TuskDriftMode.REPLAY) {
-          const stackTrace = captureStackTrace(["MysqlInstrumentation"]);
-
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
@@ -1054,14 +1054,14 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.rollback",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(spanInfo, inputValue, stackTrace, callback);
+                  return self._handleReplayTransaction(inputValue, callback);
                 },
               );
             },
@@ -1077,7 +1077,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   name: "mysql.rollback",
                   kind: SpanKind.CLIENT,
                   submodule: "transaction",
-                  packageType: PackageType.UNSPECIFIED,
+                  packageType: PackageType.MYSQL,
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
@@ -1114,16 +1114,24 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
       // No callback, just execute
       try {
         const result = originalFunction.apply(connection, args);
-        SpanUtils.addSpanAttributes(spanInfo.span, {
-          outputValue: { status: "success" },
-        });
-        SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+        try {
+          SpanUtils.addSpanAttributes(spanInfo.span, {
+            outputValue: { status: "success" },
+          });
+          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+        } catch (error) {
+          logger.error(`[MysqlInstrumentation] error adding span attributes:`, error);
+        }
         return result;
       } catch (error: any) {
-        SpanUtils.endSpan(spanInfo.span, {
-          code: SpanStatusCode.ERROR,
-          message: error.message,
-        });
+        try {
+          SpanUtils.endSpan(spanInfo.span, {
+            code: SpanStatusCode.ERROR,
+            message: error.message,
+          });
+        } catch (error) {
+          logger.error(`[MysqlInstrumentation] error ending span:`, error);
+        }
         throw error;
       }
     }
@@ -1136,30 +1144,43 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
       const originalCallback = callback;
       argsArray[callbackIndex] = function (err: any) {
         if (err) {
-          SpanUtils.endSpan(spanInfo.span, {
-            code: SpanStatusCode.ERROR,
-            message: err.message,
-          });
+          try {
+            SpanUtils.endSpan(spanInfo.span, {
+              code: SpanStatusCode.ERROR,
+              message: err.message,
+            });
+          } catch (error) {
+            logger.error(`[MysqlInstrumentation] error ending span:`, error);
+          }
         } else {
-          SpanUtils.addSpanAttributes(spanInfo.span, {
-            outputValue: { status: "success" },
-          });
-          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+          try {
+            SpanUtils.addSpanAttributes(spanInfo.span, {
+              outputValue: { status: "success" },
+            });
+            SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+          } catch (error) {
+            logger.error(`[MysqlInstrumentation] error ending span:`, error);
+          }
         }
 
-        logger.debug(`[MysqlInstrumentation] Transaction completed (${SpanUtils.getTraceInfo()})`);
+        logger.debug(`[MysqlInstrumentation] Transaction completed`);
 
         return originalCallback.apply(this, arguments);
       };
+
+      // Bind the callback to the span context so child operations (like queries inside the transaction)
+      // can access the parent span via SpanUtils.getCurrentSpanInfo() and be properly recorded.
+      // Without this binding, the OpenTelemetry context is lost when the callback executes asynchronously,
+      // causing child spans to have no parent context and fail the handleRecordMode check,
+      // resulting in operations being executed but not recorded (leading to missing mocks in replay mode).
+      argsArray[callbackIndex] = context.bind(spanInfo.context, argsArray[callbackIndex]);
     }
 
     return originalFunction.apply(connection, argsArray);
   }
 
   private async _handleReplayTransaction(
-    spanInfo: SpanInfo,
     inputValue: MysqlTransactionInputValue,
-    stackTrace: string,
     callback: Function | undefined,
   ): Promise<any> {
     logger.debug(`[MysqlInstrumentation] Replaying MySQL transaction: ${inputValue.query}`);

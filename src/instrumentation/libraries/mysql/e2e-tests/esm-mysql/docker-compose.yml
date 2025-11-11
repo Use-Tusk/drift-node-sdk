@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpass
+      - MYSQL_DATABASE=testdb
+      - MYSQL_USER=testuser
+      - MYSQL_PASSWORD=testpass
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "testuser", "-ptestpass"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: ../../../../../..
+      dockerfile: src/instrumentation/libraries/mysql/e2e-tests/esm-mysql/Dockerfile
+      args:
+        - CACHEBUST=${CACHEBUST:-1}
+        - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DB=testdb
+      - MYSQL_USER=testuser
+      - MYSQL_PASSWORD=testpass
+    volumes:
+      # Mount SDK source for hot reload (this is what package.json expects)
+      - ../../../../../..:/sdk:ro
+      # Mount .tusk folder to persist traces
+      - ./.tusk:/app/.tusk
+      # Mount app source for development
+      - ./src:/app/src
+    working_dir: /app
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # Keep container running without starting the app
+    # The CLI will control starting/stopping the app
+    command: tail -f /dev/null
