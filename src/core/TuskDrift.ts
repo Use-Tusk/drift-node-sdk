@@ -20,6 +20,7 @@ import {
   FirestoreInstrumentation,
   NextjsInstrumentation,
   PrismaInstrumentation,
+  MysqlInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
 import { trace, Tracer } from "@opentelemetry/api";
@@ -294,6 +295,11 @@ export class TuskDriftCore {
     });
 
     new PrismaInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
+
+    new MysqlInstrumentation({
       enabled: true,
       mode: this.mode,
     });

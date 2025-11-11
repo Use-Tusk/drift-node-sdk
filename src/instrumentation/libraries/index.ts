@@ -4,6 +4,7 @@ export * from "./date";
 export * from "./graphql";
 export * from "./pg";
 export * from "./postgres";
+export * from "./mysql";
 export * from "./mysql2";
 export * from "./tcp";
 export * from "./jsonwebtoken";
