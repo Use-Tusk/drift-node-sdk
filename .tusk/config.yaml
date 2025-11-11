@@ -19,3 +19,6 @@ test_execution:
 recording:
   sampling_rate: 1.0
   export_spans: false # set to true if you want to export to Tusk DB via tusk_api.url
+
+replay:
+  enable_telemetry: false

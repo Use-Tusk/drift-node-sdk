@@ -1,17 +1,17 @@
 version: 1
 service:
-  id: 'esm-upstash-redis-js-e2e-test-id'
-  name: 'esm-upstash-redis-js-e2e-test'
+  id: "esm-upstash-redis-js-e2e-test-id"
+  name: "esm-upstash-redis-js-e2e-test"
   port: 3000
   start:
-    command: 'npm run dev'
+    command: "npm run dev"
   readiness_check:
-    command: 'curl http://localhost:3000/health'
+    command: "curl http://localhost:3000/health"
     timeout: 45s
     interval: 5s
 
 tusk_api:
-  url: 'http://localhost:3000'
+  url: "http://localhost:3000"
 
 test_execution:
   concurrent_limit: 10
@@ -29,3 +29,6 @@ comparison:
 recording:
   sampling_rate: 1.0
   export_spans: false
+
+replay:
+  enable_telemetry: false
