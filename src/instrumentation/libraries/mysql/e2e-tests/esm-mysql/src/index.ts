@@ -614,6 +614,323 @@ app.get("/advanced/prepared", async (req: Request, res: Response) => {
   }
 });
 
+// ===== LIFECYCLE TESTS =====
+
+// Test connection.ping()
+app.get("/lifecycle/ping", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing connection.ping()...");
+    const connection = getConnection();
+
+    connection.ping((error) => {
+      if (error) {
+        console.error("Error pinging connection:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log("Ping successful");
+      res.json({
+        message: "Ping successful",
+        status: "ok",
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in ping:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test connection.end() and reconnect
+app.get("/lifecycle/end-and-reconnect", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing connection.end()...");
+
+    // Create a temporary connection for this test
+    const tempConnection = mysql.createConnection({
+      host: process.env.MYSQL_HOST || 'mysql',
+      port: parseInt(process.env.MYSQL_PORT || '3306'),
+      user: process.env.MYSQL_USER || 'testuser',
+      password: process.env.MYSQL_PASSWORD || 'testpass',
+      database: process.env.MYSQL_DB || 'testdb',
+    });
+
+    let endEventReceived = false;
+
+    // Listen for end event
+    tempConnection.on('end', () => {
+      console.log("'end' event received");
+      endEventReceived = true;
+    });
+
+    // Connect first
+    tempConnection.connect((connectError) => {
+      if (connectError) {
+        console.error("Error connecting temporary connection:", connectError);
+        return res.status(500).json({ error: connectError.message });
+      }
+
+      // Now end the connection
+      tempConnection.end((endError) => {
+        if (endError) {
+          console.error("Error ending connection:", endError);
+          return res.status(500).json({ error: endError.message });
+        }
+
+        console.log("Connection ended successfully");
+
+        // Give time for end event to fire
+        setTimeout(() => {
+          res.json({
+            message: "Connection ended successfully",
+            endEventReceived,
+            status: "ok",
+          });
+        }, 100);
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in end-and-reconnect:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test connection.changeUser()
+app.post("/lifecycle/change-user", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing connection.changeUser()...");
+
+    // Create a temporary connection for this test
+    const tempConnection = mysql.createConnection({
+      host: process.env.MYSQL_HOST || 'mysql',
+      port: parseInt(process.env.MYSQL_PORT || '3306'),
+      user: process.env.MYSQL_USER || 'testuser',
+      password: process.env.MYSQL_PASSWORD || 'testpass',
+      database: process.env.MYSQL_DB || 'testdb',
+    });
+
+    tempConnection.connect((connectError) => {
+      if (connectError) {
+        console.error("Error connecting temporary connection:", connectError);
+        return res.status(500).json({ error: connectError.message });
+      }
+
+      // Change user to the same credentials (simpler than creating a test user)
+      const changeUserOptions = {
+        user: process.env.MYSQL_USER || 'testuser',
+        password: process.env.MYSQL_PASSWORD || 'testpass',
+        database: process.env.MYSQL_DB || 'testdb',
+      };
+
+      tempConnection.changeUser(changeUserOptions, (changeError) => {
+        // Close the temporary connection
+        tempConnection.end(() => {
+          if (changeError) {
+            console.error("Error changing user:", changeError);
+            return res.status(500).json({ error: changeError.message });
+          }
+
+          console.log("User changed successfully");
+          res.json({
+            message: "User changed successfully",
+            status: "ok",
+          });
+        });
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in change-user:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test connection.pause() and resume()
+app.get("/lifecycle/pause-resume", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing connection.pause() and resume()...");
+    const connection = getConnection();
+
+    const results: any[] = [];
+    let isPaused = false;
+    let isResumed = false;
+    let resumePromise: Promise<void> | null = null;
+
+    const query = connection.query("SELECT * FROM users");
+
+    query
+      .on("result", (row) => {
+        if (results.length === 1 && !isPaused) {
+          // Pause after first result
+          connection.pause();
+          isPaused = true;
+          console.log("Connection paused");
+
+          // Resume after a short delay
+          resumePromise = new Promise((resolve) => {
+            setTimeout(() => {
+              connection.resume();
+              isResumed = true;
+              console.log("Connection resumed");
+              resolve();
+            }, 50);
+          });
+        }
+        results.push(row);
+      })
+      .on("error", (err) => {
+        console.error("Query error:", err);
+        res.status(500).json({ error: err.message });
+      })
+      .on("end", async () => {
+        // Wait for resume to complete if it was triggered
+        if (resumePromise) {
+          await resumePromise;
+        }
+
+        console.log("Pause/Resume query completed");
+        res.json({
+          message: "Pause and resume executed",
+          isPaused,
+          isResumed,
+          count: results.length,
+          data: results,
+        });
+      });
+  } catch (error: any) {
+    console.error("Error in pause-resume:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== POOL LIFECYCLE TESTS =====
+
+// Test pool.end() and recreate
+app.get("/pool/end-and-recreate", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing pool.end()...");
+
+    // Create a temporary pool for this test
+    const tempPool = mysql.createPool({
+      host: process.env.MYSQL_HOST || 'mysql',
+      port: parseInt(process.env.MYSQL_PORT || '3306'),
+      user: process.env.MYSQL_USER || 'testuser',
+      password: process.env.MYSQL_PASSWORD || 'testpass',
+      database: process.env.MYSQL_DB || 'testdb',
+      connectionLimit: 5,
+    });
+
+    // First, execute a query to ensure pool is active
+    tempPool.query("SELECT 1 as test", (queryError, queryResults) => {
+      if (queryError) {
+        console.error("Error executing test query on temp pool:", queryError);
+        return res.status(500).json({ error: queryError.message });
+      }
+
+      console.log("Test query executed on temp pool");
+
+      // Now end the pool
+      tempPool.end((endError) => {
+        if (endError) {
+          console.error("Error ending pool:", endError);
+          return res.status(500).json({ error: endError.message });
+        }
+
+        console.log("Pool ended successfully");
+        res.json({
+          message: "Pool ended successfully",
+          status: "ok",
+        });
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in pool end-and-recreate:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== EVENT TESTS =====
+
+// Test 'connect' event emission
+app.get("/events/connect", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing 'connect' event...");
+
+    let connectEventReceived = false;
+
+    // Create a new connection to test connect event
+    const testConnection = mysql.createConnection({
+      host: process.env.MYSQL_HOST || 'mysql',
+      port: parseInt(process.env.MYSQL_PORT || '3306'),
+      user: process.env.MYSQL_USER || 'testuser',
+      password: process.env.MYSQL_PASSWORD || 'testpass',
+      database: process.env.MYSQL_DB || 'testdb',
+    });
+
+    // Listen for connect event
+    testConnection.on('connect', () => {
+      console.log("'connect' event received");
+      connectEventReceived = true;
+    });
+
+    // Initiate connection
+    testConnection.connect((error) => {
+      // Close connection after testing
+      testConnection.end(() => {
+        if (error) {
+          console.error("Error connecting:", error);
+          return res.status(500).json({ error: error.message });
+        }
+
+        console.log("Connect event test completed");
+        res.json({
+          message: "Connect event tested",
+          connectEventReceived,
+          status: "ok",
+        });
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in connect event test:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== STREAM TESTS =====
+
+// Test Query.prototype.stream() method
+app.get("/stream/query-stream-method", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing query.stream() method...");
+    const connection = getConnection();
+
+    const results: any[] = [];
+    const query = connection.query("SELECT * FROM users ORDER BY id ASC");
+
+    // Call the stream() method on the query instance
+    const stream = query.stream();
+
+    stream
+      .on('error', (err) => {
+        console.error("Stream error:", err);
+        res.status(500).json({ error: err.message });
+      })
+      .on('data', (row) => {
+        console.log("Received data from stream:", row);
+        results.push(row);
+      })
+      .on('end', () => {
+        console.log("Stream ended");
+        res.json({
+          message: "Stream query executed",
+          count: results.length,
+          data: results,
+        });
+      });
+  } catch (error: any) {
+    console.error("Error in query-stream-method:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {
@@ -650,6 +967,21 @@ const server = app.listen(PORT, async () => {
     console.log("  GET    /advanced/aggregate - Aggregate functions");
     console.log("  GET    /advanced/subquery - Subquery");
     console.log("  GET    /advanced/prepared - Prepared statement-like query");
+    console.log("");
+    console.log("  Lifecycle Tests:");
+    console.log("  GET    /lifecycle/ping - Connection ping");
+    console.log("  GET    /lifecycle/end-and-reconnect - Connection end");
+    console.log("  POST   /lifecycle/change-user - Connection changeUser");
+    console.log("  GET    /lifecycle/pause-resume - Connection pause/resume");
+    console.log("");
+    console.log("  Pool Lifecycle Tests:");
+    console.log("  GET    /pool/end-and-recreate - Pool end");
+    console.log("");
+    console.log("  Event Tests:");
+    console.log("  GET    /events/connect - Connect event emission");
+    console.log("");
+    console.log("  Stream Tests:");
+    console.log("  GET    /stream/query-stream-method - Query.stream() method");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

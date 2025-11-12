@@ -26,6 +26,16 @@ export interface MysqlTransactionInputValue {
   [key: string]: unknown;
 }
 
+export interface MysqlStreamInputValue {
+  sql: string;
+  values?: any[];
+  streamOptions?: Record<string, any>;
+  options?: {
+    nestTables?: boolean | string;
+  };
+  [key: string]: unknown;
+}
+
 export interface MysqlInstrumentationConfig extends TdInstrumentationConfig {
   mode?: TuskDriftMode;
 }

@@ -108,6 +108,31 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/advanc
 echo "    - GET /advanced/prepared"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/advanced/prepared > /dev/null
 
+echo "  Lifecycle Tests:"
+echo "    - GET /lifecycle/ping"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/lifecycle/ping > /dev/null
+
+echo "    - GET /lifecycle/end-and-reconnect"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/lifecycle/end-and-reconnect > /dev/null
+
+echo "    - POST /lifecycle/change-user"
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/lifecycle/change-user > /dev/null
+
+echo "    - GET /lifecycle/pause-resume"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/lifecycle/pause-resume > /dev/null
+
+echo "  Pool Lifecycle Tests:"
+echo "    - GET /pool/end-and-recreate"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/pool/end-and-recreate > /dev/null
+
+echo "  Event Tests:"
+echo "    - GET /events/connect"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/events/connect > /dev/null
+
+echo "  Stream Tests:"
+echo "    - GET /stream/query-stream-method"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/stream/query-stream-method > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

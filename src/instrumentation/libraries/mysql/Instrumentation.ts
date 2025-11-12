@@ -3,7 +3,7 @@ import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrument
 import { TdInstrumentationNodeModuleFile } from "../../core/baseClasses/TdInstrumentationNodeModuleFile";
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { context, SpanKind, SpanStatusCode } from "@opentelemetry/api";
-import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
+import { TuskDriftMode } from "../../../core/TuskDrift";
 import { captureStackTrace, wrap, isWrapped } from "../../core/utils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
 import {
@@ -11,12 +11,13 @@ import {
   MysqlTransactionInputValue,
   MysqlInstrumentationConfig,
   MysqlOutputValue,
-  MysqlQueryResult,
   isMysqlOkPacket,
+  MysqlStreamInputValue,
 } from "./types";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils";
 import { EventEmitter } from "events";
+import { Readable } from "stream";
 import { TdMysqlConnectionMock } from "./mocks/TdMysqlConnectionMock";
 import { TdMysqlQueryMock } from "./mocks/TdMysqlQueryMock";
 
@@ -24,6 +25,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "MysqlInstrumentation";
   private mode: TuskDriftMode;
   private queryMock: TdMysqlQueryMock;
+  private createQuery: Function | null = null;
 
   constructor(config: MysqlInstrumentationConfig = {}) {
     super("mysql", config);
@@ -37,6 +39,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         name: "mysql",
         supportedVersions: ["2.*"],
         files: [
+          // Patch mysql/lib/protocol/sequences/Query.js for stream support
+          new TdInstrumentationNodeModuleFile({
+            name: "mysql/lib/protocol/sequences/Query.js",
+            supportedVersions: ["2.*"],
+            patch: (moduleExports: any) => this._patchQueryFile(moduleExports),
+          }),
           // Patch mysql/lib/Connection.js at the prototype level
           new TdInstrumentationNodeModuleFile({
             name: "mysql/lib/Connection.js",
@@ -55,6 +63,31 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   }
 
   /**
+   * Patch Query.prototype.stream method for streaming query support
+   */
+  private _patchQueryFile(QueryClass: any): any {
+    logger.debug(`[MysqlInstrumentation] Patching Query class (file-based)`);
+
+    if (this.isModulePatched(QueryClass)) {
+      logger.debug(`[MysqlInstrumentation] Query class already patched, skipping`);
+      return QueryClass;
+    }
+
+    // Wrap Query.prototype.stream
+    if (QueryClass.prototype && QueryClass.prototype.stream) {
+      if (!isWrapped(QueryClass.prototype.stream)) {
+        this._wrap(QueryClass.prototype, "stream", this._getStreamPatchFn());
+        logger.debug(`[MysqlInstrumentation] Wrapped Query.prototype.stream`);
+      }
+    }
+
+    this.markModuleAsPatched(QueryClass);
+    logger.debug(`[MysqlInstrumentation] Query class patching complete`);
+
+    return QueryClass;
+  }
+
+  /**
    * Patch Connection.prototype methods at the file level
    * This ensures ALL connection instances have patched methods
    */
@@ -64,6 +97,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     if (this.isModulePatched(ConnectionClass)) {
       logger.debug(`[MysqlInstrumentation] Connection class already patched, skipping`);
       return ConnectionClass;
+    }
+
+    // Store the createQuery method for parsing query arguments
+    if (ConnectionClass.createQuery) {
+      this.createQuery = ConnectionClass.createQuery;
+      logger.debug(`[MysqlInstrumentation] Stored Connection.createQuery method`);
     }
 
     // Wrap Connection.prototype.query
@@ -110,6 +149,46 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
       }
     }
 
+    // Wrap Connection.prototype.ping
+    if (ConnectionClass.prototype && ConnectionClass.prototype.ping) {
+      if (!isWrapped(ConnectionClass.prototype.ping)) {
+        this._wrap(ConnectionClass.prototype, "ping", this._getPingPatchFn());
+        logger.debug(`[MysqlInstrumentation] Wrapped Connection.prototype.ping`);
+      }
+    }
+
+    // Wrap Connection.prototype.end
+    if (ConnectionClass.prototype && ConnectionClass.prototype.end) {
+      if (!isWrapped(ConnectionClass.prototype.end)) {
+        this._wrap(ConnectionClass.prototype, "end", this._getEndPatchFn());
+        logger.debug(`[MysqlInstrumentation] Wrapped Connection.prototype.end`);
+      }
+    }
+
+    // Wrap Connection.prototype.changeUser
+    if (ConnectionClass.prototype && ConnectionClass.prototype.changeUser) {
+      if (!isWrapped(ConnectionClass.prototype.changeUser)) {
+        this._wrap(ConnectionClass.prototype, "changeUser", this._getChangeUserPatchFn());
+        logger.debug(`[MysqlInstrumentation] Wrapped Connection.prototype.changeUser`);
+      }
+    }
+
+    // Wrap Connection.prototype.pause
+    if (ConnectionClass.prototype && ConnectionClass.prototype.pause) {
+      if (!isWrapped(ConnectionClass.prototype.pause)) {
+        this._wrap(ConnectionClass.prototype, "pause", this._getPausePatchFn());
+        logger.debug(`[MysqlInstrumentation] Wrapped Connection.prototype.pause`);
+      }
+    }
+
+    // Wrap Connection.prototype.resume
+    if (ConnectionClass.prototype && ConnectionClass.prototype.resume) {
+      if (!isWrapped(ConnectionClass.prototype.resume)) {
+        this._wrap(ConnectionClass.prototype, "resume", this._getResumePatchFn());
+        logger.debug(`[MysqlInstrumentation] Wrapped Connection.prototype.resume`);
+      }
+    }
+
     this.markModuleAsPatched(ConnectionClass);
     logger.debug(`[MysqlInstrumentation] Connection class patching complete`);
 
@@ -143,6 +222,14 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
       }
     }
 
+    // Wrap Pool.prototype.end
+    if (PoolClass.prototype && PoolClass.prototype.end) {
+      if (!isWrapped(PoolClass.prototype.end)) {
+        this._wrap(PoolClass.prototype, "end", this._getPoolEndPatchFn());
+        logger.debug(`[MysqlInstrumentation] Wrapped Pool.prototype.end`);
+      }
+    }
+
     this.markModuleAsPatched(PoolClass);
     logger.debug(`[MysqlInstrumentation] Pool class patching complete`);
 
@@ -157,35 +244,34 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
 
     return (originalQuery: Function) => {
       return function query(this: any, ...args: any[]) {
-        // Parse query arguments - MySQL supports multiple signatures
+        // Use createQuery to parse arguments if available, otherwise fallback to manual parsing
         let sql: string;
         let values: any[] | undefined;
         let callback: Function | undefined;
         let options: any = {};
 
-        // Determine which signature is being used
-        if (typeof args[0] === "string") {
-          sql = args[0];
-          if (typeof args[1] === "function") {
-            callback = args[1];
-          } else if (Array.isArray(args[1])) {
-            values = args[1];
-            callback = args[2] as Function | undefined;
-          }
-        } else if (typeof args[0] === "object") {
-          options = args[0];
-          sql = options.sql;
-          values = options.values;
-          if (typeof args[1] === "function") {
-            callback = args[1];
-          } else if (Array.isArray(args[1])) {
-            values = args[1];
-            callback = args[2] as Function | undefined;
+        if (self.createQuery) {
+          try {
+            // Use MySQL's internal createQuery method to parse arguments
+            const queryObj = self.createQuery(...args);
+            sql = queryObj.sql;
+            values = queryObj.values;
+            options = {
+              nestTables: queryObj.nestTables,
+            };
+            // Find callback in args
+            callback = args.find((arg) => typeof arg === "function");
+          } catch (error) {
+            logger.debug(
+              `[MysqlInstrumentation] Error using createQuery, falling back to manual parsing:`,
+              error,
+            );
+            // Fallback to manual parsing
+            ({ sql, values, callback, options } = self._parseQueryArgs(args));
           }
         } else {
-          // Unknown signature, just pass through
-          logger.debug(`[MysqlInstrumentation] Unknown query signature, passing through:`, args);
-          return originalQuery.apply(this, args);
+          // Fallback to manual parsing
+          ({ sql, values, callback, options } = self._parseQueryArgs(args));
         }
 
         const inputValue: MysqlQueryInputValue = {
@@ -223,12 +309,27 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self.queryMock.handleReplayQuery(
+                  const queryEmitter = self.queryMock.handleReplayQuery(
                     { sql, values, callback, options },
                     inputValue,
                     spanInfo,
                     stackTrace,
                   );
+
+                  // Add stream() method to the emitter so query.stream() works in REPLAY mode
+                  if (queryEmitter && typeof queryEmitter === "object") {
+                    (queryEmitter as any).stream = function (streamOptions?: any) {
+                      return self._createReplayStreamForQuery(
+                        inputValue,
+                        spanInfo,
+                        stackTrace,
+                        queryEmitter,
+                        streamOptions,
+                      );
+                    };
+                  }
+
+                  return queryEmitter;
                 },
               );
             },
@@ -279,17 +380,22 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     return (originalConnect: Function) => {
       return function connect(this: any, callback?: Function) {
         if (self.mode === TuskDriftMode.REPLAY) {
+          const connectionContext = this;
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
                 setImmediate(() => callback(null));
               }
+              // Emit connect event
+              setImmediate(() => connectionContext.emit("connect"));
             },
             isServerRequest: false,
             replayModeHandler: () => {
               if (callback) {
                 setImmediate(() => callback(null));
               }
+              // Emit connect event
+              setImmediate(() => connectionContext.emit("connect"));
               return undefined;
             },
           });
@@ -537,6 +643,204 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   }
 
   /**
+   * Get wrapper function for ping method
+   */
+  private _getPingPatchFn() {
+    const self = this;
+    return (originalPing: Function) => {
+      return function ping(this: any, callback?: Function) {
+        if (self.mode === TuskDriftMode.REPLAY) {
+          return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (callback) {
+                setImmediate(() => callback(null));
+              }
+            },
+            isServerRequest: false,
+            replayModeHandler: () => {
+              if (callback) {
+                setImmediate(() => callback(null));
+              }
+              return undefined;
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalPing.apply(this, arguments),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return originalPing.apply(this, arguments);
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else {
+          return originalPing.apply(this, arguments);
+        }
+      };
+    };
+  }
+
+  /**
+   * Get wrapper function for end method
+   */
+  private _getEndPatchFn() {
+    const self = this;
+    return (originalEnd: Function) => {
+      return function end(this: any, callback?: Function) {
+        if (self.mode === TuskDriftMode.REPLAY) {
+          return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (callback) {
+                setImmediate(() => callback(null));
+              }
+              // Emit end event
+              setImmediate(() => this.emit("end"));
+            },
+            isServerRequest: false,
+            replayModeHandler: () => {
+              if (callback) {
+                setImmediate(() => callback(null));
+              }
+              // Emit end event
+              setImmediate(() => this.emit("end"));
+              return undefined;
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalEnd.apply(this, arguments),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return originalEnd.apply(this, arguments);
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else {
+          return originalEnd.apply(this, arguments);
+        }
+      };
+    };
+  }
+
+  /**
+   * Get wrapper function for changeUser method
+   */
+  private _getChangeUserPatchFn() {
+    const self = this;
+    return (originalChangeUser: Function) => {
+      return function changeUser(this: any, options?: any, callback?: Function) {
+        // Handle both signatures: changeUser(options, callback) and changeUser(callback)
+        let userOptions = options;
+        let userCallback = callback;
+        if (typeof options === "function") {
+          userCallback = options;
+          userOptions = {};
+        }
+
+        if (self.mode === TuskDriftMode.REPLAY) {
+          return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (userCallback) {
+                setImmediate(() => userCallback(null));
+              }
+            },
+            isServerRequest: false,
+            replayModeHandler: () => {
+              if (userCallback) {
+                setImmediate(() => userCallback(null));
+              }
+              return undefined;
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalChangeUser.apply(this, arguments),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return originalChangeUser.apply(this, arguments);
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else {
+          return originalChangeUser.apply(this, arguments);
+        }
+      };
+    };
+  }
+
+  /**
+   * Get wrapper function for pause method
+   */
+  private _getPausePatchFn() {
+    const self = this;
+    return (originalPause: Function) => {
+      return function pause(this: any) {
+        if (self.mode === TuskDriftMode.REPLAY) {
+          // No-op in replay mode
+          return undefined;
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return originalPause.apply(this, arguments);
+        } else {
+          return originalPause.apply(this, arguments);
+        }
+      };
+    };
+  }
+
+  /**
+   * Get wrapper function for resume method
+   */
+  private _getResumePatchFn() {
+    const self = this;
+    return (originalResume: Function) => {
+      return function resume(this: any) {
+        if (self.mode === TuskDriftMode.REPLAY) {
+          // No-op in replay mode
+          return undefined;
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return originalResume.apply(this, arguments);
+        } else {
+          return originalResume.apply(this, arguments);
+        }
+      };
+    };
+  }
+
+  /**
+   * Get wrapper function for Pool.end method
+   */
+  private _getPoolEndPatchFn() {
+    const self = this;
+    return (originalEnd: Function) => {
+      return function end(this: any, callback?: Function) {
+        if (self.mode === TuskDriftMode.REPLAY) {
+          return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (callback) {
+                setImmediate(() => callback(null));
+              }
+            },
+            isServerRequest: false,
+            replayModeHandler: () => {
+              if (callback) {
+                setImmediate(() => callback(null));
+              }
+              return undefined;
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalEnd.apply(this, arguments),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return originalEnd.apply(this, arguments);
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else {
+          return originalEnd.apply(this, arguments);
+        }
+      };
+    };
+  }
+
+  /**
    * Get wrapper function for Pool.getConnection method
    */
   private _getPoolGetConnectionPatchFn() {
@@ -611,39 +915,34 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     const self = this;
     return (originalQuery: Function) => {
       return function query(this: any, ...args: any[]) {
-        // Parse query arguments - MySQL supports multiple signatures:
-        // query(sql, callback)
-        // query(sql, values, callback)
-        // query(options, callback)
-        // query(options, values, callback)
-
+        // Use createQuery to parse arguments if available, otherwise fallback to manual parsing
         let sql: string;
         let values: any[] | undefined;
         let callback: Function | undefined;
         let options: any = {};
 
-        // Determine which signature is being used
-        if (typeof args[0] === "string") {
-          sql = args[0];
-          if (typeof args[1] === "function") {
-            callback = args[1];
-          } else if (Array.isArray(args[1])) {
-            values = args[1];
-            callback = args[2] as Function | undefined;
-          }
-        } else if (typeof args[0] === "object") {
-          options = args[0];
-          sql = options.sql;
-          values = options.values;
-          if (typeof args[1] === "function") {
-            callback = args[1];
-          } else if (Array.isArray(args[1])) {
-            values = args[1];
-            callback = args[2] as Function | undefined;
+        if (self.createQuery) {
+          try {
+            // Use MySQL's internal createQuery method to parse arguments
+            const queryObj = self.createQuery(...args);
+            sql = queryObj.sql;
+            values = queryObj.values;
+            options = {
+              nestTables: queryObj.nestTables,
+            };
+            // Find callback in args
+            callback = args.find((arg) => typeof arg === "function");
+          } catch (error) {
+            logger.debug(
+              `[MysqlInstrumentation] Error using createQuery, falling back to manual parsing:`,
+              error,
+            );
+            // Fallback to manual parsing
+            ({ sql, values, callback, options } = self._parseQueryArgs(args));
           }
         } else {
-          // Unknown signature, just pass through
-          return originalQuery.apply(this, args);
+          // Fallback to manual parsing
+          ({ sql, values, callback, options } = self._parseQueryArgs(args));
         }
 
         const inputValue: MysqlQueryInputValue = {
@@ -683,7 +982,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                 },
                 (spanInfo) => {
                   // Use the queryMock to handle replay - returns EventEmitter synchronously
-                  return self.queryMock.handleReplayQuery(
+                  const queryEmitter = self.queryMock.handleReplayQuery(
                     {
                       sql: inputValue.sql,
                       values: inputValue.values,
@@ -694,6 +993,21 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     spanInfo,
                     stackTrace,
                   );
+
+                  // Add stream() method to the emitter so query.stream() works in REPLAY mode
+                  if (queryEmitter && typeof queryEmitter === "object") {
+                    (queryEmitter as any).stream = function (streamOptions?: any) {
+                      return self._createReplayStreamForQuery(
+                        inputValue,
+                        spanInfo,
+                        stackTrace,
+                        queryEmitter,
+                        streamOptions,
+                      );
+                    };
+                  }
+
+                  return queryEmitter;
                 },
               );
             },
@@ -757,6 +1071,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
       queryEmitter
         .on("error", (err: any) => {
           error = err;
+          queryIndex = queryEmitter._index || queryIndex;
           logger.debug(`[MysqlInstrumentation] Query error: ${err.message}`);
         })
         .on("fields", (fieldPackets: any, index: number) => {
@@ -776,12 +1091,22 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           }
         })
         .on("end", () => {
-          const queryCount = queryIndex + 1;
-          const outputValue: MysqlOutputValue = {
-            results: queryCount > 1 ? results : results[0],
-            fields: queryCount > 1 ? fields : fields[0],
-            queryCount,
-          };
+          // Get final query count using _getQueryCount helper
+          const finalQueryCount = this._getQueryCount(queryEmitter) || queryIndex + 1;
+          const isMultiStatementQuery = finalQueryCount > 1;
+
+          const outputValue: MysqlOutputValue = isMultiStatementQuery
+            ? {
+                results: results,
+                fields: fields,
+                queryCount: finalQueryCount,
+                errQueryIndex: error ? queryIndex : undefined,
+              }
+            : {
+                results: results[0],
+                fields: fields[0],
+                queryCount: finalQueryCount,
+              };
 
           if (error) {
             try {
@@ -1315,6 +1640,323 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
       spanInfo,
       stackTrace,
     );
+  }
+
+  /**
+   * Get wrapper function for Query.stream method
+   */
+  private _getStreamPatchFn() {
+    const self = this;
+
+    return (originalStream: Function) => {
+      return function stream(this: any, streamOptions?: any) {
+        const queryInstance = this;
+
+        // Extract query information from the Query instance
+        const sql = queryInstance.sql;
+        const values = queryInstance.values;
+        const nestTables = queryInstance.nestTables;
+
+        const inputValue: MysqlStreamInputValue = {
+          sql: sql,
+          values: values,
+          streamOptions: streamOptions,
+          options: nestTables ? { nestTables } : undefined,
+        };
+
+        if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["MysqlInstrumentation"]);
+
+          return handleReplayMode({
+            noOpRequestHandler: () => {
+              // For background requests, return empty stream
+              return new Readable({
+                objectMode: true,
+                read() {
+                  this.push(null);
+                },
+              });
+            },
+            isServerRequest: false,
+            replayModeHandler: () => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalStream.apply(queryInstance, arguments),
+                {
+                  name: "mysql.stream",
+                  kind: SpanKind.CLIENT,
+                  submodule: "stream",
+                  packageType: PackageType.MYSQL,
+                  packageName: "mysql",
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart: false,
+                },
+                (spanInfo) => {
+                  return self._handleReplayStream(inputValue, spanInfo, stackTrace, queryInstance);
+                },
+              );
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalStream.apply(queryInstance, arguments),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalStream.apply(queryInstance, arguments),
+                {
+                  name: "mysql.stream",
+                  kind: SpanKind.CLIENT,
+                  submodule: "stream",
+                  packageType: PackageType.MYSQL,
+                  packageName: "mysql",
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart,
+                },
+                (spanInfo) => {
+                  return self._handleRecordStream(
+                    spanInfo,
+                    originalStream,
+                    queryInstance,
+                    streamOptions,
+                  );
+                },
+              );
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else {
+          return originalStream.apply(queryInstance, arguments);
+        }
+      };
+    };
+  }
+
+  /**
+   * Helper to get query count from Query instance
+   */
+  private _getQueryCount(queryInstance: any): number {
+    return queryInstance?._index || 0;
+  }
+
+  /**
+   * Parse query arguments manually (fallback when createQuery is not available)
+   */
+  private _parseQueryArgs(args: any[]): {
+    sql: string;
+    values: any[] | undefined;
+    callback: Function | undefined;
+    options: any;
+  } {
+    let sql: string;
+    let values: any[] | undefined;
+    let callback: Function | undefined;
+    let options: any = {};
+
+    // Determine which signature is being used
+    if (typeof args[0] === "string") {
+      sql = args[0];
+      if (typeof args[1] === "function") {
+        callback = args[1];
+      } else if (Array.isArray(args[1])) {
+        values = args[1];
+        callback = args[2] as Function | undefined;
+      }
+    } else if (typeof args[0] === "object") {
+      options = args[0];
+      sql = options.sql;
+      values = options.values;
+      if (typeof args[1] === "function") {
+        callback = args[1];
+      } else if (Array.isArray(args[1])) {
+        values = args[1];
+        callback = args[2] as Function | undefined;
+      }
+    } else {
+      // Unknown signature, use empty values
+      sql = "";
+      logger.debug(`[MysqlInstrumentation] Unknown query signature:`, args);
+    }
+
+    return { sql, values, callback, options };
+  }
+
+  /**
+   * Handle record mode for stream operations
+   */
+  private _handleRecordStream(
+    spanInfo: SpanInfo,
+    originalStream: Function,
+    queryInstance: any,
+    streamOptions: any,
+  ): any {
+    const streamInstance = originalStream.apply(queryInstance, [streamOptions]);
+
+    const results: any[] = [];
+    const fields: any[] = [];
+    let error: any = null;
+    let errQueryIndex: number | undefined;
+
+    queryInstance
+      .on("error", (err: any) => {
+        error = err;
+        errQueryIndex = queryInstance._index;
+      })
+      .on("fields", (fieldPackets: any, index: number) => {
+        fields[index] = fieldPackets;
+      })
+      .on("result", (row: any, index: number) => {
+        if (isMysqlOkPacket(row)) {
+          results[index] = row;
+          return;
+        }
+        if (!results[index]) {
+          results[index] = [];
+        }
+        if (Array.isArray(results[index])) {
+          results[index].push(row);
+        }
+      })
+      .on("end", () => {
+        const queryCount = this._getQueryCount(queryInstance);
+        const isMultiStatementQuery = queryCount > 1;
+
+        if (error) {
+          try {
+            SpanUtils.endSpan(spanInfo.span, {
+              code: SpanStatusCode.ERROR,
+              message: error.message,
+            });
+          } catch (err) {
+            logger.error(`[MysqlInstrumentation] error ending span:`, err);
+          }
+        } else {
+          try {
+            const outputValue: MysqlOutputValue = isMultiStatementQuery
+              ? {
+                  results: results,
+                  fields: fields,
+                  queryCount,
+                  errQueryIndex,
+                }
+              : {
+                  results: results[0],
+                  fields: fields[0],
+                  queryCount,
+                };
+
+            SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
+            SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+          } catch (err) {
+            logger.error(`[MysqlInstrumentation] error ending span:`, err);
+          }
+        }
+
+        logger.debug(`[MysqlInstrumentation] Stream query completed`);
+      });
+
+    return streamInstance;
+  }
+
+  /**
+   * Create a replay stream for query.stream() calls
+   * This is called when user calls query.stream() on a query object
+   */
+  private _createReplayStreamForQuery(
+    inputValue: MysqlQueryInputValue,
+    spanInfo: SpanInfo,
+    stackTrace: string,
+    queryEmitter: EventEmitter,
+    streamOptions?: any,
+  ): Readable {
+    logger.debug(`[MysqlInstrumentation] Creating replay stream for query.stream()`);
+
+    // Create a Readable stream that will emit the data
+    const readableStream = new Readable({
+      objectMode: true,
+      read() {
+        // Read is handled by the emitter events
+      },
+    });
+
+    // The queryEmitter already has the data from handleReplayQuery
+    // We need to re-emit it as a stream
+    // Forward events from the emitter to the stream
+    queryEmitter.on("fields", (fields: any, index: number) => {
+      // Fields event doesn't go to the stream, but we can log it
+      logger.debug(`[MysqlInstrumentation] Stream received fields`);
+    });
+
+    queryEmitter.on("result", (row: any, index: number) => {
+      readableStream.push(row);
+    });
+
+    queryEmitter.on("error", (err: any) => {
+      readableStream.destroy(err);
+    });
+
+    queryEmitter.on("end", () => {
+      readableStream.push(null);
+    });
+
+    return readableStream;
+  }
+
+  /**
+   * Handle replay mode for stream operations
+   */
+  private _handleReplayStream(
+    inputValue: MysqlStreamInputValue,
+    spanInfo: SpanInfo,
+    stackTrace: string,
+    queryInstance: any,
+  ): Readable {
+    logger.debug(`[MysqlInstrumentation] Replaying MySQL stream query`);
+
+    // Use queryMock to get the replay data
+    const emitter = this.queryMock.handleReplayQuery(
+      {
+        sql: inputValue.sql,
+        values: inputValue.values,
+        callback: undefined,
+        options: inputValue.options,
+      },
+      inputValue,
+      spanInfo,
+      stackTrace,
+    );
+
+    // Create a Readable stream that will emit the data
+    const readableStream = new Readable({
+      objectMode: true,
+      read() {
+        // Read is handled by the emitter events
+      },
+    });
+
+    // Forward events from the emitter to the stream
+    emitter.on("fields", (fields: any, index: number) => {
+      queryInstance.emit("fields", fields, index);
+    });
+
+    emitter.on("result", (row: any, index: number) => {
+      readableStream.push(row);
+      queryInstance.emit("result", row, index);
+    });
+
+    emitter.on("error", (err: any) => {
+      readableStream.destroy(err);
+      queryInstance.emit("error", err);
+    });
+
+    emitter.on("end", () => {
+      readableStream.push(null);
+      queryInstance.emit("end");
+    });
+
+    return readableStream;
   }
 
   private _wrap(target: any, propertyName: string, wrapper: (original: any) => any): void {
