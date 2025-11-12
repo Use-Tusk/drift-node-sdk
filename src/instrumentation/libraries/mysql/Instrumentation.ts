@@ -282,13 +282,13 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                setImmediate(() => callback());
+                setImmediate(() => callback(null));
               }
             },
             isServerRequest: false,
             replayModeHandler: () => {
               if (callback) {
-                setImmediate(() => callback());
+                setImmediate(() => callback(null));
               }
               return undefined;
             },
@@ -323,7 +323,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                setImmediate(() => callback());
+                setImmediate(() => callback(null));
               }
             },
             isServerRequest: false,
@@ -399,7 +399,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                setImmediate(() => callback());
+                setImmediate(() => callback(null));
               }
             },
             isServerRequest: false,
@@ -475,7 +475,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                setImmediate(() => callback());
+                setImmediate(() => callback(null));
               }
             },
             isServerRequest: false,
@@ -855,13 +855,13 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                setImmediate(() => callback());
+                setImmediate(() => callback(null));
               }
             },
             isServerRequest: false,
             replayModeHandler: () => {
               if (callback) {
-                setImmediate(() => callback());
+                setImmediate(() => callback(null));
               }
               return undefined;
             },
@@ -896,7 +896,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                callback();
+                callback(null);
               }
             },
             isServerRequest: false,
@@ -969,7 +969,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                callback();
+                callback(null);
               }
             },
             isServerRequest: false,
@@ -1042,7 +1042,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                callback();
+                callback(null);
               }
             },
             isServerRequest: false,
@@ -1190,7 +1190,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     // Just call the callback to signal success
     if (callback) {
       setImmediate(() => {
-        callback();
+        callback(null);
       });
     }
 
