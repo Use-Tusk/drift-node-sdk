@@ -1,8 +1,8 @@
 version: 1 # version of the config file format
 
 service:
-  id: "cjs-pg-e2e-test-id"
-  name: "cjs-pg-e2e-test"
+  id: "esm-mysql-e2e-test-id"
+  name: "esm-mysql-e2e-test"
   port: 3000
   start:
     command: "npm run dev"
@@ -22,6 +22,8 @@ test_execution:
 comparison:
   ignore_fields:
     - created_at
+    - updated_at
+    - expires_at
 
 recording:
   sampling_rate: 1.0 # 100%

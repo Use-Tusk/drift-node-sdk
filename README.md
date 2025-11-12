@@ -32,7 +32,7 @@ Tusk Drift currently supports the following packages and versions:
 - **PG**: `pg@8.x`, `pg-pool@2.x-3.x`
 - **Firestore**: `@google-cloud/firestore@7.x`
 - **Postgres**: `postgres@3.x`
-- **MySQL**: `mysql2@3.x`
+- **MySQL**: `mysql2@3.x`, `mysql@2.x`
 - **IORedis**: `ioredis@4.x-5.x`
 - **Upstash Redis**: `@upstash/redis@1.x`
 - **GraphQL**: `graphql@15.x-16.x`
