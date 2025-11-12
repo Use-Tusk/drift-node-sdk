@@ -1221,7 +1221,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                callback(null);
+                setImmediate(() => callback(null));
               }
             },
             isServerRequest: false,
@@ -1294,7 +1294,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                callback(null);
+                setImmediate(() => callback(null));
               }
             },
             isServerRequest: false,
@@ -1367,7 +1367,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               if (callback) {
-                callback(null);
+                setImmediate(() => callback(null));
               }
             },
             isServerRequest: false,
