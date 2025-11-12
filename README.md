@@ -12,6 +12,14 @@
 
 The Node.js Tusk Drift SDK enables fast and deterministic API testing by capturing and replaying API calls made to/from your service. Automatically record real-world API calls, then replay them as tests using the [Tusk CLI](https://github.com/Use-Tusk/tusk-drift-cli) to find regressions. During replay, all outbound requests are intercepted with recorded data to ensure consistent behavior without side-effects.
 
+<div align="center">
+
+![Demo](images/demo.gif)
+
+<p><a href="https://github.com/Use-Tusk/drift-node-demo">Try it on a demo repo →</a></p>
+
+</div>
+
 ## Documentation
 
 For comprehensive guides and API reference, visit our [full documentation](https://docs.usetusk.ai/api-tests/installation#setup).
