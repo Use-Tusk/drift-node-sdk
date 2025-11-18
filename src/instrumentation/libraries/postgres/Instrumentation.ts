@@ -380,7 +380,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         replayModeHandler: () => {
           return SpanUtils.createAndExecuteSpan(
             this.mode,
-            () => originalSql.call(this, strings, ...values),
+            () => originalSql(strings, ...values),
             {
               name: "postgres.query",
               kind: SpanKind.CLIENT,
@@ -405,11 +405,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       });
     } else if (this.mode === TuskDriftMode.RECORD) {
       return handleRecordMode({
-        originalFunctionCall: () => originalSql.call(this, strings, ...values),
+        originalFunctionCall: () => originalSql(strings, ...values),
         recordModeHandler: ({ isPreAppStart }) => {
           return SpanUtils.createAndExecuteSpan(
             this.mode,
-            () => originalSql.call(this, strings, ...values),
+            () => originalSql(strings, ...values),
             {
               name: "postgres.query",
               kind: SpanKind.CLIENT,
@@ -429,7 +429,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       });
     } else {
       // Should never happen since we're only patching record and replay modes
-      return originalSql.call(this, strings, ...values);
+      return originalSql(strings, ...values);
     }
   }
 
@@ -769,7 +769,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     values: any[],
   ): Promise<any> {
     try {
-      const result = await originalSql.call(this, strings, ...values);
+      const result = await originalSql(strings, ...values);
 
       try {
         logger.debug(
