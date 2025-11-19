@@ -122,6 +122,7 @@ export type MockRequestData = {
 
 export type MetadataObject = {
   ENV_VARS?: Record<string, unknown>;
+  environment?: string;
 };
 
 export type OneOf<T extends object> = {

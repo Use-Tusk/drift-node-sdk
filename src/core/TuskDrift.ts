@@ -23,13 +23,15 @@ import {
   MysqlInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
-import { trace, Tracer } from "@opentelemetry/api";
+import { trace, Tracer, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { ProtobufCommunicator, MockRequestInput } from "./ProtobufCommunicator";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME } from "./types";
 import { TuskDriftInstrumentationModuleNames } from "./TuskDriftInstrumentationModuleNames";
 import { SDK_VERSION } from "../version";
+import { SpanUtils } from "./tracing/SpanUtils";
+import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import {
   LogLevel,
   initializeGlobalLogger,
@@ -350,6 +352,55 @@ export class TuskDriftCore {
     return `sdk-${originalDate.getTime()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  /**
+   * Creates a pre-app-start span containing a snapshot of all environment variables.
+   * Only runs in RECORD mode when env var recording is enabled.
+   */
+  private createEnvVarsSnapshot(): void {
+    // Only create snapshot in RECORD mode and if env var recording is enabled
+    if (this.mode !== TuskDriftMode.RECORD || !this.config.recording?.enable_env_var_recording) {
+      return;
+    }
+
+    try {
+      // Capture all env vars from process.env
+      const envVarsSnapshot: Record<string, string | undefined> = {};
+      for (const key of Object.keys(process.env)) {
+        envVarsSnapshot[key] = process.env[key];
+      }
+
+      logger.debug(
+        `Creating env vars snapshot with ${Object.keys(envVarsSnapshot).length} variables`,
+      );
+
+      // Create a span to hold the env vars snapshot
+      SpanUtils.createAndExecuteSpan(
+        this.mode,
+        () => {}, // No-op function since this is just a metadata snapshot
+        {
+          name: "ENV_VARS_SNAPSHOT",
+          kind: SpanKind.INTERNAL,
+          packageName: "process.env",
+          packageType: PackageType.UNSPECIFIED,
+          instrumentationName: "TuskDriftCore",
+          submodule: "env",
+          inputValue: {},
+          isPreAppStart: true,
+          metadata: {
+            ENV_VARS: envVarsSnapshot,
+          },
+        },
+        (spanInfo) => {
+          // Span is created with metadata, just end it immediately
+          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+          logger.debug(`Env vars snapshot span created: ${spanInfo.spanId}`);
+        },
+      );
+    } catch (error) {
+      logger.error("Failed to create env vars snapshot:", error);
+    }
+  }
+
   initialize(initParams: InitParams): void {
     // Initialize logging with provided level or default to 'info'
     initializeGlobalLogger({
@@ -486,6 +537,9 @@ export class TuskDriftCore {
     // Important to do this after registering instrumentations since initializeTracing lazy imports the NodeSDK from OpenTelemetry
     // which imports the gRPC exporter
     this.initializeTracing({ baseDirectory });
+
+    // Create env vars snapshot span (only in RECORD mode with env var recording enabled)
+    this.createEnvVarsSnapshot();
 
     this.initialized = true;
     logger.info("SDK initialized successfully");
