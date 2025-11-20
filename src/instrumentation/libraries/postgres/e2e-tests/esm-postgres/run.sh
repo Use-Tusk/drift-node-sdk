@@ -82,6 +82,15 @@ docker compose -p $PROJECT_NAME exec -T app curl -s "http://localhost:3000/users
 echo "  - POST /users/insert"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"name":"Test User","email":"testuser@example.com"}' http://localhost:3000/users/insert > /dev/null
 
+echo "  - GET /cache/dynamic-fragments"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/cache/dynamic-fragments > /dev/null
+
+echo "  - POST /cache/update-with-fragments"
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/cache/update-with-fragments > /dev/null
+
+echo "  - GET /cache/complex-fragments"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/cache/complex-fragments > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
@@ -110,7 +119,7 @@ docker compose -p $PROJECT_NAME down
 
 # Step 9: Clean up traces and logs
 echo "Step 9: Cleaning up traces and logs..."
-cleanup_tusk_files
+# cleanup_tusk_files
 
 echo "Postgres (Drizzle + postgres) ESM E2E test run complete."
 

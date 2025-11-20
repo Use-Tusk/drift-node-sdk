@@ -1,7 +1,7 @@
 import { TuskDrift } from "./tdInit";
 import express, { Request, Response } from "express";
 import { getDb, closeDb } from "./db/index";
-import { cacheTable, usersTable, subscriptionsTable } from "./db/schema";
+import { cacheTable, usersTable } from "./db/schema";
 // Note: Drizzle import may show red line locally due to missing package-lock.json
 // This is expected for Docker-based E2E tests - dependencies are installed in container
 import { sql, eq } from "drizzle-orm";
