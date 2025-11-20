@@ -125,18 +125,16 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     if (this.mode === TuskDriftMode.REPLAY) {
       return handleReplayMode({
         noOpRequestHandler: () => {
-          try {
-            const sqlInstance = originalFunction(...args);
-            const wrappedInstance = this._wrapSqlInstance(sqlInstance);
+          // Mock SQL function that looks like a postgres client
+          const mockSql: any = () =>
+            Promise.resolve(Object.assign([], { count: 0, command: null }));
 
-            return wrappedInstance;
-          } catch (error: any) {
-            logger.debug(
-              `[PostgresInstrumentation] Postgres connection error in replay: ${error.message}`,
-            );
+          // Add essential methods
+          mockSql.unsafe = () => Promise.resolve(Object.assign([], { count: 0, command: null }));
+          mockSql.begin = () => Promise.resolve();
+          mockSql.end = () => Promise.resolve();
 
-            throw error;
-          }
+          return mockSql; // Returns a function-like object, not a Promise
         },
         isServerRequest: false,
         replayModeHandler: () => {
@@ -458,7 +456,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         } else if (self.mode === TuskDriftMode.REPLAY) {
           const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
           return handleReplayMode({
-            noOpRequestHandler: () => {},
+            noOpRequestHandler: () =>
+              Promise.resolve(Object.assign([], { count: 0, command: null })),
             isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
@@ -599,7 +598,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         } else if (self.mode === TuskDriftMode.REPLAY) {
           const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
           return handleReplayMode({
-            noOpRequestHandler: () => {},
+            noOpRequestHandler: () =>
+              Promise.resolve(Object.assign([], { count: 0, command: null })),
             isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
@@ -662,9 +662,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
 
       return handleReplayMode({
-        noOpRequestHandler: () => {
-          return executeBegin();
-        },
+        noOpRequestHandler: () => Promise.resolve(),
         isServerRequest: false,
         replayModeHandler: () => {
           return SpanUtils.createAndExecuteSpan(
