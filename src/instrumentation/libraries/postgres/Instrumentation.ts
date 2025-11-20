@@ -663,7 +663,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
       return handleReplayMode({
         noOpRequestHandler: () => {
-          return;
+          return executeBegin();
         },
         isServerRequest: false,
         replayModeHandler: () => {

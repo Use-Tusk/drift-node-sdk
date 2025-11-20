@@ -119,7 +119,7 @@ docker compose -p $PROJECT_NAME down
 
 # Step 9: Clean up traces and logs
 echo "Step 9: Cleaning up traces and logs..."
-# cleanup_tusk_files
+cleanup_tusk_files
 
 echo "Postgres (Drizzle + postgres) ESM E2E test run complete."
 
