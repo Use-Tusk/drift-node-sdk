@@ -8,19 +8,6 @@ export interface PostgresClientInputValue {
   [key: string]: unknown;
 }
 
-export interface PostgresTransactionInputValue {
-  query: "BEGIN" | "COMMIT" | "ROLLBACK";
-  parameters: any[];
-  options?: {
-    transactionOptions?: string;
-  };
-}
-
-export interface PostgresConnectionInputValue {
-  connectionString?: string;
-  options?: Record<string, any>;
-}
-
 export interface PostgresModuleExports {
   sql?: Function;
   default?: Function;
@@ -61,30 +48,9 @@ export type PostgresOutputValueType = {
   rows?: PostgresRow[];
   command?: string;
   count?: number;
-  _tdOriginalFormat: PostgresReturnType;
 }
 
-// Add this as a private method in your class
 export function isPostgresOutputValueType(value: any): value is PostgresOutputValueType {
-  return (
-    value !== null &&
-    value !== undefined &&
-    typeof value === "object" &&
-    "_tdOriginalFormat" in value &&
-    Object.values(PostgresReturnType).includes(value._tdOriginalFormat)
-  );
-}
-
-/**
- * Transaction result
- */
-export interface PostgresTransactionResult {
-  status: "committed" | "rolled_back";
-  result?: any;
-  error?: string;
-}
-
-export enum PostgresReturnType {
-  ARRAY = "array",
-  OBJECT = "object",
+  // Accept any object or array - postgres results can be either
+  return value !== null && value !== undefined && typeof value === "object";
 }
