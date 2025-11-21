@@ -40,12 +40,6 @@ export class FilesystemSpanAdapter implements SpanExportAdapter {
           this.traceFileMap.set(traceId, filePath);
         }
 
-        // to metadata, add environment: "local"
-        span.metadata = {
-          ...(span.metadata || {}),
-          environment: "dev",
-        };
-
         const jsonLine = JSON.stringify(span) + "\n";
         fs.appendFileSync(filePath, jsonLine, "utf8");
       }

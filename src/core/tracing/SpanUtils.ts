@@ -10,7 +10,6 @@ import {
 } from "@opentelemetry/api";
 import {
   IS_PRE_APP_START_CONTEXT_KEY,
-  MetadataObject,
   REPLAY_TRACE_ID_CONTEXT_KEY,
   SPAN_KIND_CONTEXT_KEY,
   STOP_RECORDING_CHILD_SPANS_CONTEXT_KEY,
@@ -47,9 +46,10 @@ export interface SpanExecutorOptions {
   instrumentationName: string;
   submodule: string;
   inputValue: Record<string, unknown>;
+  outputValue?: Record<string, unknown>;
   isPreAppStart: boolean;
   inputSchemaMerges?: SchemaMerges;
-  metadata?: MetadataObject;
+  metadata?: Record<string, unknown>;
   stopRecordingChildSpans?: boolean;
 }
 
@@ -64,7 +64,7 @@ export interface AddSpanAttributesOptions {
   outputValue?: Record<string, unknown>;
   inputSchemaMerges?: SchemaMerges;
   outputSchemaMerges?: SchemaMerges;
-  metadata?: MetadataObject;
+  metadata?: Record<string, unknown>;
   transformMetadata?: {
     transformed: boolean;
     actions: Array<{
@@ -181,6 +181,7 @@ export class SpanUtils {
       packageType,
       submodule,
       inputValue,
+      outputValue,
       inputSchemaMerges,
       isPreAppStart,
       metadata,
@@ -202,6 +203,9 @@ export class SpanUtils {
           [TdSpanAttributes.INSTRUMENTATION_NAME]: instrumentationName,
           [TdSpanAttributes.PACKAGE_TYPE]: packageType,
           [TdSpanAttributes.INPUT_VALUE]: createSpanInputValue(inputValue),
+          ...(outputValue && {
+            [TdSpanAttributes.OUTPUT_VALUE]: JSON.stringify(outputValue),
+          }),
           [TdSpanAttributes.IS_PRE_APP_START]: isPreAppStart,
           ...(inputSchemaMerges && {
             [TdSpanAttributes.INPUT_SCHEMA_MERGES]: JSON.stringify(inputSchemaMerges),

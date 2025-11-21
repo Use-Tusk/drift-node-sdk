@@ -67,7 +67,7 @@
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
-    "@use-tusk/drift-schemas": "^0.1.18",
+    "@use-tusk/drift-schemas": "^0.1.19",
     "ava": "^6.4.1",
     "axios": "^1.6.0",
     "eslint": "^8.57.1",

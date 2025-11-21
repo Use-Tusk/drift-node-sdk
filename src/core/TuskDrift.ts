@@ -11,7 +11,6 @@ import {
   JsonwebtokenInstrumentation,
   DateInstrumentation,
   JwksRsaInstrumentation,
-  EnvInstrumentation,
   PostgresInstrumentation,
   Mysql2Instrumentation,
   IORedisInstrumentation,
@@ -256,11 +255,6 @@ export class TuskDriftCore {
       mode: this.mode,
     });
 
-    new EnvInstrumentation({
-      enabled: this.config.recording?.enable_env_var_recording || false,
-      mode: this.mode,
-    });
-
     new PostgresInstrumentation({
       enabled: true,
       mode: this.mode,
@@ -319,7 +313,7 @@ export class TuskDriftCore {
       observableServiceId: this.config.service?.id,
       apiKey: this.initParams.apiKey,
       tuskBackendBaseUrl: this.config.tusk_api?.url || "https://api.usetusk.ai",
-      environment: this.initParams.env || "unknown",
+      environment: this.initParams.env,
       sdkVersion: SDK_VERSION,
       sdkInstanceId: this.generateSdkInstanceId(),
     });
@@ -385,10 +379,10 @@ export class TuskDriftCore {
           instrumentationName: "TuskDriftCore",
           submodule: "env",
           inputValue: {},
-          isPreAppStart: true,
-          metadata: {
+          outputValue: {
             ENV_VARS: envVarsSnapshot,
           },
+          isPreAppStart: true,
         },
         (spanInfo) => {
           // Span is created with metadata, just end it immediately
@@ -630,35 +624,6 @@ export class TuskDriftCore {
     }
   }
 
-  /**
-   * Request environment variables from CLI for a specific trace (synchronously).
-   * This blocks the main thread, so it should be used carefully.
-   */
-  requestEnvVarsSync(traceTestServerSpanId: string): Record<string, string> {
-    if (!this.isConnectedWithCLI) {
-      logger.error("Requesting sync env vars but CLI is not ready yet");
-      throw new Error("Requesting sync env vars but CLI is not ready yet");
-    }
-
-    if (!this.communicator || this.mode !== TuskDriftMode.REPLAY) {
-      logger.debug("Cannot request env vars: not in replay mode or no CLI connection");
-      return {};
-    }
-
-    try {
-      logger.debug(`Requesting env vars (sync) for trace: ${traceTestServerSpanId}`);
-      const envVars = this.communicator.requestEnvVarsSync(traceTestServerSpanId);
-      logger.debug(`Received env vars from CLI, count: ${Object.keys(envVars).length}`);
-      logger.debug(
-        `First 10 env vars: ${JSON.stringify(Object.keys(envVars).slice(0, 10), null, 2)}`,
-      );
-      return envVars;
-    } catch (error) {
-      logger.error(`[TuskDrift] Error requesting env vars from CLI:`, error);
-      return {};
-    }
-  }
-
   requestMockSync(mockRequest: MockRequestInput): {
     found: boolean;
     response?: unknown;
@@ -734,6 +699,10 @@ export class TuskDriftCore {
 
   getInitParams(): InitParams {
     return this.initParams;
+  }
+
+  getEnvironment(): string | undefined {
+    return this.initParams.env;
   }
 
   getTracer(): Tracer {

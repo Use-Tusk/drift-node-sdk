@@ -16,14 +16,6 @@ export class HttpReplayHooks {
   }
 
   /**
-   * Check if we should fetch env vars from CLI
-   */
-  extractShouldFetchEnvVars(req: any): boolean {
-    const fetchHeader = req.headers["x-td-fetch-env-vars"] || req.headers["X-TD-FETCH-ENV-VARS"];
-    return fetchHeader === "true" || fetchHeader === true;
-  }
-
-  /**
    * Handle outbound HTTP requests in replay mode
    * Uses TdMockClientRequest for simplified mocking approach
    */

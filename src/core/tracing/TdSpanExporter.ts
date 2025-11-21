@@ -15,7 +15,7 @@ export interface TdTraceExporterConfig {
   useRemoteExport: boolean;
   apiKey?: string;
   tuskBackendBaseUrl: string;
-  environment: string;
+  environment?: string;
   sdkVersion: string;
   sdkInstanceId: string;
 }
@@ -30,10 +30,12 @@ export interface SpanExportAdapter {
 
 export class TdSpanExporter implements SpanExporter {
   private mode: TuskDriftMode;
+  private environment?: string;
   private adapters: SpanExportAdapter[] = [];
 
   constructor(config: TdTraceExporterConfig) {
     this.mode = config.mode;
+    this.environment = config.environment;
 
     this.setupDefaultAdapters(config);
 
@@ -165,7 +167,7 @@ export class TdSpanExporter implements SpanExporter {
 
     // Transform spans to CleanSpanData
     const cleanSpans: CleanSpanData[] = filteredBlockedSpans.map((span) =>
-      SpanTransformer.transformSpanToCleanJSON(span),
+      SpanTransformer.transformSpanToCleanJSON(span, this.environment),
     );
 
     if (this.adapters.length === 0) {
