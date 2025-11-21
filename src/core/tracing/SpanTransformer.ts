@@ -1,7 +1,7 @@
 import { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 import { SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { JsonSchemaHelper, JsonSchemaType, JsonSchema } from "./JsonSchemaHelper";
-import { CleanSpanData, MetadataObject, TdSpanAttributes } from "../types";
+import { CleanSpanData, TdSpanAttributes } from "../types";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
 import { logger, OriginalGlobalUtils } from "../utils";
 
@@ -14,7 +14,7 @@ export class SpanTransformer {
    * Return type is derived from protobuf schema but uses clean JSON.
    * We use JSON because serialized protobuf is extremely verbose and not readable.
    */
-  static transformSpanToCleanJSON(span: ReadableSpan): CleanSpanData {
+  static transformSpanToCleanJSON(span: ReadableSpan, environment?: string): CleanSpanData {
     const isRootSpan = !span.parentSpanId || span.kind === OtSpanKind.SERVER;
 
     // Extract data from span attributes
@@ -68,7 +68,7 @@ export class SpanTransformer {
       } = JsonSchemaHelper.generateSchemaAndHash(outputData));
     }
 
-    let metadata: MetadataObject | undefined = undefined;
+    let metadata: Record<string, unknown> | undefined = undefined;
     if (attributes[TdSpanAttributes.METADATA]) {
       metadata = JSON.parse(attributes[TdSpanAttributes.METADATA] as string);
     }
@@ -99,6 +99,7 @@ export class SpanTransformer {
       submoduleName: submoduleName || "",
 
       packageType: (attributes[TdSpanAttributes.PACKAGE_TYPE] as PackageType) || undefined,
+      environment,
 
       inputValue: inputData,
       outputValue: outputData,

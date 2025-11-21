@@ -15,7 +15,6 @@ import {
   SendAlertRequest,
   InstrumentationVersionMismatchAlert,
   UnpatchedDependencyAlert,
-  EnvVarRequest,
 } from "@use-tusk/drift-schemas/core/communication";
 import { context, Context, SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { Value } from "@use-tusk/drift-schemas/google/protobuf/struct";
@@ -229,17 +228,6 @@ try {
     // If CLI rejects -> CLI closes the connection and terminates the service.
   }
 
-  private getStackTrace(): string {
-    Error.stackTraceLimit = 100;
-    const s = new Error().stack || "";
-    Error.stackTraceLimit = 10;
-    return s
-      .split("\n")
-      .slice(2)
-      .filter((l) => !l.includes("ProtobufCommunicator"))
-      .join("\n");
-  }
-
   async requestMockAsync(mockRequest: MockRequestInput): Promise<MockResponseOutput> {
     const requestId = this.generateRequestId();
 
@@ -288,7 +276,7 @@ try {
   /**
    * Generic synchronous request handler that spawns a child process.
    * @param sdkMessage The SDK message to send
-   * @param filePrefix Prefix for temporary files (e.g., 'envvar', 'mock')
+   * @param filePrefix Prefix for temporary files (e.g., 'mock')
    * @param responseHandler Function to extract and return the desired response
    */
   private executeSyncRequest<TResponse>(
@@ -387,56 +375,6 @@ try {
         logger.error("[ProtobufCommunicator] error cleaning up script file:", e);
       }
     }
-  }
-
-  /**
-   * Request environment variables from CLI synchronously using a child process.
-   * This blocks the main thread, so it should be used carefully.
-   * Similar to requestMockSync but for environment variables.
-   */
-  requestEnvVarsSync(traceTestServerSpanId: string): Record<string, string> {
-    const requestId = this.generateRequestId();
-
-    const envVarRequest = EnvVarRequest.create({
-      traceTestServerSpanId,
-    });
-
-    const sdkMessage = SDKMessage.create({
-      type: MessageType.ENV_VAR_REQUEST,
-      requestId: requestId,
-      payload: {
-        oneofKind: "envVarRequest",
-        envVarRequest,
-      },
-    });
-
-    logger.debug(
-      `[ProtobufCommunicator] Requesting env vars (sync) for trace: ${traceTestServerSpanId}`,
-    );
-
-    return this.executeSyncRequest(sdkMessage, "envvar", (cliMessage) => {
-      if (cliMessage.payload.oneofKind !== "envVarResponse") {
-        throw new Error(`Unexpected response type: ${cliMessage.type}`);
-      }
-
-      const envVarResponse = cliMessage.payload.envVarResponse;
-      if (!envVarResponse) {
-        throw new Error("No env var response received");
-      }
-
-      // Convert protobuf map to Record<string, string>
-      const envVars: Record<string, string> = {};
-      if (envVarResponse.envVars) {
-        Object.entries(envVarResponse.envVars).forEach(([key, value]) => {
-          envVars[key] = value;
-        });
-      }
-
-      logger.debug(
-        `[ProtobufCommunicator] Received env vars (sync), count: ${Object.keys(envVars).length}`,
-      );
-      return envVars;
-    });
   }
 
   /**
@@ -736,33 +674,6 @@ try {
           error: mockResponse.error || "Mock not found",
         });
       }
-    }
-
-    if (message.payload.oneofKind === "envVarResponse") {
-      const envVarResponse = message.payload.envVarResponse;
-      logger.debug(`[ProtobufCommunicator] Received env var response for requestId: ${requestId}`);
-      const pendingRequest = this.pendingRequests.get(requestId);
-
-      if (!pendingRequest) {
-        logger.warn(
-          "[ProtobufCommunicator] received env var response for unknown request:",
-          requestId,
-        );
-        return;
-      }
-
-      this.pendingRequests.delete(requestId);
-
-      // Convert protobuf map to Record<string, string>
-      const envVars: Record<string, string> = {};
-      if (envVarResponse?.envVars) {
-        Object.entries(envVarResponse.envVars).forEach(([key, value]) => {
-          envVars[key] = value;
-        });
-      }
-
-      pendingRequest.resolve(envVars);
-      return;
     }
   }
 

@@ -66,6 +66,8 @@ export type CleanSpanData = {
 
   packageType?: PackageType;
 
+  environment?: string;
+
   // Values are kept as plain JSON for readability
   inputValue: unknown;
   outputValue: unknown;
@@ -92,7 +94,7 @@ export type CleanSpanData = {
 
   isRootSpan: boolean;
 
-  metadata?: MetadataObject;
+  metadata?: Record<string, unknown>;
   transformMetadata?: {
     transformed: boolean;
     actions: Array<{
@@ -118,10 +120,6 @@ export type MockRequestData = {
   inputValue: unknown;
   kind: SpanKind;
   stackTrace?: string;
-};
-
-export type MetadataObject = {
-  ENV_VARS?: Record<string, unknown>;
 };
 
 export type OneOf<T extends object> = {

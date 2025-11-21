@@ -13,7 +13,7 @@ export interface ApiSpanAdapterConfig {
   apiKey: string;
   tuskBackendBaseUrl: string;
   observableServiceId: string;
-  environment: string;
+  environment?: string;
   sdkVersion: string;
   sdkInstanceId: string;
 }
@@ -27,7 +27,7 @@ export class ApiSpanAdapter implements SpanExportAdapter {
   readonly name = "api";
   private spanExportClient: SpanExportServiceClient;
   private observableServiceId: string;
-  private environment: string;
+  private environment?: string;
   private sdkVersion: string;
   private sdkInstanceId: string;
 
@@ -56,7 +56,7 @@ export class ApiSpanAdapter implements SpanExportAdapter {
 
       const request: ExportSpansRequest = {
         observableServiceId: this.observableServiceId,
-        environment: this.environment,
+        environment: this.environment || "",
         sdkVersion: this.sdkVersion,
         sdkInstanceId: this.sdkInstanceId,
         spans: protoSpans,
@@ -89,6 +89,7 @@ export class ApiSpanAdapter implements SpanExportAdapter {
       instrumentationName: cleanSpan.instrumentationName,
       submoduleName: cleanSpan.submoduleName,
       packageType: cleanSpan.packageType || PackageType.UNSPECIFIED,
+      environment: this.environment,
       inputValue: toStruct(cleanSpan.inputValue),
       outputValue: toStruct(cleanSpan.outputValue),
       inputSchema: cleanSpan.inputSchema,
