@@ -1020,6 +1020,7 @@ const server = app.listen(PORT, async () => {
     console.log("");
     console.log("  Event Tests:");
     console.log("  GET    /events/connect - Connect event emission");
+    console.log("  GET    /test/connection-destroy - Connection destroy");
     console.log("");
     console.log("  Stream Tests:");
     console.log("  GET    /stream/query-stream-method - Query.stream() method");
