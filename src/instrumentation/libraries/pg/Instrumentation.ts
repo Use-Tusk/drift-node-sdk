@@ -96,6 +96,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
         const inputValue: PgClientInputValue = {
           text: queryConfig.text,
           values: queryConfig.values || [],
+          rowMode: queryConfig.rowMode,
           clientType,
         };
 
@@ -268,6 +269,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
       return {
         text: firstArg.text,
         values: firstArg.values,
+        rowMode: firstArg.rowMode,
         callback: firstArg.callback || (typeof args[1] === "function" ? args[1] : undefined),
       };
     }
@@ -413,7 +415,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
     }
 
     // Convert string timestamps back to Date objects based on field metadata
-    const processedResult = this.convertPostgresTypes(mockData.result);
+    const processedResult = this.convertPostgresTypes(mockData.result, inputValue.rowMode);
 
     // Return mocked response
     if (queryConfig.callback) {
@@ -427,16 +429,69 @@ export class PgInstrumentation extends TdInstrumentationBase {
   }
 
   /**
+   * Convert a single value based on its PostgreSQL data type.
+   *
+   * Reference for data type IDs: https://jdbc.postgresql.org/documentation/publicapi/constant-values.html
+   */
+  private convertPostgresValue(value: any, dataTypeID: number): any {
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    switch (dataTypeID) {
+      case 1184: // timestamptz (timestamp with timezone)
+      case 1114: // timestamp (timestamp without timezone)
+      case 1082: // date
+        if (typeof value === "string") {
+          return new Date(value);
+        }
+        break;
+      case 1083: // time
+      case 1266: // timetz (time with timezone)
+        // Keep time fields as strings for now, as they're not typically
+        // converted to Date objects by pg client
+        break;
+      // Add other type conversions as needed
+      default:
+        // Keep other types as-is
+        break;
+    }
+
+    return value;
+  }
+
+  /**
    * Convert PostgreSQL string values back to appropriate JavaScript types
    * based on field metadata from the recorded response.
    *
    * Reference for data type IDs: https://jdbc.postgresql.org/documentation/publicapi/constant-values.html
    */
-  private convertPostgresTypes(result: any): any {
+  private convertPostgresTypes(result: any, rowMode?: 'array'): any {
     if (!result || !result.fields || !result.rows) {
       return result;
     }
 
+    // If rowMode is 'array', handle arrays differently
+    if (rowMode === 'array') {
+      // For array mode, rows are arrays of values indexed by column position
+      const convertedRows = result.rows.map((row: any) => {
+        if (!Array.isArray(row)) return row; // Safety check
+
+        return row.map((value: any, index: number) => {
+          const field = result.fields[index];
+          if (!field) return value;
+
+          return this.convertPostgresValue(value, field.dataTypeID);
+        });
+      });
+
+      return {
+        ...result,
+        rows: convertedRows,
+      };
+    }
+
+    // Object mode (default): rows are objects with field names as keys
     // Create a map of field names to their PostgreSQL data types
     const fieldTypeMap: Record<string, number> = {};
     result.fields.forEach((field: any) => {
@@ -444,51 +499,23 @@ export class PgInstrumentation extends TdInstrumentationBase {
     });
 
     // Convert rows based on field types
-    const convertedRows = result.rows.map((row: any, rowIndex: number) => {
+    const convertedRows = result.rows.map((row: any) => {
       const convertedRow = { ...row };
 
       Object.keys(row).forEach((fieldName) => {
         const dataTypeID = fieldTypeMap[fieldName];
         const value = row[fieldName];
 
-        if (value === null || value === undefined) {
-          return; // Keep null/undefined values as-is
-        }
-
-        switch (dataTypeID) {
-          case 1184: // timestamptz (timestamp with timezone)
-          case 1114: // timestamp (timestamp without timezone)
-            if (typeof value === "string") {
-              const dateObj = new Date(value);
-              convertedRow[fieldName] = dateObj;
-            }
-            break;
-          case 1082: // date
-            if (typeof value === "string") {
-              convertedRow[fieldName] = new Date(value);
-            }
-            break;
-          case 1083: // time
-          case 1266: // timetz (time with timezone)
-            // Keep time fields as strings for now, as they're not typically
-            // converted to Date objects by pg client
-            break;
-          // Add other type conversions as needed
-          default:
-            // Keep other types as-is
-            break;
-        }
+        convertedRow[fieldName] = this.convertPostgresValue(value, dataTypeID);
       });
 
       return convertedRow;
     });
 
-    const finalResult = {
+    return {
       ...result,
       rows: convertedRows,
     };
-
-    return finalResult;
   }
 
   private _handleRecordConnectInSpan(
