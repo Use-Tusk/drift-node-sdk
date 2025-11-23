@@ -19,6 +19,7 @@ export interface PgClientInputValue {
   text: string;
   values?: any[];
   clientType: string;
+  rowMode?: 'array';
   [key: string]: unknown;
 }
 
@@ -50,6 +51,7 @@ export interface QueryConfig {
   text: string;
   values?: any[];
   callback?: Function;
+  rowMode?: 'array';
 }
 
 export interface PgResult {
