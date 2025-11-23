@@ -894,114 +894,6 @@ app.get("/events/connect", async (req: Request, res: Response) => {
   }
 });
 
-// ===== BUG HUNT TESTS =====
-
-// Test: Query with SQL syntax error
-app.get("/test/query-error", async (req: Request, res: Response) => {
-  try {
-    console.log("Testing query with SQL error...");
-    const connection = getConnection();
-
-    // Intentionally malformed SQL
-    const badQuery = "SELECT * FROM nonexistent_table WHERE invalid syntax";
-
-    connection.query(badQuery, (error, results, fields) => {
-      if (error) {
-        console.log("Expected error received:", error.message);
-        return res.json({
-          message: "Query error handled correctly",
-          errorMessage: error.message,
-          errorCode: error.code,
-        });
-      }
-
-      // This shouldn't happen
-      res.json({
-        message: "Query unexpectedly succeeded",
-        data: results,
-      });
-    });
-  } catch (error: any) {
-    console.error("Unexpected error in query-error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Test: Transaction with query error
-app.post("/test/transaction-query-error", async (req: Request, res: Response) => {
-  try {
-    console.log("Testing transaction with query error...");
-    const connection = getConnection();
-
-    connection.beginTransaction((beginError) => {
-      if (beginError) {
-        return res.status(500).json({ error: beginError.message });
-      }
-
-      // Execute a bad query inside the transaction
-      connection.query("SELECT * FROM nonexistent_table", (queryError, results) => {
-        if (queryError) {
-          console.log("Expected query error in transaction:", queryError.message);
-
-          // Rollback on error
-          connection.rollback(() => {
-            res.json({
-              message: "Transaction query error handled correctly",
-              errorMessage: queryError.message,
-              errorCode: queryError.code,
-            });
-          });
-          return;
-        }
-
-        // This shouldn't happen
-        connection.commit((commitError) => {
-          res.json({
-            message: "Query unexpectedly succeeded",
-            data: results,
-          });
-        });
-      });
-    });
-  } catch (error: any) {
-    console.error("Unexpected error in transaction-query-error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Test: Query event emitter with error
-app.get("/test/event-emitter-error", async (req: Request, res: Response) => {
-  try {
-    console.log("Testing event emitter query with error...");
-    const connection = getConnection();
-
-    let errorReceived = false;
-    let errorMessage = "";
-
-    const query = connection.query("SELECT * FROM nonexistent_table");
-
-    query
-      .on("error", (err) => {
-        errorReceived = true;
-        errorMessage = err.message;
-        console.log("Error event received:", err.message);
-      })
-      .on("result", (row) => {
-        console.log("Unexpected result:", row);
-      })
-      .on("end", () => {
-        res.json({
-          message: errorReceived ? "Event emitter error handled correctly" : "No error received",
-          errorReceived,
-          errorMessage,
-        });
-      });
-  } catch (error: any) {
-    console.error("Unexpected error in event-emitter-error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Test: Connection.destroy() - not patched
 app.get("/test/connection-destroy", async (req: Request, res: Response) => {
   try {
@@ -1027,10 +919,8 @@ app.get("/test/connection-destroy", async (req: Request, res: Response) => {
           return res.status(500).json({ error: queryError1.message });
         }
 
-        // Now destroy the connection (not patched)
         tempConnection.destroy();
 
-        // Try to query after destroy - should fail
         setTimeout(() => {
           res.json({
             message: "Connection destroyed successfully",

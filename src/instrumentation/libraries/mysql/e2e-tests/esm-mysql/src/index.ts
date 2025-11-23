@@ -647,17 +647,17 @@ app.get("/lifecycle/end-and-reconnect", async (req: Request, res: Response) => {
 
     // Create a temporary connection for this test
     const tempConnection = mysql.createConnection({
-      host: process.env.MYSQL_HOST || 'mysql',
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USER || 'testuser',
-      password: process.env.MYSQL_PASSWORD || 'testpass',
-      database: process.env.MYSQL_DB || 'testdb',
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
     });
 
     let endEventReceived = false;
 
     // Listen for end event
-    tempConnection.on('end', () => {
+    tempConnection.on("end", () => {
       console.log("'end' event received");
       endEventReceived = true;
     });
@@ -701,11 +701,11 @@ app.post("/lifecycle/change-user", async (req: Request, res: Response) => {
 
     // Create a temporary connection for this test
     const tempConnection = mysql.createConnection({
-      host: process.env.MYSQL_HOST || 'mysql',
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USER || 'testuser',
-      password: process.env.MYSQL_PASSWORD || 'testpass',
-      database: process.env.MYSQL_DB || 'testdb',
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
     });
 
     tempConnection.connect((connectError) => {
@@ -716,9 +716,9 @@ app.post("/lifecycle/change-user", async (req: Request, res: Response) => {
 
       // Change user to the same credentials (simpler than creating a test user)
       const changeUserOptions = {
-        user: process.env.MYSQL_USER || 'testuser',
-        password: process.env.MYSQL_PASSWORD || 'testpass',
-        database: process.env.MYSQL_DB || 'testdb',
+        user: process.env.MYSQL_USER || "testuser",
+        password: process.env.MYSQL_PASSWORD || "testpass",
+        database: process.env.MYSQL_DB || "testdb",
       };
 
       tempConnection.changeUser(changeUserOptions, (changeError) => {
@@ -810,11 +810,11 @@ app.get("/pool/end-and-recreate", async (req: Request, res: Response) => {
 
     // Create a temporary pool for this test
     const tempPool = mysql.createPool({
-      host: process.env.MYSQL_HOST || 'mysql',
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USER || 'testuser',
-      password: process.env.MYSQL_PASSWORD || 'testpass',
-      database: process.env.MYSQL_DB || 'testdb',
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
       connectionLimit: 5,
     });
 
@@ -858,15 +858,15 @@ app.get("/events/connect", async (req: Request, res: Response) => {
 
     // Create a new connection to test connect event
     const testConnection = mysql.createConnection({
-      host: process.env.MYSQL_HOST || 'mysql',
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USER || 'testuser',
-      password: process.env.MYSQL_PASSWORD || 'testpass',
-      database: process.env.MYSQL_DB || 'testdb',
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
     });
 
     // Listen for connect event
-    testConnection.on('connect', () => {
+    testConnection.on("connect", () => {
       console.log("'connect' event received");
       connectEventReceived = true;
     });
@@ -894,6 +894,47 @@ app.get("/events/connect", async (req: Request, res: Response) => {
   }
 });
 
+// Test: Connection.destroy() - not patched
+app.get("/test/connection-destroy", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing connection.destroy()...");
+
+    // Create a temporary connection for this test
+    const tempConnection = mysql.createConnection({
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+    });
+
+    tempConnection.connect((connectError) => {
+      if (connectError) {
+        return res.status(500).json({ error: connectError.message });
+      }
+
+      // Query before destroy
+      tempConnection.query("SELECT 1 as test", (queryError1, results1) => {
+        if (queryError1) {
+          return res.status(500).json({ error: queryError1.message });
+        }
+
+        tempConnection.destroy();
+
+        setTimeout(() => {
+          res.json({
+            message: "Connection destroyed successfully",
+            resultBeforeDestroy: results1,
+          });
+        }, 100);
+      });
+    });
+  } catch (error: any) {
+    console.error("Unexpected error in connection-destroy:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ===== STREAM TESTS =====
 
 // Test Query.prototype.stream() method
@@ -909,15 +950,15 @@ app.get("/stream/query-stream-method", async (req: Request, res: Response) => {
     const stream = query.stream();
 
     stream
-      .on('error', (err) => {
+      .on("error", (err) => {
         console.error("Stream error:", err);
         res.status(500).json({ error: err.message });
       })
-      .on('data', (row) => {
+      .on("data", (row) => {
         console.log("Received data from stream:", row);
         results.push(row);
       })
-      .on('end', () => {
+      .on("end", () => {
         console.log("Stream ended");
         res.json({
           message: "Stream query executed",
@@ -979,6 +1020,7 @@ const server = app.listen(PORT, async () => {
     console.log("");
     console.log("  Event Tests:");
     console.log("  GET    /events/connect - Connect event emission");
+    console.log("  GET    /test/connection-destroy - Connection destroy");
     console.log("");
     console.log("  Stream Tests:");
     console.log("  GET    /stream/query-stream-method - Query.stream() method");
