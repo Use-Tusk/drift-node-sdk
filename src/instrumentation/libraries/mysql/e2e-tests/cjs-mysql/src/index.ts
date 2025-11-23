@@ -647,17 +647,17 @@ app.get("/lifecycle/end-and-reconnect", async (req: Request, res: Response) => {
 
     // Create a temporary connection for this test
     const tempConnection = mysql.createConnection({
-      host: process.env.MYSQL_HOST || 'mysql',
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USER || 'testuser',
-      password: process.env.MYSQL_PASSWORD || 'testpass',
-      database: process.env.MYSQL_DB || 'testdb',
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
     });
 
     let endEventReceived = false;
 
     // Listen for end event
-    tempConnection.on('end', () => {
+    tempConnection.on("end", () => {
       console.log("'end' event received");
       endEventReceived = true;
     });
@@ -701,11 +701,11 @@ app.post("/lifecycle/change-user", async (req: Request, res: Response) => {
 
     // Create a temporary connection for this test
     const tempConnection = mysql.createConnection({
-      host: process.env.MYSQL_HOST || 'mysql',
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USER || 'testuser',
-      password: process.env.MYSQL_PASSWORD || 'testpass',
-      database: process.env.MYSQL_DB || 'testdb',
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
     });
 
     tempConnection.connect((connectError) => {
@@ -716,9 +716,9 @@ app.post("/lifecycle/change-user", async (req: Request, res: Response) => {
 
       // Change user to the same credentials (simpler than creating a test user)
       const changeUserOptions = {
-        user: process.env.MYSQL_USER || 'testuser',
-        password: process.env.MYSQL_PASSWORD || 'testpass',
-        database: process.env.MYSQL_DB || 'testdb',
+        user: process.env.MYSQL_USER || "testuser",
+        password: process.env.MYSQL_PASSWORD || "testpass",
+        database: process.env.MYSQL_DB || "testdb",
       };
 
       tempConnection.changeUser(changeUserOptions, (changeError) => {
@@ -810,11 +810,11 @@ app.get("/pool/end-and-recreate", async (req: Request, res: Response) => {
 
     // Create a temporary pool for this test
     const tempPool = mysql.createPool({
-      host: process.env.MYSQL_HOST || 'mysql',
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USER || 'testuser',
-      password: process.env.MYSQL_PASSWORD || 'testpass',
-      database: process.env.MYSQL_DB || 'testdb',
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
       connectionLimit: 5,
     });
 
@@ -858,15 +858,15 @@ app.get("/events/connect", async (req: Request, res: Response) => {
 
     // Create a new connection to test connect event
     const testConnection = mysql.createConnection({
-      host: process.env.MYSQL_HOST || 'mysql',
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USER || 'testuser',
-      password: process.env.MYSQL_PASSWORD || 'testpass',
-      database: process.env.MYSQL_DB || 'testdb',
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
     });
 
     // Listen for connect event
-    testConnection.on('connect', () => {
+    testConnection.on("connect", () => {
       console.log("'connect' event received");
       connectEventReceived = true;
     });
@@ -894,6 +894,157 @@ app.get("/events/connect", async (req: Request, res: Response) => {
   }
 });
 
+// ===== BUG HUNT TESTS =====
+
+// Test: Query with SQL syntax error
+app.get("/test/query-error", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing query with SQL error...");
+    const connection = getConnection();
+
+    // Intentionally malformed SQL
+    const badQuery = "SELECT * FROM nonexistent_table WHERE invalid syntax";
+
+    connection.query(badQuery, (error, results, fields) => {
+      if (error) {
+        console.log("Expected error received:", error.message);
+        return res.json({
+          message: "Query error handled correctly",
+          errorMessage: error.message,
+          errorCode: error.code,
+        });
+      }
+
+      // This shouldn't happen
+      res.json({
+        message: "Query unexpectedly succeeded",
+        data: results,
+      });
+    });
+  } catch (error: any) {
+    console.error("Unexpected error in query-error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test: Transaction with query error
+app.post("/test/transaction-query-error", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing transaction with query error...");
+    const connection = getConnection();
+
+    connection.beginTransaction((beginError) => {
+      if (beginError) {
+        return res.status(500).json({ error: beginError.message });
+      }
+
+      // Execute a bad query inside the transaction
+      connection.query("SELECT * FROM nonexistent_table", (queryError, results) => {
+        if (queryError) {
+          console.log("Expected query error in transaction:", queryError.message);
+
+          // Rollback on error
+          connection.rollback(() => {
+            res.json({
+              message: "Transaction query error handled correctly",
+              errorMessage: queryError.message,
+              errorCode: queryError.code,
+            });
+          });
+          return;
+        }
+
+        // This shouldn't happen
+        connection.commit((commitError) => {
+          res.json({
+            message: "Query unexpectedly succeeded",
+            data: results,
+          });
+        });
+      });
+    });
+  } catch (error: any) {
+    console.error("Unexpected error in transaction-query-error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test: Query event emitter with error
+app.get("/test/event-emitter-error", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing event emitter query with error...");
+    const connection = getConnection();
+
+    let errorReceived = false;
+    let errorMessage = "";
+
+    const query = connection.query("SELECT * FROM nonexistent_table");
+
+    query
+      .on("error", (err) => {
+        errorReceived = true;
+        errorMessage = err.message;
+        console.log("Error event received:", err.message);
+      })
+      .on("result", (row) => {
+        console.log("Unexpected result:", row);
+      })
+      .on("end", () => {
+        res.json({
+          message: errorReceived ? "Event emitter error handled correctly" : "No error received",
+          errorReceived,
+          errorMessage,
+        });
+      });
+  } catch (error: any) {
+    console.error("Unexpected error in event-emitter-error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test: Connection.destroy() - not patched
+app.get("/test/connection-destroy", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing connection.destroy()...");
+
+    // Create a temporary connection for this test
+    const tempConnection = mysql.createConnection({
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+    });
+
+    tempConnection.connect((connectError) => {
+      if (connectError) {
+        return res.status(500).json({ error: connectError.message });
+      }
+
+      // Query before destroy
+      tempConnection.query("SELECT 1 as test", (queryError1, results1) => {
+        if (queryError1) {
+          return res.status(500).json({ error: queryError1.message });
+        }
+
+        // Now destroy the connection (not patched)
+        tempConnection.destroy();
+
+        // Try to query after destroy - should fail
+        setTimeout(() => {
+          res.json({
+            message: "Connection destroyed successfully",
+            resultBeforeDestroy: results1,
+          });
+        }, 100);
+      });
+    });
+  } catch (error: any) {
+    console.error("Unexpected error in connection-destroy:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ===== STREAM TESTS =====
 
 // Test Query.prototype.stream() method
@@ -909,15 +1060,15 @@ app.get("/stream/query-stream-method", async (req: Request, res: Response) => {
     const stream = query.stream();
 
     stream
-      .on('error', (err) => {
+      .on("error", (err) => {
         console.error("Stream error:", err);
         res.status(500).json({ error: err.message });
       })
-      .on('data', (row) => {
+      .on("data", (row) => {
         console.log("Received data from stream:", row);
         results.push(row);
       })
-      .on('end', () => {
+      .on("end", () => {
         console.log("Stream ended");
         res.json({
           message: "Stream query executed",
