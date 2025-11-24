@@ -308,6 +308,12 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       logger.debug(`[PostgresInstrumentation] Wrapped file method on sql instance`);
     }
 
+    // Patch the reserve method for reserved connections
+    if (typeof originalSql.reserve === "function") {
+      (wrappedSql as any).reserve = self._wrapReserveMethod(originalSql);
+      logger.debug(`[PostgresInstrumentation] Wrapped reserve method on sql instance`);
+    }
+
     return wrappedSql;
   }
 
@@ -351,6 +357,43 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       queryOptions?: { prepare?: boolean },
     ): any {
       return self._handleFileQuery(sqlInstance, originalFile, path, parameters, queryOptions);
+    };
+  }
+
+  private _wrapReserveMethod(sqlInstance: any) {
+    const self = this;
+    const originalReserve = sqlInstance.reserve;
+
+    return async function reserve(): Promise<any> {
+      // In REPLAY mode, avoid establishing real TCP connections
+      if (self.mode === TuskDriftMode.REPLAY) {
+        logger.debug(`[PostgresInstrumentation] REPLAY mode: Creating mock reserved connection without TCP`);
+
+        // Create a mock ReservedSql instance without calling original reserve()
+        // This prevents TCP connection establishment in REPLAY mode
+        const mockReservedSql = self._wrapSqlInstance(sqlInstance);
+
+        // Add the release() method to the mock instance
+        if (typeof mockReservedSql === "function") {
+          (mockReservedSql as any).release = function () {
+            logger.debug(`[PostgresInstrumentation] Mock reserved connection released`);
+            // No-op in REPLAY mode since we didn't establish a real connection
+          };
+        }
+
+        return mockReservedSql;
+      }
+
+      // In RECORD/DISABLED modes, call the original reserve() and wrap the result
+      const reservedSql = await originalReserve.call(sqlInstance);
+
+      // CRITICAL: Wrap the returned ReservedSql instance
+      // This ensures queries on the reserved connection are instrumented
+      const wrappedReservedSql = self._wrapSqlInstance(reservedSql);
+
+      logger.debug(`[PostgresInstrumentation] Reserved connection obtained and wrapped`);
+
+      return wrappedReservedSql;
     };
   }
 
@@ -1220,9 +1263,23 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       `[PostgresInstrumentation] Adding output attributes to span for ${isArray ? "array" : "object"} result`,
     );
 
+    // Helper to convert Buffers to strings for JSON serialization
+    // This ensures consistent string data in both RECORD and REPLAY modes
+    const normalizeValue = (val: any): any => {
+      if (Buffer.isBuffer(val)) {
+        return val.toString('utf8');
+      } else if (Array.isArray(val)) {
+        return val.map(normalizeValue);
+      } else if (val && typeof val === 'object' && val.type === 'Buffer' && Array.isArray(val.data)) {
+        // Handle already-serialized Buffer objects
+        return Buffer.from(val.data).toString('utf8');
+      }
+      return val;
+    };
+
     const outputValue: PostgresOutputValueType = {
-      // Always capture rows (the array data)
-      rows: isArray ? Array.from(result) : result.rows || [],
+      // Always capture rows (the array data), normalizing any Buffer objects
+      rows: isArray ? Array.from(result).map(normalizeValue) : (result.rows || []).map(normalizeValue),
       // Explicitly capture non-enumerable metadata properties
       count: result.count !== undefined && result.count !== null ? result.count : undefined,
       command: result.command || undefined,

@@ -97,6 +97,12 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/e
 echo "  - GET /test/sql-file"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-file > /dev/null
 
+echo "  - GET /test/pending-query-raw"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pending-query-raw > /dev/null
+
+echo "  - GET /test/sql-reserve"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-reserve > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

@@ -580,6 +580,69 @@ app.get("/test/execute-method", async (req: Request, res: Response) => {
   }
 });
 
+// Test PendingQuery.raw() for raw buffer results
+app.get("/test/pending-query-raw", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing PendingQuery.raw() for raw buffer results...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // .raw() returns raw Buffer arrays instead of parsed objects
+    const result = await pgClient`SELECT * FROM cache LIMIT 2`.raw();
+
+    console.log("Raw buffer query result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "PendingQuery.raw() test completed",
+      count: result.length,
+      // Convert buffers to strings for JSON response
+      data: result.map((row) => row.map((buf) => (buf instanceof Buffer ? buf.toString() : buf))),
+    });
+  } catch (error: any) {
+    console.error("Error in PendingQuery.raw test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Test sql.reserve() for reserved connections
+app.get("/test/sql-reserve", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing sql.reserve() for reserved connections...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Reserve a dedicated connection from the pool
+    const reserved = await pgClient.reserve();
+
+    // Execute a query on the reserved connection
+    const result = await reserved`SELECT * FROM cache LIMIT 2`;
+
+    console.log("Reserved connection query result:", result);
+
+    // Release the connection back to the pool
+    reserved.release();
+
+    await pgClient.end();
+
+    res.json({
+      message: "sql.reserve() test completed",
+      count: result.length,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error("Error in sql.reserve test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {
@@ -602,6 +665,8 @@ const server = app.listen(PORT, async () => {
       "  GET  /test/execute-method - Test .execute() method for immediate query execution",
     );
     console.log("  GET  /test/sql-file - Test sql.file() method");
+    console.log("  GET  /test/pending-query-raw - Test PendingQuery.raw() for raw buffer results");
+    console.log("  GET  /test/sql-reserve - Test sql.reserve() for reserved connections");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
