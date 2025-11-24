@@ -302,6 +302,12 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       logger.debug(`[PostgresInstrumentation] Wrapped begin method on sql instance`);
     }
 
+    // Patch the file method for loading queries from files
+    if (typeof originalSql.file === "function") {
+      (wrappedSql as any).file = self._wrapFileMethod(originalSql);
+      logger.debug(`[PostgresInstrumentation] Wrapped file method on sql instance`);
+    }
+
     return wrappedSql;
   }
 
@@ -332,6 +338,19 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         typeof optionsOrCallback === "function" ? optionsOrCallback : callback;
 
       return self._handleBeginTransaction(sqlInstance, originalBegin, options, transactionCallback);
+    };
+  }
+
+  private _wrapFileMethod(sqlInstance: any) {
+    const self = this;
+    const originalFile = sqlInstance.file;
+
+    return function file(
+      path: string,
+      parameters?: any[],
+      queryOptions?: { prepare?: boolean },
+    ): any {
+      return self._handleFileQuery(sqlInstance, originalFile, path, parameters, queryOptions);
     };
   }
 
@@ -650,7 +669,174 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       });
     };
 
+    // Also wrap .execute() method if it exists to prevent TCP calls in REPLAY mode
+    const originalExecute = unsafeQuery.execute ? unsafeQuery.execute.bind(unsafeQuery) : undefined;
+
+    if (originalExecute) {
+      unsafeQuery.execute = function () {
+        if (self.mode === TuskDriftMode.REPLAY) {
+          // In REPLAY mode, don't call handle() which would trigger real DB execution
+          // Just return this (Query object). When awaited, the wrapped .then() will provide mocked data
+          return this;
+        } else {
+          // In RECORD/DISABLED modes, call the original execute()
+          return originalExecute.call(this);
+        }
+      };
+    }
+
     return unsafeQuery;
+  }
+
+  private _handleFileQuery(
+    sqlInstance: any,
+    originalFile: Function,
+    path: string,
+    parameters?: any[],
+    queryOptions?: { prepare?: boolean },
+  ): any {
+    // Create the Query object (doesn't execute yet)
+    const fileQuery = (() => {
+      if (queryOptions !== undefined) {
+        return originalFile.call(sqlInstance, path, parameters, queryOptions);
+      } else if (parameters !== undefined) {
+        return originalFile.call(sqlInstance, path, parameters);
+      } else {
+        return originalFile.call(sqlInstance, path);
+      }
+    })();
+
+    // Capture the current context
+    const creationContext = context.active();
+
+    // Store original .then() method
+    const originalThen = fileQuery.then.bind(fileQuery);
+
+    const self = this;
+
+    const inputValue: PostgresClientInputValue = {
+      query: path, // Use file path as the query identifier
+      parameters: parameters || [],
+      options: queryOptions,
+    };
+
+    // Intercept .then() to track when query is actually executed
+    fileQuery.then = function (onFulfilled?: any, onRejected?: any) {
+      // Restore the context from query creation time
+      return context.with(creationContext, () => {
+        if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalThen(onFulfilled, onRejected),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalThen(onFulfilled, onRejected),
+                {
+                  name: "postgres.file",
+                  kind: SpanKind.CLIENT,
+                  submodule: "file",
+                  packageType: PackageType.PG,
+                  packageName: "postgres",
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart,
+                },
+                (spanInfo) => {
+                  // Wrap callbacks to intercept result
+                  const wrappedOnFulfilled = (result: any) => {
+                    try {
+                      logger.debug(
+                        `[PostgresInstrumentation] Postgres file query completed successfully (${SpanUtils.getTraceInfo()})`,
+                      );
+                      self._addOutputAttributesToSpan(spanInfo, result);
+                      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+                    } catch (error) {
+                      logger.error(
+                        `[PostgresInstrumentation] error processing file query response:`,
+                        error,
+                      );
+                    }
+                    return onFulfilled ? onFulfilled(result) : result;
+                  };
+
+                  const wrappedOnRejected = (error: any) => {
+                    try {
+                      logger.debug(
+                        `[PostgresInstrumentation] Postgres file query error: ${error.message}`,
+                      );
+                      SpanUtils.endSpan(spanInfo.span, {
+                        code: SpanStatusCode.ERROR,
+                        message: error.message,
+                      });
+                    } catch (spanError) {
+                      logger.error(`[PostgresInstrumentation] error ending span:`, spanError);
+                    }
+                    if (onRejected) {
+                      return onRejected(error);
+                    }
+                    throw error;
+                  };
+
+                  return originalThen(wrappedOnFulfilled, wrappedOnRejected);
+                },
+              );
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
+          return handleReplayMode({
+            noOpRequestHandler: () =>
+              Promise.resolve(Object.assign([], { count: 0, command: null })),
+            isServerRequest: false,
+            replayModeHandler: () => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalThen(onFulfilled, onRejected),
+                {
+                  name: "postgres.file",
+                  kind: SpanKind.CLIENT,
+                  submodule: "file",
+                  packageType: PackageType.PG,
+                  packageName: "postgres",
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart: false,
+                },
+                async (spanInfo) => {
+                  const mockedResult = await self.handleReplayFileQuery({
+                    inputValue,
+                    spanInfo,
+                    submodule: "file",
+                    name: "postgres.file",
+                    stackTrace,
+                  });
+                  return onFulfilled ? onFulfilled(mockedResult) : mockedResult;
+                },
+              );
+            },
+          });
+        } else {
+          return originalThen(onFulfilled, onRejected);
+        }
+      });
+    };
+
+    // Also wrap .execute() method if it exists to prevent TCP calls in REPLAY mode
+    const originalExecute = fileQuery.execute ? fileQuery.execute.bind(fileQuery) : undefined;
+    if (originalExecute) {
+      fileQuery.execute = function () {
+        if (self.mode === TuskDriftMode.REPLAY) {
+          // In REPLAY mode, don't call handle() which would trigger real DB execution
+          // Just return this (Query object). When awaited, the wrapped .then() will provide mocked data
+          return this;
+        } else {
+          return originalExecute.call(this);
+        }
+      };
+    }
+
+    return fileQuery;
   }
 
   private _handleBeginTransaction(
@@ -934,6 +1120,59 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     logger.debug(
       `[PostgresInstrumentation] Unsafe query processed result: ${JSON.stringify(processedResult)}`,
+    );
+
+    return processedResult;
+  }
+
+  async handleReplayFileQuery({
+    inputValue,
+    spanInfo,
+    submodule,
+    name,
+    stackTrace,
+  }: {
+    inputValue: PostgresClientInputValue;
+    spanInfo: SpanInfo;
+    submodule: string;
+    name: string;
+    stackTrace?: string;
+  }): Promise<PostgresConvertedResult | undefined> {
+    logger.debug(`[PostgresInstrumentation] Replaying Postgres file query`);
+
+    const mockData = await findMockResponseAsync({
+      mockRequestData: {
+        traceId: spanInfo.traceId,
+        spanId: spanInfo.spanId,
+        name,
+        inputValue: createMockInputValue(inputValue),
+        packageName: "postgres",
+        instrumentationName: this.INSTRUMENTATION_NAME,
+        submoduleName: submodule,
+        kind: SpanKind.CLIENT,
+        stackTrace,
+      },
+      tuskDrift: this.tuskDrift,
+    });
+
+    if (!mockData) {
+      const queryText = inputValue.query || "UNKNOWN_QUERY";
+      logger.warn(
+        `[PostgresInstrumentation] No mock data found for Postgres file query: ${queryText}`,
+      );
+      throw new Error(
+        `[PostgresInstrumentation] No matching mock found for Postgres file query: ${queryText}`,
+      );
+    }
+
+    logger.debug(
+      `[PostgresInstrumentation] Found mock data for Postgres file query: ${JSON.stringify(mockData)}`,
+    );
+
+    const processedResult = this.convertPostgresTypes(mockData.result);
+
+    logger.debug(
+      `[PostgresInstrumentation] File query processed result: ${JSON.stringify(processedResult)}`,
     );
 
     return processedResult;
