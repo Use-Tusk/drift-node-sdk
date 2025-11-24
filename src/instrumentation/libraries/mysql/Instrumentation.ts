@@ -189,6 +189,14 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
       }
     }
 
+    // Wrap Connection.prototype.destroy
+    if (ConnectionClass.prototype && ConnectionClass.prototype.destroy) {
+      if (!isWrapped(ConnectionClass.prototype.destroy)) {
+        this._wrap(ConnectionClass.prototype, "destroy", this._getDestroyPatchFn());
+        logger.debug(`[MysqlInstrumentation] Wrapped Connection.prototype.destroy`);
+      }
+    }
+
     this.markModuleAsPatched(ConnectionClass);
     logger.debug(`[MysqlInstrumentation] Connection class patching complete`);
 
@@ -798,6 +806,25 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           return originalResume.apply(this, arguments);
         } else {
           return originalResume.apply(this, arguments);
+        }
+      };
+    };
+  }
+
+  /**
+   * Get wrapper function for destroy method
+   */
+  private _getDestroyPatchFn() {
+    const self = this;
+    return (originalDestroy: Function) => {
+      return function destroy(this: any) {
+        if (self.mode === TuskDriftMode.REPLAY) {
+          // No-op in replay mode - prevent actual TCP socket destruction
+          return undefined;
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return originalDestroy.apply(this, arguments);
+        } else {
+          return originalDestroy.apply(this, arguments);
         }
       };
     };
