@@ -524,6 +524,62 @@ app.get("/cache/complex-fragments", async (req: Request, res: Response) => {
   }
 });
 
+// Test sql.file() method
+app.get("/test/sql-file", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing sql.file() method...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Execute query from file
+    const result = await pgClient.file("/app/src/test-query.sql");
+
+    console.log("SQL file result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "SQL file executed successfully",
+      count: result.length,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error("Error in sql.file test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Test .execute() method for immediate execution
+app.get("/test/execute-method", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing .execute() method for immediate query execution...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Using .execute() forces the query to run immediately
+    const result = await pgClient`SELECT * FROM cache LIMIT 1`.execute();
+
+    console.log("Execute method result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "Execute method test completed",
+      count: result.length,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error("Error in execute method test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {
@@ -542,11 +598,10 @@ const server = app.listen(PORT, async () => {
     console.log("  DELETE /cache/delete - Delete cache entry (Drizzle)");
     console.log("  GET  /users/by-email - Get user by email (Drizzle)");
     console.log("  POST /users/insert - Insert user (Drizzle)");
-    console.log("  GET  /cache/dynamic-fragments - Test dynamic sql() fragments");
     console.log(
-      "  POST /cache/update-with-fragments - Test UPDATE with fragments (customer pattern)",
+      "  GET  /test/execute-method - Test .execute() method for immediate query execution",
     );
-    console.log("  GET  /cache/complex-fragments - Test complex nested fragments");
+    console.log("  GET  /test/sql-file - Test sql.file() method");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

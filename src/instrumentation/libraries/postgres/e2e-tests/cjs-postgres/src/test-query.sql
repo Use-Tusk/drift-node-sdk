@@ -1,0 +1,1 @@
+SELECT * FROM cache LIMIT 2

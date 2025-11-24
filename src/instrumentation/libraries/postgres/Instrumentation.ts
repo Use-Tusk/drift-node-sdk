@@ -496,7 +496,23 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       });
     };
 
-    // Return the Query object with intercepted .then()
+    // Also wrap .execute() method if it exists to prevent TCP calls in REPLAY mode
+    const originalExecute = query.execute ? query.execute.bind(query) : undefined;
+
+    if (originalExecute) {
+      query.execute = function () {
+        if (self.mode === TuskDriftMode.REPLAY) {
+          // In REPLAY mode, don't call handle() which would trigger real DB execution
+          // Just return this (Query object). When awaited, the wrapped .then() will provide mocked data
+          return this;
+        } else {
+          // In RECORD/DISABLED modes, call the original execute()
+          return originalExecute.call(this);
+        }
+      };
+    }
+
+    // Return the Query object with intercepted .then() and .execute()
     return query;
   }
 

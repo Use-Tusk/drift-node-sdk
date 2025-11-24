@@ -91,6 +91,12 @@ docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:300
 echo "  - GET /cache/complex-fragments"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/cache/complex-fragments > /dev/null
 
+echo "  - GET /test/execute-method"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/execute-method > /dev/null
+
+echo "  - GET /test/sql-file"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-file > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
@@ -119,7 +125,7 @@ docker compose -p $PROJECT_NAME down
 
 # Step 9: Clean up traces and logs
 echo "Step 9: Cleaning up traces and logs..."
-cleanup_tusk_files
+# cleanup_tusk_files
 
 echo "Postgres (Drizzle + postgres) E2E test run complete."
 
