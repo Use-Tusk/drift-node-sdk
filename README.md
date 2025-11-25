@@ -33,7 +33,8 @@ For comprehensive guides and API reference, visit our [full documentation](https
 
 <div align="center">
 
-![Tusk Drift Animated Diagram](images/tusk-drift-animated-diagram.gif)
+![Tusk Drift Animated Diagram](images/tusk-drift-animated-diagram-light.gif#gh-light-mode-only)
+![Tusk Drift Animated Diagram](images/tusk-drift-animated-diagram-dark.gif#gh-dark-mode-only)
 
 </div>
 
