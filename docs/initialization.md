@@ -14,7 +14,9 @@ For **standard Node.js applications** (Express, Fastify, plain Node.js, etc.), f
 
 ## 1. Create SDK Initialization File
 
-Create a separate file (e.g. `tuskDriftInit.ts`) to initialize the Tusk Drift SDK. This ensures the SDK is initialized as early as possible before any other modules are loaded.
+Create a separate file (e.g. `tuskDriftInit.ts` or `tuskDriftInit.js`) to initialize the Tusk Drift SDK. This ensures the SDK is initialized as early as possible before any other modules are loaded.
+
+**Note:** The code examples in this guide use ES module `import`/`export` syntax. If your JavaScript project uses CommonJS, adapt the examples to use `require()`/`module.exports` instead.
 
 **IMPORTANT**: Ensure that `TuskDrift` is initialized before any other telemetry providers (e.g. OpenTelemetry, Sentry, etc.). If not, your existing telemetry may not work properly.
 
@@ -40,7 +42,7 @@ The easiest way to determine this is by looking at your import syntax.
 ### For CommonJS Applications
 
 ```typescript
-// tuskDriftInit.ts
+// tuskDriftInit.ts or tuskDriftInit.js
 import { TuskDrift } from "@use-tusk/drift-node-sdk";
 
 // Initialize SDK immediately
@@ -126,7 +128,7 @@ export { TuskDrift };
 In your main server file (e.g., `server.ts`, `index.ts`, `app.ts`), require the initialized SDK **at the very top**, before any other requires:
 
 ```typescript
-// server.ts
+// e.g. server.ts
 import { TuskDrift } from "./tuskDriftInit"; // MUST be the first import
 
 // ... other imports ...
@@ -238,7 +240,7 @@ recording:
 Once your application has completed initialization (database connections, middleware setup, etc.), mark it as ready:
 
 ```typescript
-// server.ts
+// e.g. server.ts
 import { TuskDrift } from "./tuskDriftInit";
 
 // ... other imports ...
