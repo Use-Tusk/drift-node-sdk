@@ -140,7 +140,19 @@ export function getDecodedType(
 
   // Convert to lowercase and extract the main media type (before semicolon)
   const mainType = contentTypeString.toLowerCase().split(";")[0].trim();
-  return CONTENT_TYPE_MAPPING[mainType];
+  const decodedType = CONTENT_TYPE_MAPPING[mainType];
+
+  // If we found a mapping, return it
+  if (decodedType !== undefined) {
+    return decodedType;
+  }
+
+  // Fallback: if mainType contains "json", treat it as JSON
+  if (mainType.includes("json")) {
+    return DecodedType.JSON;
+  }
+
+  return undefined;
 }
 
 export const ACCEPTABLE_CONTENT_TYPES = new Set([DecodedType.JSON, DecodedType.PLAIN_TEXT]);
