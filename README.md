@@ -31,6 +31,12 @@ For comprehensive guides and API reference, visit our [full documentation](https
 - [Quick Start Guide](docs/quickstart.md) - Record and replay your first trace
 - [Troubleshooting Guide](docs/troubleshooting.md) - Common issues and solutions
 
+<div align="center">
+
+![Tusk Drift Animated Diagram](images/tusk-drift-animated-diagram.gif)
+
+</div>
+
 ## Requirements
 
 Tusk Drift currently supports the following packages and versions:
