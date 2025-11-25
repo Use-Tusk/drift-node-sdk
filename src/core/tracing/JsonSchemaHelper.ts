@@ -306,19 +306,29 @@ export class JsonSchemaHelper {
 
     // Process each schema override that has encoding and decodedType
     for (const [key, schema] of Object.entries(schemaMerges)) {
-      if (schema.encoding && schema.decodedType && data[key] !== undefined) {
+      if (schema.encoding && data[key] !== undefined) {
         try {
           let decodedValue = data[key];
 
-          // Decode based on encoding type
-          if (schema.encoding === EncodingType.BASE64 && typeof decodedValue === "string") {
-            const buffer = Buffer.from(decodedValue, "base64");
-            decodedValue = buffer.toString("utf8");
-          }
+          if (typeof decodedValue === "string") {
+            if (schema.encoding === EncodingType.BASE64) {
+              const buffer = Buffer.from(decodedValue, "base64");
+              decodedValue = buffer.toString("utf8");
+            }
 
-          // Parse based on decoded type
-          if (schema.decodedType === DecodedType.JSON && typeof decodedValue === "string") {
-            decodedValue = JSON.parse(decodedValue);
+            // Parse based on decoded type
+            if (schema.decodedType === DecodedType.JSON) {
+              decodedValue = JSON.parse(decodedValue);
+            } else if (!schema.decodedType) {
+              // If decodedType is not specified, attempt to parse as JSON
+              try {
+                decodedValue = JSON.parse(decodedValue);
+              } catch {
+                logger.debug(
+                  `[JsonSchemaHelper] Failed to parse JSON for key: ${key}, no decodedType specified`,
+                );
+              }
+            }
           }
 
           decodedData[key] = decodedValue;
