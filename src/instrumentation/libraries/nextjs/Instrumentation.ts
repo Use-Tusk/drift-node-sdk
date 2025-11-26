@@ -4,7 +4,6 @@ import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode, context } from "@opentelemetry/api";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
 import { HttpReplayHooks } from "../http/HttpReplayHooks";
-import { DecodedType } from "@use-tusk/drift-schemas/core/json_schema";
 import {
   NextjsInstrumentationConfig,
   NextjsServerInputValue,
@@ -15,7 +14,6 @@ import { wrap, handleRecordMode, handleReplayMode } from "../../core/utils";
 import { shouldSample, OriginalGlobalUtils, logger } from "../../../core/utils";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
 import { EncodingType, JsonSchemaHelper } from "../../../core/tracing/JsonSchemaHelper";
-import { EnvVarTracker } from "../../core/trackers";
 import {
   combineChunks,
   httpBodyEncoder,
@@ -167,20 +165,6 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
               }
 
               logger.debug(`[NextjsInstrumentation] Setting replay trace id`, replayTraceId);
-
-              // Fetch env vars from CLI if requested
-              const shouldFetch = self.replayHooks.extractShouldFetchEnvVars(req);
-              if (shouldFetch) {
-                try {
-                  const envVars = self.tuskDrift.requestEnvVarsSync(replayTraceId);
-                  EnvVarTracker.setEnvVars(replayTraceId, envVars);
-                  logger.debug(
-                    `[NextjsInstrumentation] Fetched env vars from CLI for trace ${replayTraceId}`,
-                  );
-                } catch (error) {
-                  logger.error(`[NextjsInstrumentation] Failed to fetch env vars from CLI:`, error);
-                }
-              }
 
               const ctxWithReplayTraceId = SpanUtils.setCurrentReplayTraceId(replayTraceId);
 
@@ -449,13 +433,7 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
             matchImportance: 0,
           },
         },
-        metadata: {
-          ENV_VARS: EnvVarTracker.getEnvVars(spanInfo.traceId),
-        },
       });
-
-      // Clear env vars
-      EnvVarTracker.clearEnvVars(spanInfo.traceId);
 
       const status =
         (capturedStatusCode || 200) >= 400
@@ -518,6 +496,7 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
             instrumentationName: self.INSTRUMENTATION_NAME,
             submoduleName: completeInputValue.method,
             inputValue: completeInputValue,
+            environment: self.tuskDrift.getEnvironment(),
             outputValue,
             inputSchema,
             outputSchema,

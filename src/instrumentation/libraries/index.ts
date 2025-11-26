@@ -1,5 +1,4 @@
 export * from "./http";
-export * from "./env";
 export * from "./date";
 export * from "./graphql";
 export * from "./pg";

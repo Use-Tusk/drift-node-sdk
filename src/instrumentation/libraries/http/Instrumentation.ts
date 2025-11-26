@@ -50,7 +50,6 @@ import {
   isEsm,
   isNextJsRuntime,
 } from "../../../core/utils";
-import { EnvVarTracker } from "../../core/trackers";
 import { HttpSpanData, HttpTransformEngine } from "./HttpTransformEngine";
 import { TransformConfigs } from "../types";
 import { TraceBlockingManager } from "src/core/tracing/TraceBlockingManager";
@@ -211,18 +210,6 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           }
 
           logger.debug(`[HttpInstrumentation] Setting replay trace id`, replayTraceId);
-
-          // Fetch env vars from CLI if requested
-          const shouldFetch = this.replayHooks.extractShouldFetchEnvVars(req);
-          if (shouldFetch) {
-            try {
-              const envVars = this.tuskDrift.requestEnvVarsSync(replayTraceId);
-              EnvVarTracker.setEnvVars(replayTraceId, envVars);
-              logger.debug(`[HttpInstrumentation] Fetched env vars from CLI for trace ${replayTraceId}`);
-            } catch (error) {
-              logger.error(`[HttpInstrumentation] Failed to fetch env vars from CLI:`, error);
-            }
-          }
 
           const ctxWithReplayTraceId = SpanUtils.setCurrentReplayTraceId(replayTraceId);
 
@@ -491,16 +478,10 @@ export class HttpInstrumentation extends TdInstrumentationBase {
                 matchImportance: 0,
               },
             },
-            metadata: {
-              ENV_VARS: EnvVarTracker.getEnvVars(spanInfo.traceId),
-            },
             ...(spanData.transformMetadata && {
               transformMetadata: spanData.transformMetadata,
             }),
           });
-
-          // Make sure to delete the env vars from the tracker
-          EnvVarTracker.clearEnvVars(spanInfo.traceId);
 
           const status =
             statusCode >= 400
@@ -573,6 +554,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
               instrumentationName: "HttpInstrumentation",
               submoduleName: completeInputValue.method || inputValue.method,
               inputValue: completeInputValue,
+              environment: self.tuskDrift.getEnvironment(),
               outputValue,
               inputSchema,
               outputSchema,
