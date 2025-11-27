@@ -109,6 +109,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/s
 echo "  - GET /test/sql-cursor-callback"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-cursor-callback > /dev/null
 
+echo "  - GET /test/sql-foreach"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-foreach > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
