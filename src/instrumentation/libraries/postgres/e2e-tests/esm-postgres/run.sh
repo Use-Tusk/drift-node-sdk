@@ -103,6 +103,12 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/p
 echo "  - GET /test/sql-reserve"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-reserve > /dev/null
 
+echo "  - GET /test/sql-cursor"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-cursor > /dev/null
+
+echo "  - GET /test/sql-cursor-callback"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-cursor-callback > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

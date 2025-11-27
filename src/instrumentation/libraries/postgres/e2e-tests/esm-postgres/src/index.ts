@@ -643,6 +643,104 @@ app.get("/test/sql-reserve", async (req: Request, res: Response) => {
   }
 });
 
+// Test sql.cursor() for cursor-based streaming
+app.get("/test/sql-cursor", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing sql.cursor() for cursor-based streaming...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // cursor() returns an async iterator for streaming results
+    const cursorResults: any[] = [];
+    const cursor = pgClient`SELECT * FROM cache`.cursor(2);
+
+    for await (const rows of cursor) {
+      console.log("Cursor batch:", rows);
+      cursorResults.push(...rows);
+    }
+
+    console.log("Cursor complete, total rows:", cursorResults.length);
+
+    await pgClient.end();
+
+    res.json({
+      message: "sql.cursor() test completed",
+      count: cursorResults.length,
+      data: cursorResults,
+    });
+  } catch (error: any) {
+    console.error("Error in sql.cursor test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Test sql.cursor() with callback function
+app.get("/test/sql-cursor-callback", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing sql.cursor() with callback function...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // cursor(rows, fn) with callback - this delegates to original and goes through .then()
+    const cursorResults: any[] = [];
+    await pgClient`SELECT * FROM cache`.cursor(2, (rows) => {
+      console.log("Cursor callback batch:", rows);
+      cursorResults.push(...rows);
+    });
+
+    console.log("Cursor with callback complete, total rows:", cursorResults.length);
+
+    await pgClient.end();
+
+    res.json({
+      message: "sql.cursor() with callback test completed",
+      count: cursorResults.length,
+      data: cursorResults,
+    });
+  } catch (error: any) {
+    console.error("Error in sql.cursor callback test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Test sql.forEach() for row-by-row processing
+app.get("/test/sql-foreach", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing sql.forEach() for row-by-row processing...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // forEach processes rows one at a time with a callback
+    const forEachResults: any[] = [];
+    await pgClient`SELECT * FROM cache LIMIT 3`.forEach((row) => {
+      console.log("forEach row:", row);
+      forEachResults.push(row);
+    });
+
+    console.log("forEach complete, total rows:", forEachResults.length);
+
+    await pgClient.end();
+
+    res.json({
+      message: "sql.forEach() test completed",
+      count: forEachResults.length,
+      data: forEachResults,
+    });
+  } catch (error: any) {
+    console.error("Error in sql.forEach test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {
