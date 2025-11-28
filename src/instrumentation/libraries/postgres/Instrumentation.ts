@@ -442,6 +442,13 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         return originalThen(onFulfilled, onRejected);
       }
 
+      // Prevent double recording - postgres.js's handler calls .catch() which triggers .then()
+      // and the user's await also triggers .then(). We only want to record once.
+      if ((query as any)._tuskRecorded) {
+        return originalThen(onFulfilled, onRejected);
+      }
+      (query as any)._tuskRecorded = true;
+
       // Reconstruct the query string for logging
       const queryString = self._reconstructQueryString(strings, values);
 
@@ -718,6 +725,12 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     // Intercept .then() to track when query is actually executed
     unsafeQuery.then = function (onFulfilled?: any, onRejected?: any) {
+      // Prevent double recording
+      if ((unsafeQuery as any)._tuskRecorded) {
+        return originalThen(onFulfilled, onRejected);
+      }
+      (unsafeQuery as any)._tuskRecorded = true;
+
       // Restore the context from query creation time
       return context.with(creationContext, () => {
         if (self.mode === TuskDriftMode.RECORD) {
@@ -871,6 +884,12 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     // Intercept .then() to track when query is actually executed
     fileQuery.then = function (onFulfilled?: any, onRejected?: any) {
+      // Prevent double recording
+      if ((fileQuery as any)._tuskRecorded) {
+        return originalThen(onFulfilled, onRejected);
+      }
+      (fileQuery as any)._tuskRecorded = true;
+
       // Restore the context from query creation time
       return context.with(creationContext, () => {
         if (self.mode === TuskDriftMode.RECORD) {
@@ -988,6 +1007,45 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     return fileQuery;
   }
 
+  /**
+   * Wraps a transaction callback to ensure the inner SQL instance is instrumented.
+   * This is necessary because postgres.js creates a new SQL instance inside begin()
+   * that would otherwise bypass instrumentation.
+   */
+  private _wrapTransactionCallback(transactionCallback: (sql: any) => any): (sql: any) => any {
+    const self = this;
+    return (transactionSql: any) => {
+      // Wrap the transaction sql instance so queries inside the transaction are instrumented
+      const wrappedSql = self._wrapSqlInstance(transactionSql);
+
+      // Also wrap the savepoint method to handle nested savepoints
+      if (typeof transactionSql.savepoint === "function") {
+        const originalSavepoint = transactionSql.savepoint;
+        (wrappedSql as any).savepoint = function (nameOrFn: any, fn?: any) {
+          // Handle both signatures: savepoint(fn) and savepoint(name, fn)
+          const savepointCallback = typeof nameOrFn === "function" ? nameOrFn : fn;
+          const savepointName = typeof nameOrFn === "string" ? nameOrFn : undefined;
+
+          // Wrap the savepoint callback recursively
+          const wrappedSavepointCallback = self._wrapTransactionCallback(savepointCallback);
+
+          if (savepointName) {
+            return originalSavepoint.call(transactionSql, savepointName, wrappedSavepointCallback);
+          } else {
+            return originalSavepoint.call(transactionSql, wrappedSavepointCallback);
+          }
+        };
+      }
+
+      // Copy the prepare method if it exists (used for prepared transactions)
+      if (typeof transactionSql.prepare === "function") {
+        (wrappedSql as any).prepare = transactionSql.prepare.bind(transactionSql);
+      }
+
+      return transactionCallback(wrappedSql);
+    };
+  }
+
   private _handleBeginTransaction(
     sqlInstance: any,
     originalBegin: Function,
@@ -999,11 +1057,16 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       options: options ? { transactionOptions: options } : undefined,
     };
 
+    // Wrap the transaction callback to ensure inner SQL instance is instrumented
+    const wrappedCallback = transactionCallback
+      ? this._wrapTransactionCallback(transactionCallback)
+      : undefined;
+
     const executeBegin = () => {
-      if (options && transactionCallback) {
-        return originalBegin.call(sqlInstance, options, transactionCallback);
-      } else if (transactionCallback) {
-        return originalBegin.call(sqlInstance, transactionCallback);
+      if (options && wrappedCallback) {
+        return originalBegin.call(sqlInstance, options, wrappedCallback);
+      } else if (wrappedCallback) {
+        return originalBegin.call(sqlInstance, wrappedCallback);
       } else {
         return originalBegin.call(sqlInstance, options || undefined);
       }
@@ -1030,7 +1093,12 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               isPreAppStart: this.tuskDrift.isAppReady() ? false : true,
             },
             (spanInfo) => {
-              return this._handleReplayBeginTransaction(spanInfo, options, stackTrace);
+              return this._handleReplayBeginTransaction(
+                spanInfo,
+                options,
+                stackTrace,
+                wrappedCallback,
+              );
             },
           );
         },
@@ -1106,10 +1174,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     spanInfo: SpanInfo,
     options?: string,
     stackTrace?: string,
+    wrappedCallback?: (sql: any) => any,
   ): Promise<any> {
     logger.debug(`[PostgresInstrumentation] Replaying Postgres transaction`);
 
-    // Find mock data for the transaction
+    // Find mock data for the transaction to determine if it should succeed or fail
     const mockData = await findMockResponseAsync({
       mockRequestData: {
         traceId: spanInfo.traceId,
@@ -1147,19 +1216,87 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       "status" in transactionResult &&
       transactionResult.status === "committed";
 
-    if (wasCommitted) {
-      return transactionResult.result;
-    } else {
-      // Transaction was rolled back
-      const errorMessage =
-        transactionResult &&
-        typeof transactionResult === "object" &&
-        "error" in transactionResult &&
-        transactionResult.error
-          ? transactionResult.error
-          : "Transaction rolled back";
-      throw new Error(errorMessage);
+    // If no callback provided, just return the mocked result
+    if (!wrappedCallback) {
+      if (wasCommitted) {
+        return transactionResult.result;
+      } else {
+        const errorMessage =
+          transactionResult &&
+          typeof transactionResult === "object" &&
+          "error" in transactionResult &&
+          transactionResult.error
+            ? transactionResult.error
+            : "Transaction rolled back";
+        throw new Error(errorMessage);
+      }
     }
+
+    // Execute the transaction callback with a mock SQL instance
+    // This ensures intermediate query results are properly assigned to user variables
+    try {
+      // Create a mock transaction SQL instance that will use the REPLAY mechanism
+      // for individual queries inside the transaction
+      const mockTransactionSql = this._createMockTransactionSql();
+
+      // Execute the wrapped callback - this will:
+      // 1. Wrap the mock SQL with _wrapSqlInstance (via _wrapTransactionCallback)
+      // 2. Execute user's code which makes queries
+      // 3. Each query will find its mock and return proper results
+      const result = await wrappedCallback(mockTransactionSql);
+
+      logger.debug(`[PostgresInstrumentation] Replay transaction callback completed with result`);
+
+      return result;
+    } catch (error: any) {
+      // If the recorded transaction was supposed to fail, this is expected
+      if (!wasCommitted) {
+        throw error;
+      }
+      // Otherwise, this is an unexpected error during replay
+      logger.error(
+        `[PostgresInstrumentation] Unexpected error during transaction replay: ${error.message}`,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Creates a minimal mock SQL instance for transaction replay.
+   * _wrapSqlInstance will wrap this and handle all the actual REPLAY logic.
+   * The mock just needs to return objects with .then() methods that can be wrapped.
+   */
+  private _createMockTransactionSql(): any {
+    const self = this;
+
+    // Helper to create a minimal thenable object
+    const createThenable = () => ({
+      then: (onFulfilled?: any, onRejected?: any) =>
+        Promise.resolve([]).then(onFulfilled, onRejected),
+    });
+
+    // Mock SQL function - returns a thenable for template literal queries
+    const mockSql: any = function () {
+      return createThenable();
+    };
+
+    // Mock unsafe method - returns a thenable
+    mockSql.unsafe = function () {
+      return createThenable();
+    };
+
+    // Savepoint needs to create a nested mock and execute the callback
+    // This mirrors how postgres.js savepoint works
+    mockSql.savepoint = function (nameOrFn: any, fn?: any) {
+      const callback = typeof nameOrFn === "function" ? nameOrFn : fn;
+      // Create a new mock SQL for the nested savepoint
+      const nestedMockSql = self._createMockTransactionSql();
+      // Wrap it and execute the callback
+      const wrappedNestedSql = self._wrapSqlInstance(nestedMockSql);
+      return Promise.resolve(callback(wrappedNestedSql));
+    };
+
+    return mockSql;
   }
 
   async handleReplaySqlQuery({

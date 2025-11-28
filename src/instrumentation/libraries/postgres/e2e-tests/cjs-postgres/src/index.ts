@@ -741,11 +741,7 @@ app.get("/test/sql-foreach", async (req: Request, res: Response) => {
   }
 });
 
-// ============================================
-// ============================================
-
-// BUG: describe() method - Returns different response in REPLAY mode (adds statement: null)
-app.get("/test/bug-describe-method", async (req: Request, res: Response) => {
+app.get("/test/describe-method", async (req: Request, res: Response) => {
   try {
     console.log("Testing describe() method...");
     const connectionString =
@@ -773,8 +769,7 @@ app.get("/test/bug-describe-method", async (req: Request, res: Response) => {
   }
 });
 
-// BUG: savepoint() - Nested transactions return null for intermediate results in REPLAY mode
-app.get("/test/bug-savepoint", async (req: Request, res: Response) => {
+app.get("/test/savepoint", async (req: Request, res: Response) => {
   try {
     console.log("Testing savepoint() nested transactions...");
     const connectionString =
@@ -820,6 +815,9 @@ app.get("/test/bug-savepoint", async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message, stack: error.stack });
   }
 });
+
+// ============================================
+// ============================================
 
 // BUG: listen()/notify() - Triggers unpatched dependency TCP warnings in REPLAY mode
 app.get("/test/bug-listen-notify", async (req: Request, res: Response) => {

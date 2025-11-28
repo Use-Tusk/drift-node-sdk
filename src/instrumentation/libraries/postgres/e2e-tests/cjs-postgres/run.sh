@@ -112,6 +112,12 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/s
 echo "  - GET /test/sql-foreach"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-foreach > /dev/null
 
+echo "  - GET /test/describe-method"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/describe-method > /dev/null
+
+echo "  - GET /test/savepoint"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/savepoint > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
