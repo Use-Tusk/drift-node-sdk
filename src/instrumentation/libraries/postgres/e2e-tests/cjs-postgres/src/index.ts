@@ -853,50 +853,6 @@ app.get("/test/listen-notify", async (req: Request, res: Response) => {
   }
 });
 
-// ============================================
-// ============================================
-
-// BUG: cancel() - Query cancellation not replayed correctly in REPLAY mode
-app.get("/test/bug-cancel", async (req: Request, res: Response) => {
-  try {
-    console.log("Testing cancel() query cancellation...");
-    const connectionString =
-      process.env.DATABASE_URL ||
-      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
-
-    const pgClient = postgres(connectionString);
-
-    // Start a long-running query
-    const query = pgClient`SELECT pg_sleep(5), * FROM cache LIMIT 1`;
-
-    // Cancel it after 100ms
-    setTimeout(() => {
-      query.cancel();
-    }, 100);
-
-    let cancelled = false;
-    let error: any = null;
-
-    try {
-      await query;
-    } catch (e: any) {
-      cancelled = true;
-      error = e.message;
-    }
-
-    await pgClient.end();
-
-    res.json({
-      message: "cancel() test completed",
-      cancelled,
-      error,
-    });
-  } catch (error: any) {
-    console.error("Error in cancel() test:", error);
-    res.status(500).json({ error: error.message, stack: error.stack });
-  }
-});
-
 // Start server
 const server = app.listen(PORT, async () => {
   try {
@@ -904,23 +860,6 @@ const server = app.listen(PORT, async () => {
     TuskDrift.markAppAsReady();
     console.log(`Server running on port ${PORT}`);
     console.log(`TUSK_DRIFT_MODE: ${process.env.TUSK_DRIFT_MODE || "DISABLED"}`);
-    console.log("Available endpoints:");
-    console.log("  GET  /health - Health check");
-    console.log("  GET  /cache/all - Get all cache entries (Drizzle)");
-    console.log("  GET  /cache/sample - Get cache sample (Drizzle + raw SQL)");
-    console.log("  GET  /cache/raw - Get cache using raw postgres template");
-    console.log("  POST /cache/execute-raw - Execute raw SQL via Drizzle");
-    console.log("  POST /cache/insert - Insert cache entry (Drizzle)");
-    console.log("  PUT  /cache/update - Update cache entry (Drizzle)");
-    console.log("  DELETE /cache/delete - Delete cache entry (Drizzle)");
-    console.log("  GET  /users/by-email - Get user by email (Drizzle)");
-    console.log("  POST /users/insert - Insert user (Drizzle)");
-    console.log(
-      "  GET  /test/execute-method - Test .execute() method for immediate query execution",
-    );
-    console.log("  GET  /test/sql-file - Test sql.file() method");
-    console.log("  GET  /test/pending-query-raw - Test PendingQuery.raw() for raw buffer results");
-    console.log("  GET  /test/sql-reserve - Test sql.reserve() for reserved connections");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

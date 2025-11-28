@@ -741,6 +741,118 @@ app.get("/test/sql-foreach", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/test/describe-method", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing describe() method...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // describe() returns statement metadata without executing the query
+    const result = await pgClient`SELECT id, key, value FROM cache WHERE id = ${1}`.describe();
+
+    console.log("describe() result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "describe() method test completed",
+      // describe returns statement info, not rows
+      statement: (result as any).statement,
+      columns: (result as any).columns,
+    });
+  } catch (error: any) {
+    console.error("Error in describe() test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+app.get("/test/savepoint", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing savepoint() nested transactions...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    let outerResult: any = null;
+    let innerResult: any = null;
+
+    const result = await pgClient.begin(async (sql) => {
+      // Outer transaction - insert a user
+      outerResult =
+        await sql`INSERT INTO users (name, email) VALUES ('Outer User', 'outer@test.com') RETURNING *`;
+
+      // Nested savepoint
+      await sql.savepoint(async (sql2) => {
+        // Inner savepoint - insert another user
+        innerResult =
+          await sql2`INSERT INTO users (name, email) VALUES ('Inner User', 'inner@test.com') RETURNING *`;
+      });
+
+      // Query both after savepoint
+      const allUsers = await sql`SELECT * FROM users WHERE email LIKE '%@test.com'`;
+      return allUsers;
+    });
+
+    console.log("savepoint() result:", result);
+
+    // Cleanup
+    await pgClient`DELETE FROM users WHERE email LIKE '%@test.com'`;
+    await pgClient.end();
+
+    res.json({
+      message: "savepoint() test completed",
+      outerResult,
+      innerResult,
+      finalResult: result,
+    });
+  } catch (error: any) {
+    console.error("Error in savepoint() test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+app.get("/test/listen-notify", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing listen() / notify()...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    let receivedPayload: string | null = null;
+
+    // Set up listener
+    const { unlisten } = await pgClient.listen("test_channel", (payload) => {
+      console.log("Received notification:", payload);
+      receivedPayload = payload;
+    });
+
+    // Send notification
+    await pgClient.notify("test_channel", "test_message_" + Date.now());
+
+    // Wait a bit for the notification to be received
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Cleanup
+    await unlisten();
+    await pgClient.end();
+
+    res.json({
+      message: "listen()/notify() test completed",
+      receivedPayload,
+    });
+  } catch (error: any) {
+    console.error("Error in listen/notify test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {
@@ -748,23 +860,6 @@ const server = app.listen(PORT, async () => {
     TuskDrift.markAppAsReady();
     console.log(`Server running on port ${PORT}`);
     console.log(`TUSK_DRIFT_MODE: ${process.env.TUSK_DRIFT_MODE || "DISABLED"}`);
-    console.log("Available endpoints:");
-    console.log("  GET  /health - Health check");
-    console.log("  GET  /cache/all - Get all cache entries (Drizzle)");
-    console.log("  GET  /cache/sample - Get cache sample (Drizzle + raw SQL)");
-    console.log("  GET  /cache/raw - Get cache using raw postgres template");
-    console.log("  POST /cache/execute-raw - Execute raw SQL via Drizzle");
-    console.log("  POST /cache/insert - Insert cache entry (Drizzle)");
-    console.log("  PUT  /cache/update - Update cache entry (Drizzle)");
-    console.log("  DELETE /cache/delete - Delete cache entry (Drizzle)");
-    console.log("  GET  /users/by-email - Get user by email (Drizzle)");
-    console.log("  POST /users/insert - Insert user (Drizzle)");
-    console.log(
-      "  GET  /test/execute-method - Test .execute() method for immediate query execution",
-    );
-    console.log("  GET  /test/sql-file - Test sql.file() method");
-    console.log("  GET  /test/pending-query-raw - Test PendingQuery.raw() for raw buffer results");
-    console.log("  GET  /test/sql-reserve - Test sql.reserve() for reserved connections");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
