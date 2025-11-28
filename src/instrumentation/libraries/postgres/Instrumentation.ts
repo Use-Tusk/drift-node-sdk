@@ -1347,33 +1347,47 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     const resultArray = Array.from(rows || []);
 
     // Attach metadata as non-enumerable properties (matching postgres.js behavior)
-    Object.defineProperties(resultArray, {
-      count: {
-        value: count !== undefined ? count : null,
+    // Only add properties that are actually present in the recorded data to avoid
+    // undefined -> null conversion which causes JSON serialization mismatches
+    if (count !== undefined) {
+      Object.defineProperty(resultArray, "count", {
+        value: count,
         writable: true,
-        enumerable: false, // Match postgres.js
-      },
-      command: {
-        value: command || null,
+        enumerable: false,
+      });
+    }
+
+    if (command !== undefined) {
+      Object.defineProperty(resultArray, "command", {
+        value: command,
         writable: true,
-        enumerable: false, // Match postgres.js
-      },
-      columns: {
-        value: columns || null,
+        enumerable: false,
+      });
+    }
+
+    if (columns !== undefined) {
+      Object.defineProperty(resultArray, "columns", {
+        value: columns,
         writable: true,
-        enumerable: false, // Match postgres.js
-      },
-      state: {
-        value: state || null,
+        enumerable: false,
+      });
+    }
+
+    if (state !== undefined) {
+      Object.defineProperty(resultArray, "state", {
+        value: state,
         writable: true,
-        enumerable: false, // Match postgres.js
-      },
-      statement: {
-        value: statement || null,
+        enumerable: false,
+      });
+    }
+
+    if (statement !== undefined) {
+      Object.defineProperty(resultArray, "statement", {
+        value: statement,
         writable: true,
-        enumerable: false, // Match postgres.js
-      },
-    });
+        enumerable: false,
+      });
+    }
 
     return resultArray;
   }
