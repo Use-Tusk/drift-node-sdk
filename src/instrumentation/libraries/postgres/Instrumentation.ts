@@ -318,7 +318,30 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       logger.debug(`[PostgresInstrumentation] Wrapped reserve method on sql instance`);
     }
 
+    // Patch the listen method for LISTEN/NOTIFY
+    if (typeof originalSql.listen === "function") {
+      (wrappedSql as any).listen = self._wrapListenMethod(originalSql);
+      logger.debug(`[PostgresInstrumentation] Wrapped listen method on sql instance`);
+    }
+
+    // Patch the notify method to use the wrapped sql instance
+    // The original notify() uses a closure over the unwrapped sql, so we need to wrap it
+    if (typeof originalSql.notify === "function") {
+      (wrappedSql as any).notify = self._wrapNotifyMethod(wrappedSql);
+      logger.debug(`[PostgresInstrumentation] Wrapped notify method on sql instance`);
+    }
+
     return wrappedSql;
+  }
+
+  private _wrapNotifyMethod(wrappedSqlInstance: any) {
+    // The notify method just runs: sql`select pg_notify(${ channel }, ${ '' + payload })`
+    // We wrap it to use the instrumented sql instance
+    return async function notify(channel: string, payload: string): Promise<any> {
+      logger.debug(`[PostgresInstrumentation] notify() called for channel ${channel}`);
+      // Use the wrapped sql instance to ensure the query is instrumented
+      return wrappedSqlInstance`select pg_notify(${channel}, ${String(payload)})`;
+    };
   }
 
   private _wrapUnsafeMethod(sqlInstance: any) {
@@ -401,6 +424,245 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
       return wrappedReservedSql;
     };
+  }
+
+  private _wrapListenMethod(sqlInstance: any) {
+    const self = this;
+    const originalListen = sqlInstance.listen;
+
+    return async function listen(
+      channelName: string,
+      callback: (payload: string) => void,
+      onlisten?: () => void,
+    ): Promise<{ state: any; unlisten: () => Promise<void> }> {
+      return self._handleListenMethod(sqlInstance, originalListen, channelName, callback, onlisten);
+    };
+  }
+
+  private async _handleListenMethod(
+    sqlInstance: any,
+    originalListen: Function,
+    channelName: string,
+    callback: (payload: string) => void,
+    onlisten?: () => void,
+  ): Promise<{ state: any; unlisten: () => Promise<void> }> {
+    const inputValue = {
+      operation: "listen",
+      channel: channelName,
+    };
+
+    if (this.mode === TuskDriftMode.REPLAY) {
+      return this._handleReplayListen(channelName, callback, onlisten, inputValue);
+    } else if (this.mode === TuskDriftMode.RECORD) {
+      return this._handleRecordListen(
+        sqlInstance,
+        originalListen,
+        channelName,
+        callback,
+        onlisten,
+        inputValue,
+      );
+    } else {
+      // DISABLED mode - just pass through
+      return originalListen.call(sqlInstance, channelName, callback, onlisten);
+    }
+  }
+
+  private async _handleRecordListen(
+    sqlInstance: any,
+    originalListen: Function,
+    channelName: string,
+    callback: (payload: string) => void,
+    onlisten: (() => void) | undefined,
+    inputValue: { operation: string; channel: string },
+  ): Promise<{ state: any; unlisten: () => Promise<void> }> {
+    const receivedPayloads: string[] = [];
+
+    // Wrap the user's callback to capture notification payloads
+    const wrappedCallback = (payload: string) => {
+      logger.debug(
+        `[PostgresInstrumentation] RECORD: Captured notification payload on channel ${channelName}: ${payload}`,
+      );
+      receivedPayloads.push(payload);
+      callback(payload);
+    };
+
+    return handleRecordMode({
+      originalFunctionCall: () => originalListen.call(sqlInstance, channelName, callback, onlisten),
+      recordModeHandler: ({ isPreAppStart }) => {
+        return SpanUtils.createAndExecuteSpan(
+          this.mode,
+          () => originalListen.call(sqlInstance, channelName, callback, onlisten),
+          {
+            name: "postgres.listen",
+            kind: SpanKind.CLIENT,
+            submodule: "listen",
+            packageType: PackageType.PG,
+            packageName: "postgres",
+            instrumentationName: this.INSTRUMENTATION_NAME,
+            inputValue: inputValue,
+            isPreAppStart,
+          },
+          async (spanInfo) => {
+            try {
+              // Call original listen with wrapped callback
+              const result = await originalListen.call(
+                sqlInstance,
+                channelName,
+                wrappedCallback,
+                onlisten,
+              );
+
+              // We can't know when all notifications are received, so we record
+              // the span with a special marker. The payloads will be captured
+              // and we'll update the span when unlisten is called.
+              // For now, we record the initial setup.
+              SpanUtils.addSpanAttributes(spanInfo.span, {
+                outputValue: {
+                  channel: channelName,
+                  state: result.state,
+                  // Note: payloads will be captured but we can't record them
+                  // until the listener receives them
+                },
+              });
+
+              // Wrap unlisten to capture final state and payloads
+              const originalUnlisten = result.unlisten;
+              const wrappedUnlisten = async () => {
+                logger.debug(
+                  `[PostgresInstrumentation] RECORD: Unlisten called, captured ${receivedPayloads.length} payloads`,
+                );
+
+                // Update span with received payloads before ending
+                SpanUtils.addSpanAttributes(spanInfo.span, {
+                  outputValue: {
+                    channel: channelName,
+                    state: result.state,
+                    payloads: receivedPayloads,
+                  },
+                });
+                SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+
+                return originalUnlisten();
+              };
+
+              return { state: result.state, unlisten: wrappedUnlisten };
+            } catch (error: any) {
+              logger.error(`[PostgresInstrumentation] RECORD listen error: ${error.message}`);
+              SpanUtils.endSpan(spanInfo.span, {
+                code: SpanStatusCode.ERROR,
+                message: error.message,
+              });
+              throw error;
+            }
+          },
+        );
+      },
+      spanKind: SpanKind.CLIENT,
+    });
+  }
+
+  private async _handleReplayListen(
+    channelName: string,
+    callback: (payload: string) => void,
+    onlisten: (() => void) | undefined,
+    inputValue: { operation: string; channel: string },
+  ): Promise<{ state: any; unlisten: () => Promise<void> }> {
+    logger.debug(
+      `[PostgresInstrumentation] REPLAY: Mocking listen for channel ${channelName} without TCP`,
+    );
+
+    const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
+
+    return handleReplayMode({
+      noOpRequestHandler: () =>
+        Promise.resolve({
+          state: { state: "I" },
+          unlisten: async () => {},
+        }),
+      isServerRequest: false,
+      replayModeHandler: () => {
+        return SpanUtils.createAndExecuteSpan(
+          this.mode,
+          () =>
+            Promise.resolve({
+              state: { state: "I" },
+              unlisten: async () => {},
+            }),
+          {
+            name: "postgres.listen",
+            kind: SpanKind.CLIENT,
+            submodule: "listen",
+            packageType: PackageType.PG,
+            packageName: "postgres",
+            instrumentationName: this.INSTRUMENTATION_NAME,
+            inputValue: inputValue,
+            isPreAppStart: this.tuskDrift.isAppReady() ? false : true,
+          },
+          async (spanInfo) => {
+            try {
+              // Find mock data for the listen span
+              const mockData = await findMockResponseAsync({
+                mockRequestData: {
+                  traceId: spanInfo.traceId,
+                  spanId: spanInfo.spanId,
+                  name: "postgres.listen",
+                  inputValue: createMockInputValue(inputValue),
+                  packageName: "postgres",
+                  instrumentationName: this.INSTRUMENTATION_NAME,
+                  submoduleName: "listen",
+                  kind: SpanKind.CLIENT,
+                  stackTrace,
+                },
+                tuskDrift: this.tuskDrift,
+              });
+
+              if (!mockData) {
+                logger.warn(
+                  `[PostgresInstrumentation] No mock data found for listen channel: ${channelName}`,
+                );
+                throw new Error(`No mock data found for listen channel: ${channelName}`);
+              }
+
+              logger.debug(
+                `[PostgresInstrumentation] Found mock data for listen: ${JSON.stringify(mockData)}`,
+              );
+
+              // Extract recorded payloads from mock data
+              const recordedPayloads: string[] = mockData.result?.payloads || [];
+              const recordedState = mockData.result?.state || { state: "I" };
+
+              // Call onlisten callback if provided
+              if (onlisten) onlisten();
+
+              // Invoke callback with recorded payloads
+              for (const payload of recordedPayloads) {
+                logger.debug(
+                  `[PostgresInstrumentation] REPLAY: Invoking callback with recorded payload: ${payload}`,
+                );
+                callback(payload);
+              }
+
+              SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+
+              return {
+                state: recordedState,
+                unlisten: async () => {
+                  logger.debug(`[PostgresInstrumentation] REPLAY: Mock unlisten called`);
+                },
+              };
+            } catch (error: any) {
+              logger.error(`[PostgresInstrumentation] REPLAY listen error: ${error.message}`);
+              SpanUtils.endSpan(spanInfo.span, {
+                code: SpanStatusCode.ERROR,
+                message: error.message,
+              });
+              throw error;
+            }
+          },
+        );
+      },
+    });
   }
 
   private _getSqlPatchFn() {
@@ -1384,9 +1646,6 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     if (!mockData) {
       const queryText = inputValue.query || "UNKNOWN_QUERY";
-      logger.warn(
-        `[PostgresInstrumentation] No mock data found for Postgres unsafe query: ${queryText}`,
-      );
       throw new Error(
         `[PostgresInstrumentation] No matching mock found for Postgres unsafe query: ${queryText}`,
       );

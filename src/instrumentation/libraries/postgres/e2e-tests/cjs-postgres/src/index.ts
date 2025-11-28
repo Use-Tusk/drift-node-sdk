@@ -816,11 +816,7 @@ app.get("/test/savepoint", async (req: Request, res: Response) => {
   }
 });
 
-// ============================================
-// ============================================
-
-// BUG: listen()/notify() - Triggers unpatched dependency TCP warnings in REPLAY mode
-app.get("/test/bug-listen-notify", async (req: Request, res: Response) => {
+app.get("/test/listen-notify", async (req: Request, res: Response) => {
   try {
     console.log("Testing listen() / notify()...");
     const connectionString =
@@ -856,6 +852,9 @@ app.get("/test/bug-listen-notify", async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message, stack: error.stack });
   }
 });
+
+// ============================================
+// ============================================
 
 // BUG: cancel() - Query cancellation not replayed correctly in REPLAY mode
 app.get("/test/bug-cancel", async (req: Request, res: Response) => {
