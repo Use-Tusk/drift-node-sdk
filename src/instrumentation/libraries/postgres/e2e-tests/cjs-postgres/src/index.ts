@@ -741,6 +741,165 @@ app.get("/test/sql-foreach", async (req: Request, res: Response) => {
   }
 });
 
+// ============================================
+// ============================================
+
+// BUG: describe() method - Returns different response in REPLAY mode (adds statement: null)
+app.get("/test/bug-describe-method", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing describe() method...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // describe() returns statement metadata without executing the query
+    const result = await pgClient`SELECT id, key, value FROM cache WHERE id = ${1}`.describe();
+
+    console.log("describe() result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "describe() method test completed",
+      // describe returns statement info, not rows
+      statement: (result as any).statement,
+      columns: (result as any).columns,
+    });
+  } catch (error: any) {
+    console.error("Error in describe() test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// BUG: savepoint() - Nested transactions return null for intermediate results in REPLAY mode
+app.get("/test/bug-savepoint", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing savepoint() nested transactions...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    let outerResult: any = null;
+    let innerResult: any = null;
+
+    const result = await pgClient.begin(async (sql) => {
+      // Outer transaction - insert a user
+      outerResult =
+        await sql`INSERT INTO users (name, email) VALUES ('Outer User', 'outer@test.com') RETURNING *`;
+
+      // Nested savepoint
+      await sql.savepoint(async (sql2) => {
+        // Inner savepoint - insert another user
+        innerResult =
+          await sql2`INSERT INTO users (name, email) VALUES ('Inner User', 'inner@test.com') RETURNING *`;
+      });
+
+      // Query both after savepoint
+      const allUsers = await sql`SELECT * FROM users WHERE email LIKE '%@test.com'`;
+      return allUsers;
+    });
+
+    console.log("savepoint() result:", result);
+
+    // Cleanup
+    await pgClient`DELETE FROM users WHERE email LIKE '%@test.com'`;
+    await pgClient.end();
+
+    res.json({
+      message: "savepoint() test completed",
+      outerResult,
+      innerResult,
+      finalResult: result,
+    });
+  } catch (error: any) {
+    console.error("Error in savepoint() test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// BUG: listen()/notify() - Triggers unpatched dependency TCP warnings in REPLAY mode
+app.get("/test/bug-listen-notify", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing listen() / notify()...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    let receivedPayload: string | null = null;
+
+    // Set up listener
+    const { unlisten } = await pgClient.listen("test_channel", (payload) => {
+      console.log("Received notification:", payload);
+      receivedPayload = payload;
+    });
+
+    // Send notification
+    await pgClient.notify("test_channel", "test_message_" + Date.now());
+
+    // Wait a bit for the notification to be received
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Cleanup
+    await unlisten();
+    await pgClient.end();
+
+    res.json({
+      message: "listen()/notify() test completed",
+      receivedPayload,
+    });
+  } catch (error: any) {
+    console.error("Error in listen/notify test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// BUG: cancel() - Query cancellation not replayed correctly in REPLAY mode
+app.get("/test/bug-cancel", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing cancel() query cancellation...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Start a long-running query
+    const query = pgClient`SELECT pg_sleep(5), * FROM cache LIMIT 1`;
+
+    // Cancel it after 100ms
+    setTimeout(() => {
+      query.cancel();
+    }, 100);
+
+    let cancelled = false;
+    let error: any = null;
+
+    try {
+      await query;
+    } catch (e: any) {
+      cancelled = true;
+      error = e.message;
+    }
+
+    await pgClient.end();
+
+    res.json({
+      message: "cancel() test completed",
+      cancelled,
+      error,
+    });
+  } catch (error: any) {
+    console.error("Error in cancel() test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {

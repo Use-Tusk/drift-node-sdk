@@ -1068,44 +1068,38 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     spanInfo: SpanInfo,
     executeBegin: () => Promise<any>,
   ): Promise<any> {
-    const promise = executeBegin();
-
-    // Use finally() which doesn't change the promise chain's behavior
-    promise.finally(() => {
-      // Create span after completion without affecting the original promise
-      promise
-        .then((result) => {
-          logger.debug(
-            `[PostgresInstrumentation] Postgres transaction completed successfully (${SpanUtils.getTraceInfo()})`,
-          );
-          try {
-            SpanUtils.addSpanAttributes(spanInfo.span, {
-              outputValue: { status: "committed", result },
-            });
-            SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-          } catch (error) {
-            logger.error(`[PostgresInstrumentation] error processing transaction response:`, error);
-          }
-        })
-        .catch((error) => {
-          logger.debug(
-            `[PostgresInstrumentation] Postgres transaction error (rolled back): ${error.message} (${SpanUtils.getTraceInfo()})`,
-          );
-          try {
-            SpanUtils.addSpanAttributes(spanInfo.span, {
-              outputValue: { status: "rolled_back", error: error.message },
-            });
-            SpanUtils.endSpan(spanInfo.span, {
-              code: SpanStatusCode.ERROR,
-              message: error.message,
-            });
-          } catch (spanError) {
-            logger.error(`[PostgresInstrumentation] error ending span:`, spanError);
-          }
-        });
-    });
-
-    return promise; // Return the original promise
+    return executeBegin()
+      .then((result) => {
+        logger.debug(
+          `[PostgresInstrumentation] Postgres transaction completed successfully (${SpanUtils.getTraceInfo()})`,
+        );
+        try {
+          SpanUtils.addSpanAttributes(spanInfo.span, {
+            outputValue: { status: "committed", result },
+          });
+          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+        } catch (error) {
+          logger.error(`[PostgresInstrumentation] error processing transaction response:`, error);
+        }
+        return result;
+      })
+      .catch((error) => {
+        logger.debug(
+          `[PostgresInstrumentation] Postgres transaction error (rolled back): ${error.message} (${SpanUtils.getTraceInfo()})`,
+        );
+        try {
+          SpanUtils.addSpanAttributes(spanInfo.span, {
+            outputValue: { status: "rolled_back", error: error.message },
+          });
+          SpanUtils.endSpan(spanInfo.span, {
+            code: SpanStatusCode.ERROR,
+            message: error.message,
+          });
+        } catch (spanError) {
+          logger.error(`[PostgresInstrumentation] error ending span:`, spanError);
+        }
+        throw error;
+      });
   }
 
   private async _handleReplayBeginTransaction(
