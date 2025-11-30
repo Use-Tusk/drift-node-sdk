@@ -763,6 +763,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
             rows,
             inputValue,
             creationContext,
+            queryObject: this, // Pass the Query object which has .state, .statement metadata
           });
         } else if (self.mode === TuskDriftMode.REPLAY) {
           return self._handleCursorReplay({
@@ -1420,9 +1421,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       const callback = typeof nameOrFn === "function" ? nameOrFn : fn;
       // Create a new mock SQL for the nested savepoint
       const nestedMockSql = self._createMockTransactionSql();
-      // Wrap it and execute the callback
-      const wrappedNestedSql = self._wrapSqlInstance(nestedMockSql);
-      return Promise.resolve(callback(wrappedNestedSql));
+      return Promise.resolve(callback(nestedMockSql));
     };
 
     return mockSql;
@@ -1713,11 +1712,13 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     rows,
     inputValue,
     creationContext,
+    queryObject,
   }: {
     originalCursor: Function;
     rows: number;
     inputValue: PostgresClientInputValue;
     creationContext: Context;
+    queryObject: any;
   }): AsyncIterable<any[]> {
     const self = this;
 
@@ -1738,6 +1739,14 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               if (!spanStarted) {
                 spanStarted = true;
                 // Create span with all required attributes
+                let spanInputValue: string | undefined;
+                try {
+                  spanInputValue = createSpanInputValue(inputValue);
+                } catch (error: any) {
+                  logger.error(`[PostgresInstrumentation] error creating span input value:`, error);
+                  spanInputValue = undefined;
+                }
+
                 spanInfo = SpanUtils.createSpan({
                   name: "postgres.cursor",
                   kind: SpanKind.CLIENT,
@@ -1748,7 +1757,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                     [TdSpanAttributes.SUBMODULE_NAME]: "cursor",
                     [TdSpanAttributes.INSTRUMENTATION_NAME]: self.INSTRUMENTATION_NAME,
                     [TdSpanAttributes.PACKAGE_TYPE]: PackageType.PG,
-                    [TdSpanAttributes.INPUT_VALUE]: createSpanInputValue(inputValue),
+                    [TdSpanAttributes.INPUT_VALUE]: spanInputValue,
                     [TdSpanAttributes.IS_PRE_APP_START]: self.tuskDrift.isAppReady() ? false : true,
                   },
                 });
@@ -1766,7 +1775,12 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                 if (result.done) {
                   // End span with collected results
                   if (spanInfo) {
-                    self._endCursorSpan(spanInfo, allRows, result, "Cursor");
+                    try {
+                      // Pass the Query object which has metadata (.state, .statement, etc.)
+                      self._endCursorSpan(spanInfo, allRows, queryObject, "Cursor");
+                    } catch (error: any) {
+                      logger.error(`[PostgresInstrumentation] error ending cursor span:`, error);
+                    }
                   }
                   return { done: true as const, value: undefined };
                 }
@@ -1778,10 +1792,14 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                 return { done: false as const, value: result.value };
               } catch (error: any) {
                 if (spanInfo) {
-                  SpanUtils.endSpan(spanInfo.span, {
-                    code: SpanStatusCode.ERROR,
-                    message: error.message,
-                  });
+                  try {
+                    SpanUtils.endSpan(spanInfo.span, {
+                      code: SpanStatusCode.ERROR,
+                      message: error.message,
+                    });
+                  } catch (error: any) {
+                    logger.error(`[PostgresInstrumentation] error ending cursor span:`, error);
+                  }
                 }
                 throw error;
               }
@@ -1791,8 +1809,17 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
           async return(): Promise<IteratorResult<any[], any>> {
             // Handle early termination (e.g., break from for-await-of loop)
             if (spanInfo) {
-              self._endCursorSpan(spanInfo, allRows, result, "Cursor terminated early");
+              try {
+                self._endCursorSpan(spanInfo, allRows, queryObject, "Cursor terminated early");
+              } catch (error: any) {
+                logger.error(`[PostgresInstrumentation] error ending cursor span:`, error);
+              }
             }
+
+            if (iterator.return) {
+              await iterator.return();
+            }
+
             return { done: true as const, value: undefined };
           },
         };
@@ -1880,6 +1907,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                 if (spanInfo) {
                   SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
                 }
+
                 return { done: true as const, value: undefined };
               }
 
