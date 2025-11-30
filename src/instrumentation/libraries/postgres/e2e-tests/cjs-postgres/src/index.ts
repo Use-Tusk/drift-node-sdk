@@ -883,6 +883,70 @@ app.get("/test/bytea-data", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/test/unsafe-cursor", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing unsafe.cursor() for cursor on unsafe queries...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Use cursor on an unsafe query
+    const cursorResults: any[] = [];
+    const cursor = pgClient.unsafe("SELECT * FROM cache").cursor(2);
+
+    for await (const rows of cursor) {
+      console.log("Unsafe cursor batch:", rows);
+      cursorResults.push(...rows);
+    }
+
+    console.log("Unsafe cursor complete, total rows:", cursorResults.length);
+
+    await pgClient.end();
+
+    res.json({
+      message: "unsafe.cursor() test completed",
+      count: cursorResults.length,
+      data: cursorResults,
+    });
+  } catch (error: any) {
+    console.error("Error in unsafe.cursor test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+app.get("/test/unsafe-foreach", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing unsafe.forEach() for row-by-row processing on unsafe queries...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Use forEach on an unsafe query
+    const forEachResults: any[] = [];
+    await pgClient.unsafe("SELECT * FROM cache LIMIT 3").forEach((row) => {
+      console.log("Unsafe forEach row:", row);
+      forEachResults.push(row);
+    });
+
+    console.log("Unsafe forEach complete, total rows:", forEachResults.length);
+
+    await pgClient.end();
+
+    res.json({
+      message: "unsafe.forEach() test completed",
+      count: forEachResults.length,
+      data: forEachResults,
+    });
+  } catch (error: any) {
+    console.error("Error in unsafe.forEach test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {

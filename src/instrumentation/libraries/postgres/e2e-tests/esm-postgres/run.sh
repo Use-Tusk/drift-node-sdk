@@ -124,6 +124,12 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/l
 echo "  - GET /test/bytea-data"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/bytea-data > /dev/null
 
+echo "  - GET /test/unsafe-cursor"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/unsafe-cursor > /dev/null
+
+echo "  - GET /test/unsafe-foreach"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/unsafe-foreach > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

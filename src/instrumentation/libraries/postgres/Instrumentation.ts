@@ -19,12 +19,8 @@ import {
   createMockInputValue,
   createSpanInputValue,
 } from "../../../core/utils/dataNormalizationUtils";
-import {
-  // convertPostgresTypes as convertPostgresTypesUtil,
-  convertPostgresTypes,
-  addOutputAttributesToSpan,
-} from "./utils/typeConversion";
-import { reconstructQueryString as reconstructQueryStringUtil } from "./utils/queryUtils";
+import { convertPostgresTypes, addOutputAttributesToSpan } from "./utils/typeConversion";
+import { reconstructQueryString } from "./utils/queryUtils";
 import { ConnectionHandler } from "./handlers/ConnectionHandler";
 
 export class PostgresInstrumentation extends TdInstrumentationBase {
@@ -554,263 +550,27 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     // Create the Query object (doesn't execute yet)
     const query = originalSql.call(this, strings, ...values);
 
+    // Reconstruct the query string for logging
+    const queryString = reconstructQueryString(strings, values);
+    const inputValue: PostgresClientInputValue = {
+      query: queryString.trim(),
+      parameters: values,
+    };
+
     // Store original .then() method BEFORE wrapping it
     const originalThen = query.then.bind(query);
 
-    const self = this;
+    // Wrap .then() and .execute() methods using helper functions
+    this._wrapThenMethod(query, originalThen, inputValue, creationContext, {
+      name: "postgres.query",
+      submodule: "query",
+      operationType: "sql",
+    });
+    this._wrapExecuteMethod(query);
 
-    // Intercept .then() to track when query is actually executed
-    query.then = function (onFulfilled?: any, onRejected?: any) {
-      // If forEach was already called, skip span creation - forEach handles its own span
-      if ((query as any)._forEachCalled) {
-        return originalThen(onFulfilled, onRejected);
-      }
-
-      // Prevent double recording - postgres.js's handler calls .catch() which triggers .then()
-      // and the user's await also triggers .then(). We only want to record once.
-      if ((query as any)._tuskRecorded) {
-        return originalThen(onFulfilled, onRejected);
-      }
-      (query as any)._tuskRecorded = true;
-
-      // Reconstruct the query string for logging
-      const queryString = reconstructQueryStringUtil(strings, values);
-
-      const inputValue: PostgresClientInputValue = {
-        query: queryString.trim(),
-        parameters: values,
-      };
-
-      // Restore the context from query creation time
-      return context.with(creationContext, () => {
-        // Now track the actual execution
-        if (self.mode === TuskDriftMode.RECORD) {
-          return handleRecordMode({
-            // When no span context, just execute normally
-            originalFunctionCall: () => originalThen(onFulfilled, onRejected),
-            recordModeHandler: ({ isPreAppStart }) => {
-              // When we have span context, wrap in span tracking
-              return SpanUtils.createAndExecuteSpan(
-                self.mode,
-                () => originalThen(onFulfilled, onRejected), // Fallback
-                {
-                  name: "postgres.query",
-                  kind: SpanKind.CLIENT,
-                  submodule: "query",
-                  packageType: PackageType.PG,
-                  instrumentationName: self.INSTRUMENTATION_NAME,
-                  packageName: "postgres",
-                  inputValue: inputValue,
-                  isPreAppStart,
-                },
-                (spanInfo) => {
-                  // Wrap the callbacks to intercept and save the result
-                  const wrappedOnFulfilled = (result: any) => {
-                    // Save the raw result to span FIRST
-                    try {
-                      logger.debug(
-                        `[PostgresInstrumentation] Postgres query completed successfully`,
-                        result,
-                      );
-                      addOutputAttributesToSpan(spanInfo, result);
-                      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-                    } catch (error) {
-                      logger.error(
-                        `[PostgresInstrumentation] error processing query response:`,
-                        error,
-                      );
-                    }
-
-                    // Then pass to user's callback if provided
-                    return onFulfilled ? onFulfilled(result) : result;
-                  };
-
-                  const wrappedOnRejected = (error: any) => {
-                    // Save error to span FIRST
-                    try {
-                      logger.debug(`[PostgresInstrumentation] Postgres query error`, error);
-                      SpanUtils.endSpan(spanInfo.span, {
-                        code: SpanStatusCode.ERROR,
-                        message: error.message,
-                      });
-                    } catch (spanError) {
-                      logger.error(`[PostgresInstrumentation] error ending span:`, spanError);
-                    }
-
-                    // Then pass to user's callback if provided, or rethrow
-                    if (onRejected) {
-                      return onRejected(error);
-                    }
-                    throw error;
-                  };
-
-                  // Execute with wrapped callbacks
-                  return originalThen(wrappedOnFulfilled, wrappedOnRejected);
-                },
-              );
-            },
-            spanKind: SpanKind.CLIENT,
-          });
-        } else if (self.mode === TuskDriftMode.REPLAY) {
-          const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
-          return handleReplayMode({
-            noOpRequestHandler: () =>
-              Promise.resolve(Object.assign([], { count: 0, command: null })),
-            isServerRequest: false,
-            replayModeHandler: () => {
-              return SpanUtils.createAndExecuteSpan(
-                self.mode,
-                () => originalThen(onFulfilled, onRejected),
-                {
-                  name: "postgres.query",
-                  kind: SpanKind.CLIENT,
-                  submodule: "query",
-                  packageType: PackageType.PG,
-                  packageName: "postgres",
-                  instrumentationName: self.INSTRUMENTATION_NAME,
-                  inputValue: inputValue,
-                  isPreAppStart: self.tuskDrift.isAppReady() ? false : true,
-                },
-                async (spanInfo) => {
-                  // Get mocked result
-                  const mockedResult = await self._handleReplayQueryOperation({
-                    inputValue,
-                    spanInfo,
-                    submodule: "query",
-                    name: "postgres.query",
-                    stackTrace,
-                    operationType: "sql",
-                  });
-
-                  // Apply user callback if provided
-                  return onFulfilled ? onFulfilled(mockedResult) : mockedResult;
-                },
-              );
-            },
-          });
-        } else {
-          // Disabled mode - just execute normally
-          return originalThen(onFulfilled, onRejected);
-        }
-      });
-    };
-
-    // Also wrap .execute() method if it exists to prevent TCP calls in REPLAY mode
-    const originalExecute = query.execute ? query.execute.bind(query) : undefined;
-
-    if (originalExecute) {
-      query.execute = function () {
-        if (self.mode === TuskDriftMode.REPLAY) {
-          // In REPLAY mode, don't call handle() which would trigger real DB execution
-          // Just return this (Query object). When awaited, the wrapped .then() will provide mocked data
-          return this;
-        } else {
-          // In RECORD/DISABLED modes, call the original execute()
-          return originalExecute.call(this);
-        }
-      };
-    }
-
-    // Wrap cursor() method to intercept cursor-based streaming
-    if (typeof query.cursor === "function") {
-      const originalCursor = query.cursor.bind(query);
-
-      // Reconstruct the query string for cursor (same as in .then())
-      const queryString = reconstructQueryStringUtil(strings, values);
-
-      query.cursor = function (rows?: number | Function, fn?: Function) {
-        // Handle both signatures: cursor(rows, fn) and cursor(fn)
-        if (typeof rows === "function") {
-          fn = rows;
-          rows = 1;
-        }
-
-        if (!rows) {
-          rows = 1;
-        }
-
-        const inputValue: PostgresClientInputValue = {
-          query: queryString.trim(),
-          parameters: values,
-        };
-
-        // If callback function provided, pass it to the handlers
-        if (typeof fn === "function") {
-          if (self.mode === TuskDriftMode.RECORD) {
-            return self._handleCursorCallbackRecord({
-              originalCursor,
-              rows,
-              inputValue,
-              creationContext,
-              userCallback: fn,
-            });
-          } else if (self.mode === TuskDriftMode.REPLAY) {
-            return self._handleCursorCallbackReplay({
-              inputValue,
-              creationContext,
-              cursorBatchSize: rows,
-              userCallback: fn,
-            });
-          } else {
-            return originalCursor(rows, fn);
-          }
-        }
-
-        // Async iterator path - needs special handling
-        if (self.mode === TuskDriftMode.RECORD) {
-          return self._handleCursorRecord({
-            originalCursor,
-            rows,
-            inputValue,
-            creationContext,
-            queryObject: this, // Pass the Query object which has .state, .statement metadata
-          });
-        } else if (self.mode === TuskDriftMode.REPLAY) {
-          return self._handleCursorReplay({
-            inputValue,
-            creationContext,
-            cursorBatchSize: rows,
-          });
-        } else {
-          return originalCursor(rows);
-        }
-      };
-    }
-
-    // Wrap forEach() method to intercept row-by-row streaming
-    if (typeof query.forEach === "function") {
-      const originalForEach = query.forEach.bind(query);
-
-      // Reconstruct the query string for forEach (same as in .then() and cursor())
-      const forEachQueryString = reconstructQueryStringUtil(strings, values);
-
-      query.forEach = function (fn: (row: any, result?: any) => void) {
-        // Mark that forEach was called so .then() wrapper skips span creation
-        (query as any)._forEachCalled = true;
-
-        const forEachInputValue: PostgresClientInputValue = {
-          query: forEachQueryString.trim(),
-          parameters: values,
-        };
-
-        if (self.mode === TuskDriftMode.RECORD) {
-          return self._handleForEachRecord({
-            originalForEach,
-            inputValue: forEachInputValue,
-            creationContext,
-            userCallback: fn,
-          });
-        } else if (self.mode === TuskDriftMode.REPLAY) {
-          return self._handleForEachReplay({
-            inputValue: forEachInputValue,
-            creationContext,
-            userCallback: fn,
-          });
-        } else {
-          return originalForEach(fn);
-        }
-      };
-    }
+    // Wrap cursor() and forEach() methods using helper functions (reuse same inputValue)
+    this._wrapCursorMethod(query, inputValue, creationContext);
+    this._wrapForEachMethod(query, inputValue, creationContext);
 
     // Return the Query object with intercepted .then(), .execute(), .cursor(), and .forEach()
     return query;
@@ -840,139 +600,23 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     // Store original .then() method
     const originalThen = unsafeQuery.then.bind(unsafeQuery);
 
-    const self = this;
-
     const inputValue: PostgresClientInputValue = {
       query: query.trim(),
       parameters: parameters || [],
       options: queryOptions,
     };
 
-    // Intercept .then() to track when query is actually executed
-    unsafeQuery.then = function (onFulfilled?: any, onRejected?: any) {
-      // Prevent double recording
-      if ((unsafeQuery as any)._tuskRecorded) {
-        return originalThen(onFulfilled, onRejected);
-      }
-      (unsafeQuery as any)._tuskRecorded = true;
+    // Wrap .then() and .execute() methods using helper functions
+    this._wrapThenMethod(unsafeQuery, originalThen, inputValue, creationContext, {
+      name: "postgres.unsafe",
+      submodule: "unsafe",
+      operationType: "unsafe",
+    });
+    this._wrapExecuteMethod(unsafeQuery);
 
-      // Restore the context from query creation time
-      return context.with(creationContext, () => {
-        if (self.mode === TuskDriftMode.RECORD) {
-          return handleRecordMode({
-            originalFunctionCall: () => originalThen(onFulfilled, onRejected),
-            recordModeHandler: ({ isPreAppStart }) => {
-              return SpanUtils.createAndExecuteSpan(
-                self.mode,
-                () => originalThen(onFulfilled, onRejected),
-                {
-                  name: "postgres.unsafe",
-                  kind: SpanKind.CLIENT,
-                  submodule: "unsafe",
-                  packageType: PackageType.PG,
-                  packageName: "postgres",
-                  instrumentationName: self.INSTRUMENTATION_NAME,
-                  inputValue: inputValue,
-                  isPreAppStart,
-                },
-                (spanInfo) => {
-                  // Wrap callbacks to intercept result
-                  const wrappedOnFulfilled = (result: any) => {
-                    try {
-                      logger.debug(
-                        `[PostgresInstrumentation] Postgres unsafe query completed successfully (${SpanUtils.getTraceInfo()})`,
-                      );
-                      addOutputAttributesToSpan(spanInfo, result);
-                      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-                    } catch (error) {
-                      logger.error(
-                        `[PostgresInstrumentation] error processing unsafe query response:`,
-                        error,
-                      );
-                    }
-                    return onFulfilled ? onFulfilled(result) : result;
-                  };
-
-                  const wrappedOnRejected = (error: any) => {
-                    try {
-                      logger.debug(
-                        `[PostgresInstrumentation] Postgres unsafe query error: ${error.message}`,
-                      );
-                      SpanUtils.endSpan(spanInfo.span, {
-                        code: SpanStatusCode.ERROR,
-                        message: error.message,
-                      });
-                    } catch (spanError) {
-                      logger.error(`[PostgresInstrumentation] error ending span:`, spanError);
-                    }
-                    if (onRejected) {
-                      return onRejected(error);
-                    }
-                    throw error;
-                  };
-
-                  return originalThen(wrappedOnFulfilled, wrappedOnRejected);
-                },
-              );
-            },
-            spanKind: SpanKind.CLIENT,
-          });
-        } else if (self.mode === TuskDriftMode.REPLAY) {
-          const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
-          return handleReplayMode({
-            noOpRequestHandler: () =>
-              Promise.resolve(Object.assign([], { count: 0, command: null })),
-            isServerRequest: false,
-            replayModeHandler: () => {
-              return SpanUtils.createAndExecuteSpan(
-                self.mode,
-                () => originalThen(onFulfilled, onRejected),
-                {
-                  name: "postgres.unsafe",
-                  kind: SpanKind.CLIENT,
-                  submodule: "unsafe",
-                  packageType: PackageType.PG,
-                  packageName: "postgres",
-                  instrumentationName: self.INSTRUMENTATION_NAME,
-                  inputValue: inputValue,
-                  isPreAppStart: self.tuskDrift.isAppReady() ? false : true,
-                },
-                async (spanInfo) => {
-                  const mockedResult = await self._handleReplayQueryOperation({
-                    inputValue,
-                    spanInfo,
-                    submodule: "unsafe",
-                    name: "postgres.unsafe",
-                    stackTrace,
-                    operationType: "unsafe",
-                  });
-
-                  return onFulfilled ? onFulfilled(mockedResult) : mockedResult;
-                },
-              );
-            },
-          });
-        } else {
-          return originalThen(onFulfilled, onRejected);
-        }
-      });
-    };
-
-    // Also wrap .execute() method if it exists to prevent TCP calls in REPLAY mode
-    const originalExecute = unsafeQuery.execute ? unsafeQuery.execute.bind(unsafeQuery) : undefined;
-
-    if (originalExecute) {
-      unsafeQuery.execute = function () {
-        if (self.mode === TuskDriftMode.REPLAY) {
-          // In REPLAY mode, don't call handle() which would trigger real DB execution
-          // Just return this (Query object). When awaited, the wrapped .then() will provide mocked data
-          return this;
-        } else {
-          // In RECORD/DISABLED modes, call the original execute()
-          return originalExecute.call(this);
-        }
-      };
-    }
+    // Wrap cursor() and forEach() methods using helper functions (same as sql template literals)
+    this._wrapCursorMethod(unsafeQuery, inputValue, creationContext);
+    this._wrapForEachMethod(unsafeQuery, inputValue, creationContext);
 
     return unsafeQuery;
   }
@@ -2072,6 +1716,269 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         },
       });
     });
+  }
+
+  /**
+   * Wraps a query's .then() method to add instrumentation.
+   * This is reusable for both sql template literals and unsafe() queries.
+   */
+  private _wrapThenMethod(
+    query: any,
+    originalThen: Function,
+    inputValue: PostgresClientInputValue,
+    creationContext: Context,
+    spanConfig: {
+      name: string;
+      submodule: string;
+      operationType: string;
+    },
+  ): void {
+    const self = this;
+
+    query.then = function (onFulfilled?: any, onRejected?: any) {
+      // If forEach was already called, skip span creation - forEach handles its own span
+      if ((query as any)._forEachCalled) {
+        return originalThen(onFulfilled, onRejected);
+      }
+
+      // Prevent double recording
+      if ((query as any)._tuskRecorded) {
+        return originalThen(onFulfilled, onRejected);
+      }
+      (query as any)._tuskRecorded = true;
+
+      // Restore the context from query creation time
+      return context.with(creationContext, () => {
+        if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalThen(onFulfilled, onRejected),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalThen(onFulfilled, onRejected),
+                {
+                  name: spanConfig.name,
+                  kind: SpanKind.CLIENT,
+                  submodule: spanConfig.submodule,
+                  packageType: PackageType.PG,
+                  packageName: "postgres",
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart,
+                },
+                (spanInfo) => {
+                  // Wrap callbacks to intercept result
+                  const wrappedOnFulfilled = (result: any) => {
+                    try {
+                      logger.debug(
+                        `[PostgresInstrumentation] Postgres ${spanConfig.operationType} query completed successfully (${SpanUtils.getTraceInfo()})`,
+                      );
+                      addOutputAttributesToSpan(spanInfo, result);
+                      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+                    } catch (error) {
+                      logger.error(
+                        `[PostgresInstrumentation] error processing ${spanConfig.operationType} query response:`,
+                        error,
+                      );
+                    }
+                    return onFulfilled ? onFulfilled(result) : result;
+                  };
+
+                  const wrappedOnRejected = (error: any) => {
+                    try {
+                      logger.debug(
+                        `[PostgresInstrumentation] Postgres ${spanConfig.operationType} query error: ${error.message}`,
+                      );
+                      SpanUtils.endSpan(spanInfo.span, {
+                        code: SpanStatusCode.ERROR,
+                        message: error.message,
+                      });
+                    } catch (spanError) {
+                      logger.error(`[PostgresInstrumentation] error ending span:`, spanError);
+                    }
+                    if (onRejected) {
+                      return onRejected(error);
+                    }
+                    throw error;
+                  };
+
+                  return originalThen(wrappedOnFulfilled, wrappedOnRejected);
+                },
+              );
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["PostgresInstrumentation"]);
+          return handleReplayMode({
+            noOpRequestHandler: () =>
+              Promise.resolve(Object.assign([], { count: 0, command: null })),
+            isServerRequest: false,
+            replayModeHandler: () => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalThen(onFulfilled, onRejected),
+                {
+                  name: spanConfig.name,
+                  kind: SpanKind.CLIENT,
+                  submodule: spanConfig.submodule,
+                  packageType: PackageType.PG,
+                  packageName: "postgres",
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart: self.tuskDrift.isAppReady() ? false : true,
+                },
+                async (spanInfo) => {
+                  const mockedResult = await self._handleReplayQueryOperation({
+                    inputValue,
+                    spanInfo,
+                    submodule: spanConfig.submodule,
+                    name: spanConfig.name,
+                    stackTrace,
+                    operationType: spanConfig.operationType,
+                  });
+
+                  return onFulfilled ? onFulfilled(mockedResult) : mockedResult;
+                },
+              );
+            },
+          });
+        } else {
+          return originalThen(onFulfilled, onRejected);
+        }
+      });
+    };
+  }
+
+  /**
+   * Wraps a query's .execute() method to prevent TCP calls in REPLAY mode.
+   * This is reusable for both sql template literals and unsafe() queries.
+   */
+  private _wrapExecuteMethod(query: any): void {
+    const self = this;
+    const originalExecute = query.execute ? query.execute.bind(query) : undefined;
+
+    if (originalExecute) {
+      query.execute = function () {
+        if (self.mode === TuskDriftMode.REPLAY) {
+          // In REPLAY mode, don't call handle() which would trigger real DB execution
+          // Just return this (Query object). When awaited, the wrapped .then() will provide mocked data
+          return this;
+        } else {
+          // In RECORD/DISABLED modes, call the original execute()
+          return originalExecute.call(this);
+        }
+      };
+    }
+  }
+
+  /**
+   * Wraps a query's cursor() method to add instrumentation.
+   * This is reusable for both sql template literals and unsafe() queries.
+   */
+  private _wrapCursorMethod(
+    query: any,
+    inputValue: PostgresClientInputValue,
+    creationContext: Context,
+  ): void {
+    if (typeof query.cursor !== "function") {
+      return;
+    }
+
+    const self = this;
+    const originalCursor = query.cursor.bind(query);
+
+    query.cursor = function (rows?: number | Function, fn?: Function) {
+      // Handle both signatures: cursor(rows, fn) and cursor(fn)
+      if (typeof rows === "function") {
+        fn = rows;
+        rows = 1;
+      }
+
+      if (!rows) {
+        rows = 1;
+      }
+
+      // If callback function provided, pass it to the handlers
+      if (typeof fn === "function") {
+        if (self.mode === TuskDriftMode.RECORD) {
+          return self._handleCursorCallbackRecord({
+            originalCursor,
+            rows,
+            inputValue,
+            creationContext,
+            userCallback: fn,
+          });
+        } else if (self.mode === TuskDriftMode.REPLAY) {
+          return self._handleCursorCallbackReplay({
+            inputValue,
+            creationContext,
+            cursorBatchSize: rows,
+            userCallback: fn,
+          });
+        } else {
+          return originalCursor(rows, fn);
+        }
+      }
+
+      // Async iterator path - needs special handling
+      if (self.mode === TuskDriftMode.RECORD) {
+        return self._handleCursorRecord({
+          originalCursor,
+          rows,
+          inputValue,
+          creationContext,
+          queryObject: this, // Pass the Query object which has .state, .statement metadata
+        });
+      } else if (self.mode === TuskDriftMode.REPLAY) {
+        return self._handleCursorReplay({
+          inputValue,
+          creationContext,
+          cursorBatchSize: rows,
+        });
+      } else {
+        return originalCursor(rows);
+      }
+    };
+  }
+
+  /**
+   * Wraps a query's forEach() method to add instrumentation.
+   * This is reusable for both sql template literals and unsafe() queries.
+   */
+  private _wrapForEachMethod(
+    query: any,
+    inputValue: PostgresClientInputValue,
+    creationContext: Context,
+  ): void {
+    if (typeof query.forEach !== "function") {
+      return;
+    }
+
+    const self = this;
+    const originalForEach = query.forEach.bind(query);
+
+    query.forEach = function (fn: (row: any, result?: any) => void) {
+      // Mark that forEach was called so .then() wrapper skips span creation
+      (query as any)._forEachCalled = true;
+
+      if (self.mode === TuskDriftMode.RECORD) {
+        return self._handleForEachRecord({
+          originalForEach,
+          inputValue,
+          creationContext,
+          userCallback: fn,
+        });
+      } else if (self.mode === TuskDriftMode.REPLAY) {
+        return self._handleForEachReplay({
+          inputValue,
+          creationContext,
+          userCallback: fn,
+        });
+      } else {
+        return originalForEach(fn);
+      }
+    };
   }
 
   private _wrap(target: any, propertyName: string, wrapper: (original: any) => any): void {
