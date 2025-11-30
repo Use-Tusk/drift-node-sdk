@@ -121,6 +121,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/s
 echo "  - GET /test/listen-notify"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/listen-notify > /dev/null
 
+echo "  - GET /test/bytea-data"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/bytea-data > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

@@ -137,6 +137,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
           mockSql.unsafe = () => Promise.resolve(Object.assign([], { count: 0, command: null }));
           mockSql.begin = () => Promise.resolve();
           mockSql.end = () => Promise.resolve();
+          mockSql.file = () => Promise.resolve(Object.assign([], { count: 0, command: null }));
+          mockSql.reserve = () => Promise.resolve(mockSql); // Returns itself like a reserved connection
+          mockSql.listen = () =>
+            Promise.resolve({ state: { state: "I" }, unlisten: async () => {} });
+          mockSql.notify = () => Promise.resolve();
 
           return mockSql; // Returns a function-like object, not a Promise
         },
@@ -880,7 +885,6 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               inputValue,
               creationContext,
               userCallback: fn,
-              originalThen,
             });
           } else if (self.mode === TuskDriftMode.REPLAY) {
             return self._handleCursorCallbackReplay({
@@ -1739,8 +1743,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     const { rows, count, command, columns, state, statement } = result;
 
-    // Reconstruct Result-like object
-    const resultArray = Array.from(rows || []);
+    // Reconstruct Result-like object, converting serialized Buffers back to actual Buffers
+    const resultArray = Array.from((rows || []).map((row: any) => this.reconstructBuffers(row)));
 
     // Attach metadata as non-enumerable properties (matching postgres.js behavior)
     // Only add properties that are actually present in the recorded data to avoid
@@ -1786,6 +1790,38 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     }
 
     return resultArray;
+  }
+
+  /**
+   * Recursively reconstructs Buffer objects from their JSON-serialized format.
+   * When Buffers are JSON.stringify'd, they become { type: "Buffer", data: [...] }.
+   * This method converts them back to actual Buffer instances.
+   */
+  private reconstructBuffers(value: any): any {
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    // Detect serialized Buffer: { type: "Buffer", data: [...] }
+    if (typeof value === "object" && value.type === "Buffer" && Array.isArray(value.data)) {
+      return Buffer.from(value.data);
+    }
+
+    // Recursively handle arrays
+    if (Array.isArray(value)) {
+      return value.map((item) => this.reconstructBuffers(item));
+    }
+
+    // Recursively handle plain objects
+    if (typeof value === "object") {
+      const result: any = {};
+      for (const key of Object.keys(value)) {
+        result[key] = this.reconstructBuffers(value[key]);
+      }
+      return result;
+    }
+
+    return value;
   }
 
   private _addOutputAttributesToSpan(spanInfo: SpanInfo, result?: any): void {
@@ -1843,42 +1879,22 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     inputValue,
     creationContext,
     userCallback,
-    originalThen,
   }: {
     originalCursor: Function;
     rows: number;
     inputValue: PostgresClientInputValue;
     creationContext: Context;
     userCallback: Function;
-    originalThen?: Function;
   }): Promise<void> {
     const self = this;
 
     return context.with(creationContext, () => {
       return handleRecordMode({
-        originalFunctionCall: async () => {
-          const wrappedCallback = (batchRows: any[]) => {
-            return userCallback(batchRows);
-          };
-
-          const cursorPromise = originalCursor(rows, wrappedCallback);
-          if (originalThen) {
-            await originalThen.call(cursorPromise, (result: any) => result);
-          } else {
-            await cursorPromise;
-          }
-        },
+        originalFunctionCall: () => originalCursor(rows, userCallback),
         recordModeHandler: ({ isPreAppStart }) => {
           return SpanUtils.createAndExecuteSpan(
             self.mode,
-            () => {
-              return self._executeAndRecordCursorCallback({
-                originalCursor,
-                rows,
-                userCallback,
-                originalThen,
-              });
-            },
+            () => originalCursor(rows, userCallback),
             {
               name: "postgres.cursor",
               kind: SpanKind.CLIENT,
@@ -1894,7 +1910,6 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                 originalCursor,
                 rows,
                 userCallback,
-                originalThen,
                 spanInfo,
               });
             },
@@ -1909,13 +1924,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     originalCursor,
     rows,
     userCallback,
-    originalThen,
     spanInfo,
   }: {
     originalCursor: Function;
     rows: number;
     userCallback: Function;
-    originalThen?: Function;
     spanInfo?: SpanInfo;
   }): Promise<void> {
     const allRows: any[] = [];
@@ -1927,12 +1940,8 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       };
 
       const cursorPromise = originalCursor(rows, wrappedCallback);
-      let result: any;
-      if (originalThen) {
-        result = await originalThen.call(cursorPromise, (result: any) => result);
-      } else {
-        result = await cursorPromise;
-      }
+      (cursorPromise as any)._tuskRecorded = true;
+      const result = await cursorPromise;
 
       if (spanInfo) {
         const resultArray = Object.assign(allRows, {

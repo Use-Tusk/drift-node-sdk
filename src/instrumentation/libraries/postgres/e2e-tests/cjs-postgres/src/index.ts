@@ -853,6 +853,36 @@ app.get("/test/listen-notify", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/test/bytea-data", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing bytea/binary data handling...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Test bytea data
+    const binaryData = Buffer.from("Hello Binary World!");
+    const result = await pgClient`
+      SELECT ${binaryData}::bytea as binary_col
+    `;
+
+    console.log("Bytea result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "Bytea test completed",
+      data: result[0],
+      binaryAsString: result[0]?.binary_col?.toString?.() || String(result[0]?.binary_col),
+    });
+  } catch (error: any) {
+    console.error("Error in bytea test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {
