@@ -130,6 +130,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/u
 echo "  - GET /test/unsafe-foreach"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/unsafe-foreach > /dev/null
 
+echo "  - GET /test/large-object"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/large-object > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

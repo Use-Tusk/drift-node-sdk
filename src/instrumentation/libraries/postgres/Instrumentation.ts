@@ -155,8 +155,9 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
 
     // Patch the begin method for transaction support
     if (typeof originalSql.begin === "function") {
-      (wrappedSql as any).begin = self._wrapBeginMethod(originalSql);
-      logger.debug(`[PostgresInstrumentation] Wrapped begin method on sql instance`);
+      const wrappedBegin = self._wrapBeginMethod(originalSql);
+      originalSql.begin = wrappedBegin; // Mutate original!
+      (wrappedSql as any).begin = wrappedBegin;
     }
 
     // Patch the file method for loading queries from files

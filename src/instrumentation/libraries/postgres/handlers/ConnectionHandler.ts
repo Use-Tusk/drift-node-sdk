@@ -4,7 +4,6 @@ import { TuskDriftMode } from "../../../../core/TuskDrift";
 import { handleRecordMode, handleReplayMode } from "../../../core/utils/modeUtils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../../core/utils";
-import { sanitizeConnectionString, sanitizeConnectionOptions } from "../utils/queryUtils";
 
 export class ConnectionHandler {
   constructor(
@@ -21,10 +20,8 @@ export class ConnectionHandler {
     const options = typeof args[0] === "string" ? args[1] : args[0];
 
     const inputValue = {
-      connectionString: connectionString
-        ? sanitizeConnectionString(connectionString)
-        : undefined,
-      options: options ? sanitizeConnectionOptions(options) : undefined,
+      connectionString: connectionString,
+      options: options,
     };
 
     // Handle replay mode

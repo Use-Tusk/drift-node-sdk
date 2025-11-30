@@ -947,6 +947,42 @@ app.get("/test/unsafe-foreach", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/test/large-object", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing largeObject() API...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Create and use a large object
+    const lo = await pgClient.largeObject();
+
+    // Write some data
+    await lo.write(Buffer.from("Hello Large Object!"));
+
+    // Seek back to start
+    await lo.seek(0);
+
+    // Read the data
+    const readResult: any = await lo.read(100);
+
+    // Close the large object
+    await lo.close();
+
+    await pgClient.end();
+
+    res.json({
+      message: "largeObject() test completed",
+      data: readResult[0]?.data?.toString() || "no data",
+    });
+  } catch (error: any) {
+    console.error("Error in largeObject test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {
