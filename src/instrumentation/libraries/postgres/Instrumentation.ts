@@ -12,8 +12,6 @@ import {
   PostgresClientInputValue,
   PostgresInstrumentationConfig,
   PostgresConvertedResult,
-  PostgresOutputValueType,
-  isPostgresOutputValueType,
 } from "./types";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger, isEsm } from "../../../core/utils";
@@ -21,16 +19,30 @@ import {
   createMockInputValue,
   createSpanInputValue,
 } from "../../../core/utils/dataNormalizationUtils";
+import {
+  // convertPostgresTypes as convertPostgresTypesUtil,
+  convertPostgresTypes,
+  addOutputAttributesToSpan,
+} from "./utils/typeConversion";
+import { reconstructQueryString as reconstructQueryStringUtil } from "./utils/queryUtils";
+import { ConnectionHandler } from "./handlers/ConnectionHandler";
 
 export class PostgresInstrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "PostgresInstrumentation";
   private mode: TuskDriftMode;
   private tuskDrift: TuskDriftCore;
+  private connectionHandler: ConnectionHandler;
 
   constructor(config: PostgresInstrumentationConfig = {}) {
     super("postgres", config);
     this.mode = config.mode || TuskDriftMode.DISABLED;
     this.tuskDrift = TuskDriftCore.getInstance();
+    this.connectionHandler = new ConnectionHandler(
+      this.mode,
+      this.INSTRUMENTATION_NAME,
+      () => this.tuskDrift.isAppReady(),
+      (sqlInstance: any) => this._wrapSqlInstance(sqlInstance),
+    );
   }
 
   init(): TdInstrumentationNodeModule[] {
@@ -113,167 +125,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
   }
 
   private _handlePostgresConnection(originalFunction: Function, args: any[]): any {
-    // Extract connection parameters from args
-    // postgres() signature: postgres(url, options?) or postgres(options)
-    const connectionString = typeof args[0] === "string" ? args[0] : undefined;
-    const options = typeof args[0] === "string" ? args[1] : args[0];
-
-    const inputValue = {
-      connectionString: connectionString
-        ? this._sanitizeConnectionString(connectionString)
-        : undefined,
-      options: options ? this._sanitizeConnectionOptions(options) : undefined,
-    };
-
-    // Handle replay mode
-    if (this.mode === TuskDriftMode.REPLAY) {
-      return handleReplayMode({
-        noOpRequestHandler: () => {
-          // Mock SQL function that looks like a postgres client
-          const mockSql: any = () =>
-            Promise.resolve(Object.assign([], { count: 0, command: null }));
-
-          // Add essential methods
-          mockSql.unsafe = () => Promise.resolve(Object.assign([], { count: 0, command: null }));
-          mockSql.begin = () => Promise.resolve();
-          mockSql.end = () => Promise.resolve();
-          mockSql.file = () => Promise.resolve(Object.assign([], { count: 0, command: null }));
-          mockSql.reserve = () => Promise.resolve(mockSql); // Returns itself like a reserved connection
-          mockSql.listen = () =>
-            Promise.resolve({ state: { state: "I" }, unlisten: async () => {} });
-          mockSql.notify = () => Promise.resolve();
-
-          return mockSql; // Returns a function-like object, not a Promise
-        },
-        isServerRequest: false,
-        replayModeHandler: () => {
-          return SpanUtils.createAndExecuteSpan(
-            this.mode,
-            () => {
-              const sqlInstance = originalFunction(...args);
-              return this._wrapSqlInstance(sqlInstance);
-            },
-            {
-              name: "postgres.connect",
-              kind: SpanKind.CLIENT,
-              submodule: "connect",
-              packageType: PackageType.PG,
-              packageName: "postgres",
-              instrumentationName: this.INSTRUMENTATION_NAME,
-              inputValue: inputValue,
-              isPreAppStart: this.tuskDrift.isAppReady() ? false : true,
-            },
-            (spanInfo) => {
-              return this._handleReplayConnect(originalFunction, args);
-            },
-          );
-        },
-      });
-    } else if (this.mode === TuskDriftMode.RECORD) {
-      return handleRecordMode({
-        originalFunctionCall: () => {
-          const sqlInstance = originalFunction(...args);
-          return this._wrapSqlInstance(sqlInstance);
-        },
-        recordModeHandler: ({ isPreAppStart }) => {
-          return SpanUtils.createAndExecuteSpan(
-            this.mode,
-            () => {
-              const sqlInstance = originalFunction(...args);
-              return this._wrapSqlInstance(sqlInstance);
-            },
-            {
-              name: "postgres.connect",
-              kind: SpanKind.CLIENT,
-              submodule: "connect",
-              packageType: PackageType.PG,
-              packageName: "postgres",
-              instrumentationName: this.INSTRUMENTATION_NAME,
-              inputValue: inputValue,
-              isPreAppStart,
-            },
-            (spanInfo) => {
-              return this._handleRecordConnect(spanInfo, originalFunction, args);
-            },
-          );
-        },
-        spanKind: SpanKind.CLIENT,
-      });
-    } else {
-      return originalFunction(...args);
-    }
-  }
-
-  private _sanitizeConnectionString(connectionString: string): string {
-    try {
-      // Remove password from connection string for security
-      const url = new URL(connectionString);
-      if (url.password) {
-        url.password = "***";
-      }
-      return url.toString();
-    } catch {
-      return "[INVALID_URL]";
-    }
-  }
-
-  private _sanitizeConnectionOptions(options: any): any {
-    if (!options || typeof options !== "object") {
-      return options;
-    }
-
-    const sanitized = { ...options };
-
-    // Remove sensitive fields
-    if (sanitized.password) {
-      sanitized.password = "***";
-    }
-    if (sanitized.ssl && typeof sanitized.ssl === "object") {
-      sanitized.ssl = { ...sanitized.ssl };
-      if (sanitized.ssl.key) sanitized.ssl.key = "***";
-      if (sanitized.ssl.cert) sanitized.ssl.cert = "***";
-      if (sanitized.ssl.ca) sanitized.ssl.ca = "***";
-    }
-
-    return sanitized;
-  }
-
-  private _handleRecordConnect(spanInfo: SpanInfo, originalFunction: Function, args: any[]): any {
-    const sqlInstance = originalFunction(...args);
-    const wrappedInstance = this._wrapSqlInstance(sqlInstance);
-
-    try {
-      logger.debug(
-        `[PostgresInstrumentation] Postgres connection created successfully (${SpanUtils.getTraceInfo()})`,
-      );
-      SpanUtils.addSpanAttributes(spanInfo.span, {
-        outputValue: { connected: true },
-      });
-      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-    } catch (error) {
-      logger.error(`[PostgresInstrumentation] error adding span attributes:`, error);
-    }
-
-    return wrappedInstance;
-  }
-
-  private _handleReplayConnect(originalFunction: Function, args: any[]): any {
-    logger.debug(`[PostgresInstrumentation] Replaying Postgres connection`);
-
-    // In replay mode, we still create the sql instance but wrap it
-    // The actual queries will be mocked when they're executed
-    try {
-      const sqlInstance = originalFunction(...args);
-      const wrappedInstance = this._wrapSqlInstance(sqlInstance);
-
-      return wrappedInstance;
-    } catch (error: any) {
-      logger.debug(
-        `[PostgresInstrumentation] Postgres connection error in replay: ${error.message}`,
-      );
-
-      throw error;
-    }
+    return this.connectionHandler.handlePostgresConnection(originalFunction, args);
   }
 
   private _wrapSqlInstance(sqlInstance: any): any {
@@ -518,18 +370,22 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                 onlisten,
               );
 
-              // We can't know when all notifications are received, so we record
-              // the span with a special marker. The payloads will be captured
-              // and we'll update the span when unlisten is called.
-              // For now, we record the initial setup.
-              SpanUtils.addSpanAttributes(spanInfo.span, {
-                outputValue: {
-                  channel: channelName,
-                  state: result.state,
-                  // Note: payloads will be captured but we can't record them
-                  // until the listener receives them
-                },
-              });
+              try {
+                // We can't know when all notifications are received, so we record
+                // the span with a special marker. The payloads will be captured
+                // and we'll update the span when unlisten is called.
+                // For now, we record the initial setup.
+                SpanUtils.addSpanAttributes(spanInfo.span, {
+                  outputValue: {
+                    channel: channelName,
+                    state: result.state,
+                    // Note: payloads will be captured but we can't record them
+                    // until the listener receives them
+                  },
+                });
+              } catch (error: any) {
+                logger.error(`[PostgresInstrumentation] error adding span attributes:`, error);
+              }
 
               // Wrap unlisten to capture final state and payloads
               const originalUnlisten = result.unlisten;
@@ -538,15 +394,19 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   `[PostgresInstrumentation] RECORD: Unlisten called, captured ${receivedPayloads.length} payloads`,
                 );
 
-                // Update span with received payloads before ending
-                SpanUtils.addSpanAttributes(spanInfo.span, {
-                  outputValue: {
-                    channel: channelName,
-                    state: result.state,
-                    payloads: receivedPayloads,
-                  },
-                });
-                SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+                try {
+                  // Update span with received payloads before ending
+                  SpanUtils.addSpanAttributes(spanInfo.span, {
+                    outputValue: {
+                      channel: channelName,
+                      state: result.state,
+                      payloads: receivedPayloads,
+                    },
+                  });
+                  SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+                } catch (error: any) {
+                  logger.error(`[PostgresInstrumentation] error adding span attributes:`, error);
+                }
 
                 return originalUnlisten();
               };
@@ -554,10 +414,14 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               return { state: result.state, unlisten: wrappedUnlisten };
             } catch (error: any) {
               logger.error(`[PostgresInstrumentation] RECORD listen error: ${error.message}`);
-              SpanUtils.endSpan(spanInfo.span, {
-                code: SpanStatusCode.ERROR,
-                message: error.message,
-              });
+              try {
+                SpanUtils.endSpan(spanInfo.span, {
+                  code: SpanStatusCode.ERROR,
+                  message: error.message,
+                });
+              } catch (error: any) {
+                logger.error(`[PostgresInstrumentation] error ending span:`, error);
+              }
               throw error;
             }
           },
@@ -607,19 +471,12 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
           async (spanInfo) => {
             try {
               // Find mock data for the listen span
-              const mockData = await findMockResponseAsync({
-                mockRequestData: {
-                  traceId: spanInfo.traceId,
-                  spanId: spanInfo.spanId,
-                  name: "postgres.listen",
-                  inputValue: createMockInputValue(inputValue),
-                  packageName: "postgres",
-                  instrumentationName: this.INSTRUMENTATION_NAME,
-                  submoduleName: "listen",
-                  kind: SpanKind.CLIENT,
-                  stackTrace,
-                },
-                tuskDrift: this.tuskDrift,
+              const mockData = await this._findMockData({
+                spanInfo,
+                name: "postgres.listen",
+                inputValue,
+                submoduleName: "listen",
+                stackTrace,
               });
 
               if (!mockData) {
@@ -717,7 +574,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       (query as any)._tuskRecorded = true;
 
       // Reconstruct the query string for logging
-      const queryString = self._reconstructQueryString(strings, values);
+      const queryString = reconstructQueryStringUtil(strings, values);
 
       const inputValue: PostgresClientInputValue = {
         query: queryString.trim(),
@@ -755,7 +612,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                         `[PostgresInstrumentation] Postgres query completed successfully`,
                         result,
                       );
-                      self._addOutputAttributesToSpan(spanInfo, result);
+                      addOutputAttributesToSpan(spanInfo, result);
                       SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
                     } catch (error) {
                       logger.error(
@@ -816,12 +673,13 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                 },
                 async (spanInfo) => {
                   // Get mocked result
-                  const mockedResult = await self.handleReplaySqlQuery({
+                  const mockedResult = await self._handleReplayQueryOperation({
                     inputValue,
                     spanInfo,
                     submodule: "query",
                     name: "postgres.query",
                     stackTrace,
+                    operationType: "sql",
                   });
 
                   // Apply user callback if provided
@@ -858,7 +716,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       const originalCursor = query.cursor.bind(query);
 
       // Reconstruct the query string for cursor (same as in .then())
-      const queryString = self._reconstructQueryString(strings, values);
+      const queryString = reconstructQueryStringUtil(strings, values);
 
       query.cursor = function (rows?: number | Function, fn?: Function) {
         // Handle both signatures: cursor(rows, fn) and cursor(fn)
@@ -923,7 +781,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       const originalForEach = query.forEach.bind(query);
 
       // Reconstruct the query string for forEach (same as in .then() and cursor())
-      const forEachQueryString = self._reconstructQueryString(strings, values);
+      const forEachQueryString = reconstructQueryStringUtil(strings, values);
 
       query.forEach = function (fn: (row: any, result?: any) => void) {
         // Mark that forEach was called so .then() wrapper skips span creation
@@ -1023,7 +881,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                       logger.debug(
                         `[PostgresInstrumentation] Postgres unsafe query completed successfully (${SpanUtils.getTraceInfo()})`,
                       );
-                      self._addOutputAttributesToSpan(spanInfo, result);
+                      addOutputAttributesToSpan(spanInfo, result);
                       SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
                     } catch (error) {
                       logger.error(
@@ -1079,13 +937,15 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: self.tuskDrift.isAppReady() ? false : true,
                 },
                 async (spanInfo) => {
-                  const mockedResult = await self.handleReplayUnsafeQuery({
+                  const mockedResult = await self._handleReplayQueryOperation({
                     inputValue,
                     spanInfo,
                     submodule: "unsafe",
                     name: "postgres.unsafe",
                     stackTrace,
+                    operationType: "unsafe",
                   });
+
                   return onFulfilled ? onFulfilled(mockedResult) : mockedResult;
                 },
               );
@@ -1182,7 +1042,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                       logger.debug(
                         `[PostgresInstrumentation] Postgres file query completed successfully (${SpanUtils.getTraceInfo()})`,
                       );
-                      self._addOutputAttributesToSpan(spanInfo, result);
+                      addOutputAttributesToSpan(spanInfo, result);
                       SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
                     } catch (error) {
                       logger.error(
@@ -1238,13 +1098,21 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: self.tuskDrift.isAppReady() ? false : true,
                 },
                 async (spanInfo) => {
-                  const mockedResult = await self.handleReplayFileQuery({
+                  const mockedResult = await self._handleReplayQueryOperation({
                     inputValue,
                     spanInfo,
                     submodule: "file",
                     name: "postgres.file",
                     stackTrace,
+                    operationType: "file",
                   });
+
+                  if (!mockedResult) {
+                    throw new Error(
+                      `No mock data found for Postgres file query: ${inputValue.query}`,
+                    );
+                  }
+
                   return onFulfilled ? onFulfilled(mockedResult) : mockedResult;
                 },
               );
@@ -1444,23 +1312,18 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
   ): Promise<any> {
     logger.debug(`[PostgresInstrumentation] Replaying Postgres transaction`);
 
+    const transactionInputValue = {
+      query: "BEGIN",
+      options: options ? { transactionOptions: options } : undefined,
+    };
+
     // Find mock data for the transaction to determine if it should succeed or fail
-    const mockData = await findMockResponseAsync({
-      mockRequestData: {
-        traceId: spanInfo.traceId,
-        spanId: spanInfo.spanId,
-        name: "postgres.begin",
-        inputValue: createMockInputValue({
-          query: "BEGIN",
-          options: options ? { transactionOptions: options } : undefined,
-        }),
-        packageName: "postgres",
-        instrumentationName: this.INSTRUMENTATION_NAME,
-        submoduleName: "transaction",
-        kind: SpanKind.CLIENT,
-        stackTrace,
-      },
-      tuskDrift: this.tuskDrift,
+    const mockData = await this._findMockData({
+      spanInfo,
+      name: "postgres.begin",
+      inputValue: transactionInputValue,
+      submoduleName: "transaction",
+      stackTrace,
     });
 
     if (!mockData) {
@@ -1565,22 +1428,24 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
     return mockSql;
   }
 
-  async handleReplaySqlQuery({
-    inputValue,
+  /**
+   * Generic helper to find mock data for replay operations.
+   * Consolidates the common findMockResponseAsync pattern used across multiple handlers.
+   */
+  private async _findMockData({
     spanInfo,
-    submodule,
     name,
+    inputValue,
+    submoduleName,
     stackTrace,
   }: {
-    inputValue: PostgresClientInputValue;
     spanInfo: SpanInfo;
-    submodule: string;
     name: string;
+    inputValue: any;
+    submoduleName: string;
     stackTrace?: string;
-  }): Promise<PostgresConvertedResult | undefined> {
-    logger.debug(`[PostgresInstrumentation] Replaying Postgres sql query`);
-
-    const mockData = await findMockResponseAsync({
+  }): Promise<any> {
+    return findMockResponseAsync({
       mockRequestData: {
         traceId: spanInfo.traceId,
         spanId: spanInfo.spanId,
@@ -1588,289 +1453,84 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         inputValue: createMockInputValue(inputValue),
         packageName: "postgres",
         instrumentationName: this.INSTRUMENTATION_NAME,
-        submoduleName: submodule,
+        submoduleName,
         kind: SpanKind.CLIENT,
         stackTrace,
       },
       tuskDrift: this.tuskDrift,
     });
-
-    if (!mockData) {
-      const queryText = inputValue.query || "UNKNOWN_QUERY";
-      logger.warn(
-        `[PostgresInstrumentation] No mock data found for Postgres sql query: ${queryText}`,
-      );
-      throw new Error(
-        `[PostgresInstrumentation] No matching mock found for Postgres sql query: ${queryText}`,
-      );
-    }
-
-    logger.debug(
-      `[PostgresInstrumentation] Found mock data for Postgres sql query: ${JSON.stringify(mockData)}`,
-    );
-
-    const processedResult = this.convertPostgresTypes(mockData.result);
-
-    logger.debug(
-      `[PostgresInstrumentation] Sql query processed result: ${JSON.stringify(processedResult)}`,
-    );
-
-    return processedResult;
-  }
-
-  async handleReplayUnsafeQuery({
-    inputValue,
-    spanInfo,
-    submodule,
-    name,
-    stackTrace,
-  }: {
-    inputValue: PostgresClientInputValue;
-    spanInfo: SpanInfo;
-    submodule: string;
-    name: string;
-    stackTrace?: string;
-  }): Promise<PostgresConvertedResult | undefined> {
-    logger.debug(`[PostgresInstrumentation] Replaying Postgres unsafe query`);
-
-    const mockData = await findMockResponseAsync({
-      mockRequestData: {
-        traceId: spanInfo.traceId,
-        spanId: spanInfo.spanId,
-        name,
-        inputValue: createMockInputValue(inputValue),
-        packageName: "postgres",
-        instrumentationName: this.INSTRUMENTATION_NAME,
-        submoduleName: submodule,
-        kind: SpanKind.CLIENT,
-        stackTrace,
-      },
-      tuskDrift: this.tuskDrift,
-    });
-
-    if (!mockData) {
-      const queryText = inputValue.query || "UNKNOWN_QUERY";
-      throw new Error(
-        `[PostgresInstrumentation] No matching mock found for Postgres unsafe query: ${queryText}`,
-      );
-    }
-
-    logger.debug(
-      `[PostgresInstrumentation] Found mock data for Postgres unsafe query: ${JSON.stringify(mockData)}`,
-    );
-
-    const processedResult = this.convertPostgresTypes(mockData.result);
-
-    logger.debug(
-      `[PostgresInstrumentation] Unsafe query processed result: ${JSON.stringify(processedResult)}`,
-    );
-
-    return processedResult;
-  }
-
-  async handleReplayFileQuery({
-    inputValue,
-    spanInfo,
-    submodule,
-    name,
-    stackTrace,
-  }: {
-    inputValue: PostgresClientInputValue;
-    spanInfo: SpanInfo;
-    submodule: string;
-    name: string;
-    stackTrace?: string;
-  }): Promise<PostgresConvertedResult | undefined> {
-    logger.debug(`[PostgresInstrumentation] Replaying Postgres file query`);
-
-    const mockData = await findMockResponseAsync({
-      mockRequestData: {
-        traceId: spanInfo.traceId,
-        spanId: spanInfo.spanId,
-        name,
-        inputValue: createMockInputValue(inputValue),
-        packageName: "postgres",
-        instrumentationName: this.INSTRUMENTATION_NAME,
-        submoduleName: submodule,
-        kind: SpanKind.CLIENT,
-        stackTrace,
-      },
-      tuskDrift: this.tuskDrift,
-    });
-
-    if (!mockData) {
-      const queryText = inputValue.query || "UNKNOWN_QUERY";
-      logger.warn(
-        `[PostgresInstrumentation] No mock data found for Postgres file query: ${queryText}`,
-      );
-      throw new Error(
-        `[PostgresInstrumentation] No matching mock found for Postgres file query: ${queryText}`,
-      );
-    }
-
-    logger.debug(
-      `[PostgresInstrumentation] Found mock data for Postgres file query: ${JSON.stringify(mockData)}`,
-    );
-
-    const processedResult = this.convertPostgresTypes(mockData.result);
-
-    logger.debug(
-      `[PostgresInstrumentation] File query processed result: ${JSON.stringify(processedResult)}`,
-    );
-
-    return processedResult;
-  }
-
-  private _reconstructQueryString(strings: TemplateStringsArray, values: any[]): string {
-    let queryString = "";
-    for (let i = 0; i < strings.length; i++) {
-      queryString += strings[i];
-      if (i < values.length) {
-        queryString += `$${i + 1}`;
-      }
-    }
-    return queryString;
-  }
-
-  private convertPostgresTypes(result: any): PostgresConvertedResult | undefined {
-    if (!isPostgresOutputValueType(result)) {
-      logger.error(
-        `[PostgresInstrumentation] output value is not of type PostgresOutputValueType`,
-        result,
-      );
-      return undefined;
-    }
-
-    const { rows, count, command, columns, state, statement } = result;
-
-    // Reconstruct Result-like object, converting serialized Buffers back to actual Buffers
-    const resultArray = Array.from((rows || []).map((row: any) => this.reconstructBuffers(row)));
-
-    // Attach metadata as non-enumerable properties (matching postgres.js behavior)
-    // Only add properties that are actually present in the recorded data to avoid
-    // undefined -> null conversion which causes JSON serialization mismatches
-    if (count !== undefined) {
-      Object.defineProperty(resultArray, "count", {
-        value: count,
-        writable: true,
-        enumerable: false,
-      });
-    }
-
-    if (command !== undefined) {
-      Object.defineProperty(resultArray, "command", {
-        value: command,
-        writable: true,
-        enumerable: false,
-      });
-    }
-
-    if (columns !== undefined) {
-      Object.defineProperty(resultArray, "columns", {
-        value: columns,
-        writable: true,
-        enumerable: false,
-      });
-    }
-
-    if (state !== undefined) {
-      Object.defineProperty(resultArray, "state", {
-        value: state,
-        writable: true,
-        enumerable: false,
-      });
-    }
-
-    if (statement !== undefined) {
-      Object.defineProperty(resultArray, "statement", {
-        value: statement,
-        writable: true,
-        enumerable: false,
-      });
-    }
-
-    return resultArray;
   }
 
   /**
-   * Recursively reconstructs Buffer objects from their JSON-serialized format.
-   * When Buffers are JSON.stringify'd, they become { type: "Buffer", data: [...] }.
-   * This method converts them back to actual Buffer instances.
+   * Helper to end a cursor span with collected rows.
+   * Consolidates common span ending logic used in cursor and forEach operations.
    */
-  private reconstructBuffers(value: any): any {
-    if (value === null || value === undefined) {
-      return value;
-    }
-
-    // Detect serialized Buffer: { type: "Buffer", data: [...] }
-    if (typeof value === "object" && value.type === "Buffer" && Array.isArray(value.data)) {
-      return Buffer.from(value.data);
-    }
-
-    // Recursively handle arrays
-    if (Array.isArray(value)) {
-      return value.map((item) => this.reconstructBuffers(item));
-    }
-
-    // Recursively handle plain objects
-    if (typeof value === "object") {
-      const result: any = {};
-      for (const key of Object.keys(value)) {
-        result[key] = this.reconstructBuffers(value[key]);
-      }
-      return result;
-    }
-
-    return value;
+  private _endCursorSpan(
+    spanInfo: SpanInfo,
+    allRows: any[],
+    result?: any,
+    operation: string = "Cursor",
+  ): void {
+    const resultArray = Object.assign(allRows, {
+      count: allRows.length,
+      columns: result?.columns,
+      state: result?.state,
+      statement: result?.statement,
+    });
+    addOutputAttributesToSpan(spanInfo, resultArray);
+    SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+    logger.debug(
+      `[PostgresInstrumentation] ${operation} completed, recorded ${allRows.length} rows`,
+    );
   }
 
-  private _addOutputAttributesToSpan(spanInfo: SpanInfo, result?: any): void {
-    if (!result) return;
+  /**
+   * Generic helper to handle replay for query operations (sql, unsafe, file).
+   * Consolidates common logic for finding mock data and processing results.
+   */
+  private async _handleReplayQueryOperation({
+    inputValue,
+    spanInfo,
+    submodule,
+    name,
+    stackTrace,
+    operationType,
+  }: {
+    inputValue: PostgresClientInputValue;
+    spanInfo: SpanInfo;
+    submodule: string;
+    name: string;
+    stackTrace?: string;
+    operationType: string;
+  }): Promise<PostgresConvertedResult | undefined> {
+    logger.debug(`[PostgresInstrumentation] Replaying Postgres ${operationType} query`);
 
-    // ALL postgres.js results are Result objects (extend Array) with metadata properties
-    // We need to explicitly capture these non-enumerable properties
-    const isArray = Array.isArray(result);
+    const mockData = await this._findMockData({
+      spanInfo,
+      name,
+      inputValue,
+      submoduleName: submodule,
+      stackTrace,
+    });
+
+    if (!mockData) {
+      const queryText = inputValue.query || "UNKNOWN_QUERY";
+      const errorMsg = `[PostgresInstrumentation] No matching mock found for Postgres ${operationType} query: ${queryText}`;
+      logger.warn(errorMsg);
+      throw new Error(errorMsg);
+    }
 
     logger.debug(
-      `[PostgresInstrumentation] Adding output attributes to span for ${isArray ? "array" : "object"} result`,
+      `[PostgresInstrumentation] Found mock data for Postgres ${operationType} query: ${JSON.stringify(mockData)}`,
     );
 
-    // Helper to convert Buffers to strings for JSON serialization
-    // This ensures consistent string data in both RECORD and REPLAY modes
-    const normalizeValue = (val: any): any => {
-      if (Buffer.isBuffer(val)) {
-        return val.toString("utf8");
-      } else if (Array.isArray(val)) {
-        return val.map(normalizeValue);
-      } else if (
-        val &&
-        typeof val === "object" &&
-        val.type === "Buffer" &&
-        Array.isArray(val.data)
-      ) {
-        // Handle already-serialized Buffer objects
-        return Buffer.from(val.data).toString("utf8");
-      }
-      return val;
-    };
+    const processedResult = convertPostgresTypes(mockData.result);
 
-    const outputValue: PostgresOutputValueType = {
-      // Always capture rows (the array data), normalizing any Buffer objects
-      rows: isArray
-        ? Array.from(result).map(normalizeValue)
-        : (result.rows || []).map(normalizeValue),
-      // Explicitly capture non-enumerable metadata properties
-      count: result.count !== undefined && result.count !== null ? result.count : undefined,
-      command: result.command || undefined,
-      // You could also capture: columns, state, statement if needed
-      columns: result.columns || undefined,
-      state: result.state || undefined,
-      statement: result.statement || undefined,
-    };
+    logger.debug(
+      `[PostgresInstrumentation] ${operationType} query processed result: ${JSON.stringify(processedResult)}`,
+    );
 
-    SpanUtils.addSpanAttributes(spanInfo.span, {
-      outputValue,
-    });
+    return processedResult;
   }
 
   private _handleCursorCallbackRecord({
@@ -1944,25 +1604,23 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
       const result = await cursorPromise;
 
       if (spanInfo) {
-        const resultArray = Object.assign(allRows, {
-          count: allRows.length,
-          columns: result?.columns,
-          state: result?.state,
-          statement: result?.statement,
-        });
-        this._addOutputAttributesToSpan(spanInfo, resultArray);
-        SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-        logger.debug(
-          `[PostgresInstrumentation] Cursor callback completed, recorded ${allRows.length} rows`,
-        );
+        try {
+          this._endCursorSpan(spanInfo, allRows, result, "Cursor callback");
+        } catch (error: any) {
+          logger.error(`[PostgresInstrumentation] error ending cursor span:`, error);
+        }
       }
     } catch (error: any) {
       logger.debug(`[PostgresInstrumentation] Cursor callback error: ${error.message}`);
       if (spanInfo) {
-        SpanUtils.endSpan(spanInfo.span, {
-          code: SpanStatusCode.ERROR,
-          message: error.message,
-        });
+        try {
+          SpanUtils.endSpan(spanInfo.span, {
+            code: SpanStatusCode.ERROR,
+            message: error.message,
+          });
+        } catch (error: any) {
+          logger.error(`[PostgresInstrumentation] error ending cursor span:`, error);
+        }
       }
       throw error;
     }
@@ -2002,19 +1660,12 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
             },
             async (spanInfo) => {
               try {
-                const mockData = await findMockResponseAsync({
-                  mockRequestData: {
-                    traceId: spanInfo.traceId,
-                    spanId: spanInfo.spanId,
-                    name: "postgres.cursor",
-                    inputValue: createMockInputValue(inputValue),
-                    packageName: "postgres",
-                    instrumentationName: this.INSTRUMENTATION_NAME,
-                    submoduleName: "cursor",
-                    kind: SpanKind.CLIENT,
-                    stackTrace,
-                  },
-                  tuskDrift: this.tuskDrift,
+                const mockData = await this._findMockData({
+                  spanInfo,
+                  name: "postgres.cursor",
+                  inputValue,
+                  submoduleName: "cursor",
+                  stackTrace,
                 });
 
                 if (!mockData) {
@@ -2027,7 +1678,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   `[PostgresInstrumentation] Found mock data for cursor query: ${JSON.stringify(mockData)}`,
                 );
 
-                const processedResult = this.convertPostgresTypes(mockData.result);
+                const processedResult = convertPostgresTypes(mockData.result);
                 const mockedData = Array.isArray(processedResult) ? processedResult : [];
 
                 // Call user's callback with batches from mocked data
@@ -2115,18 +1766,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                 if (result.done) {
                   // End span with collected results
                   if (spanInfo) {
-                    // Create a result array that mimics postgres.js result format
-                    const resultArray = Object.assign(allRows, {
-                      count: allRows.length,
-                      columns: result?.columns,
-                      state: result?.state,
-                      statement: result?.statement,
-                    });
-                    self._addOutputAttributesToSpan(spanInfo, resultArray);
-                    SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-                    logger.debug(
-                      `[PostgresInstrumentation] Cursor completed, recorded ${allRows.length} rows`,
-                    );
+                    self._endCursorSpan(spanInfo, allRows, result, "Cursor");
                   }
                   return { done: true as const, value: undefined };
                 }
@@ -2151,17 +1791,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
           async return(): Promise<IteratorResult<any[], any>> {
             // Handle early termination (e.g., break from for-await-of loop)
             if (spanInfo) {
-              const resultArray = Object.assign(allRows, {
-                count: allRows.length,
-                columns: result?.columns,
-                state: result?.state,
-                statement: result?.statement,
-              });
-              self._addOutputAttributesToSpan(spanInfo, resultArray);
-              SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-              logger.debug(
-                `[PostgresInstrumentation] Cursor terminated early, recorded ${allRows.length} rows`,
-              );
+              self._endCursorSpan(spanInfo, allRows, result, "Cursor terminated early");
             }
             return { done: true as const, value: undefined };
           },
@@ -2219,19 +1849,12 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   );
                 }
 
-                const mockData = await findMockResponseAsync({
-                  mockRequestData: {
-                    traceId: spanInfo.traceId,
-                    spanId: spanInfo.spanId,
-                    name: "postgres.cursor",
-                    inputValue: createMockInputValue(inputValue),
-                    packageName: "postgres",
-                    instrumentationName: self.INSTRUMENTATION_NAME,
-                    submoduleName: "cursor",
-                    kind: SpanKind.CLIENT,
-                    stackTrace,
-                  },
-                  tuskDrift: self.tuskDrift,
+                const mockData = await self._findMockData({
+                  spanInfo,
+                  name: "postgres.cursor",
+                  inputValue,
+                  submoduleName: "cursor",
+                  stackTrace,
                 });
 
                 if (!mockData) {
@@ -2248,7 +1871,7 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   `[PostgresInstrumentation] Found mock data for cursor query: ${JSON.stringify(mockData)}`,
                 );
 
-                const processedResult = self.convertPostgresTypes(mockData.result);
+                const processedResult = convertPostgresTypes(mockData.result);
                 mockedData = Array.isArray(processedResult) ? processedResult : [];
               }
 
@@ -2325,27 +1948,22 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                 // Execute with wrapped callback to collect rows
                 const result = await originalForEach(wrappedCallback);
 
-                // Record all rows in the span output
-                const resultArray = Object.assign(allRows, {
-                  count: allRows.length,
-                  command: result?.command,
-                  columns: result?.columns,
-                  state: result?.state,
-                  statement: result?.statement,
-                });
-                self._addOutputAttributesToSpan(spanInfo, resultArray);
-                SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-
-                logger.debug(
-                  `[PostgresInstrumentation] forEach completed, recorded ${allRows.length} rows`,
-                );
-
+                try {
+                  // Record all rows in the span output using cursor helper
+                  self._endCursorSpan(spanInfo, allRows, result, "forEach");
+                } catch (error: any) {
+                  logger.error(`[PostgresInstrumentation] error ending cursor span:`, error);
+                }
                 return result;
               } catch (error: any) {
-                SpanUtils.endSpan(spanInfo.span, {
-                  code: SpanStatusCode.ERROR,
-                  message: error.message,
-                });
+                try {
+                  SpanUtils.endSpan(spanInfo.span, {
+                    code: SpanStatusCode.ERROR,
+                    message: error.message,
+                  });
+                } catch (error: any) {
+                  logger.error(`[PostgresInstrumentation] error ending cursor span:`, error);
+                }
                 throw error;
               }
             },
@@ -2389,12 +2007,13 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
             async (spanInfo) => {
               try {
                 // Find mocked data from recorded spans
-                const mockedResult = await self.handleReplaySqlQuery({
+                const mockedResult = await self._handleReplayQueryOperation({
                   inputValue,
                   spanInfo,
                   submodule: "query",
                   name: "postgres.query",
                   stackTrace,
+                  operationType: "forEach",
                 });
 
                 const mockedRows = Array.isArray(mockedResult) ? mockedResult : [];
