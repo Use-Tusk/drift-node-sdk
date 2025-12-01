@@ -327,6 +327,69 @@ app.post("/transaction/commit", async (req: Request, res: Response) => {
   }
 });
 
+// Test beginTransaction(options, callback) signature
+app.post("/test/transaction-with-options", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing transaction with options object...");
+
+    // Create a temporary connection for this test
+    const tempConnection = mysql.createConnection({
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+    });
+
+    tempConnection.connect((connectError: any) => {
+      if (connectError) {
+        return res.status(500).json({ error: connectError.message });
+      }
+
+      // Begin transaction with options object (timeout) - cast to any for extended options
+      (tempConnection as any).beginTransaction({ timeout: 10000 }, (beginError: any) => {
+        if (beginError) {
+          tempConnection.end(() => {});
+          return res.status(500).json({ error: beginError.message });
+        }
+
+        const timestamp = Date.now();
+        const key = `tx_options_${timestamp}`;
+
+        tempConnection.query(
+          "INSERT INTO cache (`key`, value, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 DAY))",
+          [key, `Options transaction test ${timestamp}`],
+          (insertError: any, insertResults: any) => {
+            if (insertError) {
+              return tempConnection.rollback(() => {
+                tempConnection.end(() => {});
+                res.status(500).json({ error: insertError.message });
+              });
+            }
+
+            // Commit with options - cast to any for extended options
+            (tempConnection as any).commit({ timeout: 10000 }, (commitError: any) => {
+              tempConnection.end(() => {});
+
+              if (commitError) {
+                return res.status(500).json({ error: commitError.message });
+              }
+
+              res.json({
+                message: "Transaction with options executed",
+                insertId: insertResults.insertId,
+              });
+            });
+          },
+        );
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in transaction-with-options:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Test transaction with rollback
 app.post("/transaction/rollback", async (req: Request, res: Response) => {
   try {
@@ -980,50 +1043,6 @@ const server = app.listen(PORT, async () => {
     TuskDrift.markAppAsReady();
     console.log(`Server running on port ${PORT}`);
     console.log(`TUSK_DRIFT_MODE: ${process.env.TUSK_DRIFT_MODE || "DISABLED"}`);
-    console.log("Available endpoints:");
-    console.log("  GET    /health - Health check");
-    console.log("");
-    console.log("  Connection Tests:");
-    console.log("  GET    /connection/query-callback - Basic query with callback");
-    console.log("  GET    /connection/query-params - Query with parameters");
-    console.log("  GET    /connection/query-options - Query with options object");
-    console.log("  GET    /connection/query-stream - Query with event emitter");
-    console.log("  GET    /connection/multi-statement - Multi-statement query");
-    console.log("");
-    console.log("  Pool Tests:");
-    console.log("  GET    /pool/query - Pool query");
-    console.log("  GET    /pool/get-connection - Pool getConnection");
-    console.log("");
-    console.log("  Transaction Tests:");
-    console.log("  POST   /transaction/commit - Transaction with commit");
-    console.log("  POST   /transaction/rollback - Transaction with rollback");
-    console.log("");
-    console.log("  CRUD Tests:");
-    console.log("  POST   /crud/insert - INSERT query");
-    console.log("  PUT    /crud/update - UPDATE query");
-    console.log("  DELETE /crud/delete - DELETE query");
-    console.log("");
-    console.log("  Advanced Tests:");
-    console.log("  GET    /advanced/join - JOIN query");
-    console.log("  GET    /advanced/aggregate - Aggregate functions");
-    console.log("  GET    /advanced/subquery - Subquery");
-    console.log("  GET    /advanced/prepared - Prepared statement-like query");
-    console.log("");
-    console.log("  Lifecycle Tests:");
-    console.log("  GET    /lifecycle/ping - Connection ping");
-    console.log("  GET    /lifecycle/end-and-reconnect - Connection end");
-    console.log("  POST   /lifecycle/change-user - Connection changeUser");
-    console.log("  GET    /lifecycle/pause-resume - Connection pause/resume");
-    console.log("");
-    console.log("  Pool Lifecycle Tests:");
-    console.log("  GET    /pool/end-and-recreate - Pool end");
-    console.log("");
-    console.log("  Event Tests:");
-    console.log("  GET    /events/connect - Connect event emission");
-    console.log("  GET    /test/connection-destroy - Connection destroy");
-    console.log("");
-    console.log("  Stream Tests:");
-    console.log("  GET    /stream/query-stream-method - Query.stream() method");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

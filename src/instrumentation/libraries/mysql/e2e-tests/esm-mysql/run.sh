@@ -82,6 +82,9 @@ echo "  Transaction Tests:"
 echo "    - POST /transaction/commit"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/transaction/commit > /dev/null
 
+echo "    - POST /test/transaction-with-options"
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/test/transaction-with-options > /dev/null
+
 echo "    - POST /transaction/rollback"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/transaction/rollback > /dev/null
 

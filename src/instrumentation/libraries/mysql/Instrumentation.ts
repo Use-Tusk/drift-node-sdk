@@ -428,7 +428,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _getBeginTransactionPatchFn() {
     const self = this;
     return (originalBeginTransaction: Function) => {
-      return function beginTransaction(this: any, callback?: Function) {
+      // Handle both signatures: beginTransaction(callback) and beginTransaction(options, callback)
+      return function beginTransaction(this: any, optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "BEGIN",
         };
@@ -436,8 +445,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -456,7 +465,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -484,7 +493,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalBeginTransaction,
                     this,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -504,7 +513,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _getCommitPatchFn() {
     const self = this;
     return (originalCommit: Function) => {
-      return function commit(this: any, callback?: Function) {
+      // Handle both signatures: commit(callback) and commit(options, callback)
+      return function commit(this: any, optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "COMMIT",
         };
@@ -512,8 +530,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -532,7 +550,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -560,7 +578,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalCommit,
                     this,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -580,7 +598,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _getRollbackPatchFn() {
     const self = this;
     return (originalRollback: Function) => {
-      return function rollback(this: any, callback?: Function) {
+      // Handle both signatures: rollback(callback) and rollback(options, callback)
+      return function rollback(this: any, optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "ROLLBACK",
         };
@@ -588,8 +615,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -608,7 +635,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -636,7 +663,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalRollback,
                     this,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -1493,7 +1520,9 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     const callbackIndex = argsArray.findIndex((arg) => typeof arg === "function");
 
     if (callbackIndex !== -1) {
-      const originalCallback = callback;
+      // Use the actual callback from argsArray, not the 'callback' parameter
+      // This handles both beginTransaction(callback) and beginTransaction(options, callback) signatures
+      const originalCallback = argsArray[callbackIndex] as Function;
       argsArray[callbackIndex] = function (err: any) {
         if (err) {
           try {

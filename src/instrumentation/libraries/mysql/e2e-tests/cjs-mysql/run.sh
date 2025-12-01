@@ -85,6 +85,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:300
 echo "    - POST /transaction/rollback"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/transaction/rollback > /dev/null
 
+echo "    - POST /test/transaction-with-options"
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/test/transaction-with-options > /dev/null
+
 echo "  CRUD Tests:"
 echo "    - POST /crud/insert"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"key":"crud_test_insert","value":"test_value"}' http://localhost:3000/crud/insert > /dev/null
