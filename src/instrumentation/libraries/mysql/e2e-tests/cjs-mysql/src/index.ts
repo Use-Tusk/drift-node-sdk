@@ -276,6 +276,70 @@ app.get("/pool/get-connection", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/test/pool-events", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing pool events...");
+
+    const events: string[] = [];
+
+    // Create a new pool to track events
+    const eventPool = mysql.createPool({
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+      connectionLimit: 1, // Force queueing
+    });
+
+    eventPool.on("connection", (connection: any) => {
+      console.log("Pool event: connection");
+      events.push("connection");
+    });
+
+    eventPool.on("acquire", (connection: any) => {
+      console.log("Pool event: acquire");
+      events.push("acquire");
+    });
+
+    eventPool.on("release", (connection: any) => {
+      console.log("Pool event: release");
+      events.push("release");
+    });
+
+    eventPool.on("enqueue", () => {
+      console.log("Pool event: enqueue");
+      events.push("enqueue");
+    });
+
+    // Get connection to trigger events
+    eventPool.getConnection((error: any, connection: any) => {
+      if (error) {
+        eventPool.end(() => {});
+        return res.status(500).json({ error: error.message });
+      }
+
+      connection.query("SELECT 1 as test", (queryError: any, results: any) => {
+        connection.release();
+
+        // Give time for release event to fire
+        setTimeout(() => {
+          eventPool.end((endError: any) => {
+            res.json({
+              message: "Pool events test completed",
+              events: events,
+              queryResults: results,
+            });
+          });
+        }, 100);
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in pool-events:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ===== TRANSACTION TESTS =====
 
 // Test beginTransaction(callback) signature
@@ -1031,6 +1095,67 @@ app.get("/stream/query-stream-method", async (req: Request, res: Response) => {
       });
   } catch (error: any) {
     console.error("Error in query-stream-method:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== BUG HUNTING TESTS =====
+
+// Test 1: Connection.statistics() - NOT patched
+app.get("/test/connection-statistics", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing connection.statistics()...");
+    const connection = getConnection();
+
+    // Use 'any' to bypass TypeScript strict typing - the statistics method does exist
+    (connection as any).statistics((error: any, stats: any) => {
+      if (error) {
+        console.error("Error getting statistics:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log("Statistics:", stats);
+      res.json({
+        message: "Statistics retrieved",
+        stats: stats,
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in connection-statistics:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test 8: Query with nestTables as string separator
+app.get("/test/nest-tables-separator", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing query with nestTables as separator string...");
+    const connection = getConnection();
+
+    const query = `
+      SELECT u.id, u.name, c.id, c.\`key\`
+      FROM users u
+      CROSS JOIN cache c
+      LIMIT 2
+    `;
+
+    // Test nestTables: '_' (use underscore as separator)
+    connection.query({ sql: query, nestTables: "_" }, (error: any, results: any, fields: any) => {
+      if (error) {
+        console.error("Error executing nestTables separator query:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log("NestTables separator results:", results);
+      res.json({
+        message: "NestTables separator query executed",
+        count: results.length,
+        data: results,
+        sampleKeys: results[0] ? Object.keys(results[0]) : [],
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in nest-tables-separator:", error);
     res.status(500).json({ error: error.message });
   }
 });

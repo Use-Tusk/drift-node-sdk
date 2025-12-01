@@ -276,6 +276,70 @@ app.get("/pool/get-connection", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/test/pool-events", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing pool events...");
+
+    const events: string[] = [];
+
+    // Create a new pool to track events
+    const eventPool = mysql.createPool({
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+      connectionLimit: 1, // Force queueing
+    });
+
+    eventPool.on("connection", (connection: any) => {
+      console.log("Pool event: connection");
+      events.push("connection");
+    });
+
+    eventPool.on("acquire", (connection: any) => {
+      console.log("Pool event: acquire");
+      events.push("acquire");
+    });
+
+    eventPool.on("release", (connection: any) => {
+      console.log("Pool event: release");
+      events.push("release");
+    });
+
+    eventPool.on("enqueue", () => {
+      console.log("Pool event: enqueue");
+      events.push("enqueue");
+    });
+
+    // Get connection to trigger events
+    eventPool.getConnection((error: any, connection: any) => {
+      if (error) {
+        eventPool.end(() => {});
+        return res.status(500).json({ error: error.message });
+      }
+
+      connection.query("SELECT 1 as test", (queryError: any, results: any) => {
+        connection.release();
+
+        // Give time for release event to fire
+        setTimeout(() => {
+          eventPool.end((endError: any) => {
+            res.json({
+              message: "Pool events test completed",
+              events: events,
+              queryResults: results,
+            });
+          });
+        }, 100);
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in pool-events:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ===== TRANSACTION TESTS =====
 
 // Test transaction with commit

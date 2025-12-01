@@ -12,6 +12,7 @@ export class TdMysqlConnectionMock extends EventEmitter {
   private mysqlInstrumentation: MysqlInstrumentation;
   private clientType: "connection" | "pool" | "poolConnection";
   private spanInfo?: SpanInfo;
+  private _pool: any = null;
 
   // MySQL connection properties
   public threadId: number | null = null;
@@ -26,12 +27,14 @@ export class TdMysqlConnectionMock extends EventEmitter {
     mysqlInstrumentation: MysqlInstrumentation,
     clientType: "connection" | "pool" | "poolConnection" = "poolConnection",
     spanInfo?: SpanInfo,
+    pool?: any,
   ) {
     super();
     this.mysqlInstrumentation = mysqlInstrumentation;
     this.spanInfo = spanInfo;
     this.clientType = clientType;
     this.threadId = 1;
+    this._pool = pool;
   }
 
   query(...args: any[]) {
@@ -111,7 +114,10 @@ export class TdMysqlConnectionMock extends EventEmitter {
   }
 
   release() {
-    // No-op for pool connection release - just emit end event to simulate normal behavior
+    // Emit 'release' event on the pool if we have a reference
+    if (this._pool) {
+      this._pool.emit("release", this);
+    }
     this.emit("end");
   }
 

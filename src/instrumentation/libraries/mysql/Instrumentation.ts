@@ -902,11 +902,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     return (originalGetConnection: Function) => {
       return function getConnection(this: any, callback?: Function) {
         const inputValue = { clientType: "pool" as const };
+        const pool = this; // Capture pool reference
 
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              return self._handleNoOpReplayGetConnection(callback);
+              return self._handleNoOpReplayGetConnection(pool, callback);
             },
             isServerRequest: false,
             replayModeHandler: () => {
@@ -924,7 +925,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayPoolGetConnection(spanInfo, callback);
+                  return self._handleReplayPoolGetConnection(pool, spanInfo, callback);
                 },
               );
             },
@@ -1646,28 +1647,36 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     }
   }
 
-  private _handleNoOpReplayGetConnection(callback?: Function): any {
+  private _handleNoOpReplayGetConnection(pool: any, callback?: Function): any {
     logger.debug(
       `[MysqlInstrumentation] Background getConnection detected, returning mock connection`,
     );
 
-    const mockConnection = new TdMysqlConnectionMock(this, "pool");
+    const mockConnection = new TdMysqlConnectionMock(this, "pool", undefined, pool);
 
     if (callback) {
-      process.nextTick(() => callback(null, mockConnection));
+      process.nextTick(() => {
+        pool.emit("connection", mockConnection);
+        pool.emit("acquire", mockConnection);
+        callback(null, mockConnection);
+      });
       return;
     }
     return mockConnection;
   }
 
-  private _handleReplayPoolGetConnection(spanInfo: SpanInfo, callback?: Function) {
+  private _handleReplayPoolGetConnection(pool: any, spanInfo: SpanInfo, callback?: Function) {
     logger.debug(`[MysqlInstrumentation] Replaying MySQL Pool getConnection`);
 
     // For pool getConnection operations, simulate returning a mock connection
-    const mockConnection = new TdMysqlConnectionMock(this, "pool", spanInfo);
+    const mockConnection = new TdMysqlConnectionMock(this, "pool", spanInfo, pool);
 
     if (callback) {
-      process.nextTick(() => callback(null, mockConnection));
+      process.nextTick(() => {
+        pool.emit("connection", mockConnection);
+        pool.emit("acquire", mockConnection);
+        callback(null, mockConnection);
+      });
       return;
     }
     return mockConnection;

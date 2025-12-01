@@ -128,6 +128,9 @@ echo "  Pool Lifecycle Tests:"
 echo "    - GET /pool/end-and-recreate"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/pool/end-and-recreate > /dev/null
 
+echo "    - GET /test/pool-events"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-events > /dev/null
+
 echo "  Event Tests:"
 echo "    - GET /events/connect"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/events/connect > /dev/null
