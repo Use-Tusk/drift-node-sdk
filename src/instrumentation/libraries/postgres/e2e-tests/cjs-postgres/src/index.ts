@@ -524,6 +524,465 @@ app.get("/cache/complex-fragments", async (req: Request, res: Response) => {
   }
 });
 
+// Test sql.file() method
+app.get("/test/sql-file", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing sql.file() method...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Execute query from file
+    const result = await pgClient.file("/app/src/test-query.sql");
+
+    console.log("SQL file result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "SQL file executed successfully",
+      count: result.length,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error("Error in sql.file test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Test .execute() method for immediate execution
+app.get("/test/execute-method", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing .execute() method for immediate query execution...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Using .execute() forces the query to run immediately
+    const result = await pgClient`SELECT * FROM cache LIMIT 1`.execute();
+
+    console.log("Execute method result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "Execute method test completed",
+      count: result.length,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error("Error in execute method test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Test PendingQuery.raw() for raw buffer results
+app.get("/test/pending-query-raw", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing PendingQuery.raw() for raw buffer results...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // .raw() returns raw Buffer arrays instead of parsed objects
+    const result = await pgClient`SELECT * FROM cache LIMIT 2`.raw();
+
+    console.log("Raw buffer query result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "PendingQuery.raw() test completed",
+      count: result.length,
+      // Convert buffers to strings for JSON response
+      data: result.map((row) => row.map((buf) => (buf instanceof Buffer ? buf.toString() : buf))),
+    });
+  } catch (error: any) {
+    console.error("Error in PendingQuery.raw test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Test sql.reserve() for reserved connections
+app.get("/test/sql-reserve", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing sql.reserve() for reserved connections...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Reserve a dedicated connection from the pool
+    const reserved = await pgClient.reserve();
+
+    // Execute a query on the reserved connection
+    const result = await reserved`SELECT * FROM cache LIMIT 2`;
+
+    console.log("Reserved connection query result:", result);
+
+    // Release the connection back to the pool
+    reserved.release();
+
+    await pgClient.end();
+
+    res.json({
+      message: "sql.reserve() test completed",
+      count: result.length,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error("Error in sql.reserve test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Test sql.cursor() for cursor-based streaming
+app.get("/test/sql-cursor", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing sql.cursor() for cursor-based streaming...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // cursor() returns an async iterator for streaming results
+    const cursorResults: any[] = [];
+    const cursor = pgClient`SELECT * FROM cache`.cursor(2);
+
+    for await (const rows of cursor) {
+      console.log("Cursor batch:", rows);
+      cursorResults.push(...rows);
+    }
+
+    console.log("Cursor complete, total rows:", cursorResults.length);
+
+    await pgClient.end();
+
+    res.json({
+      message: "sql.cursor() test completed",
+      count: cursorResults.length,
+      data: cursorResults,
+    });
+  } catch (error: any) {
+    console.error("Error in sql.cursor test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Test sql.cursor() with callback function
+app.get("/test/sql-cursor-callback", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing sql.cursor() with callback function...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // cursor(rows, fn) with callback - this delegates to original and goes through .then()
+    const cursorResults: any[] = [];
+    await pgClient`SELECT * FROM cache`.cursor(2, (rows) => {
+      console.log("Cursor callback batch:", rows);
+      cursorResults.push(...rows);
+    });
+
+    console.log("Cursor with callback complete, total rows:", cursorResults.length);
+
+    await pgClient.end();
+
+    res.json({
+      message: "sql.cursor() with callback test completed",
+      count: cursorResults.length,
+      data: cursorResults,
+    });
+  } catch (error: any) {
+    console.error("Error in sql.cursor callback test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Test sql.forEach() for row-by-row processing
+app.get("/test/sql-foreach", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing sql.forEach() for row-by-row processing...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // forEach processes rows one at a time with a callback
+    const forEachResults: any[] = [];
+    await pgClient`SELECT * FROM cache LIMIT 3`.forEach((row) => {
+      console.log("forEach row:", row);
+      forEachResults.push(row);
+    });
+
+    console.log("forEach complete, total rows:", forEachResults.length);
+
+    await pgClient.end();
+
+    res.json({
+      message: "sql.forEach() test completed",
+      count: forEachResults.length,
+      data: forEachResults,
+    });
+  } catch (error: any) {
+    console.error("Error in sql.forEach test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+app.get("/test/describe-method", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing describe() method...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // describe() returns statement metadata without executing the query
+    const result = await pgClient`SELECT id, key, value FROM cache WHERE id = ${1}`.describe();
+
+    console.log("describe() result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "describe() method test completed",
+      // describe returns statement info, not rows
+      statement: (result as any).statement,
+      columns: (result as any).columns,
+    });
+  } catch (error: any) {
+    console.error("Error in describe() test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+app.get("/test/savepoint", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing savepoint() nested transactions...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    let outerResult: any = null;
+    let innerResult: any = null;
+
+    const result = await pgClient.begin(async (sql) => {
+      // Outer transaction - insert a user
+      outerResult =
+        await sql`INSERT INTO users (name, email) VALUES ('Outer User', 'outer@test.com') RETURNING *`;
+
+      // Nested savepoint
+      await sql.savepoint(async (sql2) => {
+        // Inner savepoint - insert another user
+        innerResult =
+          await sql2`INSERT INTO users (name, email) VALUES ('Inner User', 'inner@test.com') RETURNING *`;
+      });
+
+      // Query both after savepoint
+      const allUsers = await sql`SELECT * FROM users WHERE email LIKE '%@test.com'`;
+      return allUsers;
+    });
+
+    console.log("savepoint() result:", result);
+
+    // Cleanup
+    await pgClient`DELETE FROM users WHERE email LIKE '%@test.com'`;
+    await pgClient.end();
+
+    res.json({
+      message: "savepoint() test completed",
+      outerResult,
+      innerResult,
+      finalResult: result,
+    });
+  } catch (error: any) {
+    console.error("Error in savepoint() test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+app.get("/test/listen-notify", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing listen() / notify()...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    let receivedPayload: string | null = null;
+
+    // Set up listener
+    const { unlisten } = await pgClient.listen("test_channel", (payload) => {
+      console.log("Received notification:", payload);
+      receivedPayload = payload;
+    });
+
+    // Send notification
+    await pgClient.notify("test_channel", "test_message_" + Date.now());
+
+    // Wait a bit for the notification to be received
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Cleanup
+    await unlisten();
+    await pgClient.end();
+
+    res.json({
+      message: "listen()/notify() test completed",
+      receivedPayload,
+    });
+  } catch (error: any) {
+    console.error("Error in listen/notify test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+app.get("/test/bytea-data", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing bytea/binary data handling...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Test bytea data
+    const binaryData = Buffer.from("Hello Binary World!");
+    const result = await pgClient`
+      SELECT ${binaryData}::bytea as binary_col
+    `;
+
+    console.log("Bytea result:", result);
+
+    await pgClient.end();
+
+    res.json({
+      message: "Bytea test completed",
+      data: result[0],
+      binaryAsString: result[0]?.binary_col?.toString?.() || String(result[0]?.binary_col),
+    });
+  } catch (error: any) {
+    console.error("Error in bytea test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+app.get("/test/unsafe-cursor", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing unsafe.cursor() for cursor on unsafe queries...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Use cursor on an unsafe query
+    const cursorResults: any[] = [];
+    const cursor = pgClient.unsafe("SELECT * FROM cache").cursor(2);
+
+    for await (const rows of cursor) {
+      console.log("Unsafe cursor batch:", rows);
+      cursorResults.push(...rows);
+    }
+
+    console.log("Unsafe cursor complete, total rows:", cursorResults.length);
+
+    await pgClient.end();
+
+    res.json({
+      message: "unsafe.cursor() test completed",
+      count: cursorResults.length,
+      data: cursorResults,
+    });
+  } catch (error: any) {
+    console.error("Error in unsafe.cursor test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+app.get("/test/unsafe-foreach", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing unsafe.forEach() for row-by-row processing on unsafe queries...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Use forEach on an unsafe query
+    const forEachResults: any[] = [];
+    await pgClient.unsafe("SELECT * FROM cache LIMIT 3").forEach((row) => {
+      console.log("Unsafe forEach row:", row);
+      forEachResults.push(row);
+    });
+
+    console.log("Unsafe forEach complete, total rows:", forEachResults.length);
+
+    await pgClient.end();
+
+    res.json({
+      message: "unsafe.forEach() test completed",
+      count: forEachResults.length,
+      data: forEachResults,
+    });
+  } catch (error: any) {
+    console.error("Error in unsafe.forEach test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+app.get("/test/large-object", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing largeObject() API...");
+    const connectionString =
+      process.env.DATABASE_URL ||
+      `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
+
+    const pgClient = postgres(connectionString);
+
+    // Create and use a large object
+    const lo = await pgClient.largeObject();
+
+    // Write some data
+    await lo.write(Buffer.from("Hello Large Object!"));
+
+    // Seek back to start
+    await lo.seek(0);
+
+    // Read the data
+    const readResult: any = await lo.read(100);
+
+    // Close the large object
+    await lo.close();
+
+    await pgClient.end();
+
+    res.json({
+      message: "largeObject() test completed",
+      data: readResult[0]?.data?.toString() || "no data",
+    });
+  } catch (error: any) {
+    console.error("Error in largeObject test:", error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {
@@ -531,22 +990,6 @@ const server = app.listen(PORT, async () => {
     TuskDrift.markAppAsReady();
     console.log(`Server running on port ${PORT}`);
     console.log(`TUSK_DRIFT_MODE: ${process.env.TUSK_DRIFT_MODE || "DISABLED"}`);
-    console.log("Available endpoints:");
-    console.log("  GET  /health - Health check");
-    console.log("  GET  /cache/all - Get all cache entries (Drizzle)");
-    console.log("  GET  /cache/sample - Get cache sample (Drizzle + raw SQL)");
-    console.log("  GET  /cache/raw - Get cache using raw postgres template");
-    console.log("  POST /cache/execute-raw - Execute raw SQL via Drizzle");
-    console.log("  POST /cache/insert - Insert cache entry (Drizzle)");
-    console.log("  PUT  /cache/update - Update cache entry (Drizzle)");
-    console.log("  DELETE /cache/delete - Delete cache entry (Drizzle)");
-    console.log("  GET  /users/by-email - Get user by email (Drizzle)");
-    console.log("  POST /users/insert - Insert user (Drizzle)");
-    console.log("  GET  /cache/dynamic-fragments - Test dynamic sql() fragments");
-    console.log(
-      "  POST /cache/update-with-fragments - Test UPDATE with fragments (customer pattern)",
-    );
-    console.log("  GET  /cache/complex-fragments - Test complex nested fragments");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

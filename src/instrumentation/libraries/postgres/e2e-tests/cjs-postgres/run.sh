@@ -91,6 +91,48 @@ docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:300
 echo "  - GET /cache/complex-fragments"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/cache/complex-fragments > /dev/null
 
+echo "  - GET /test/execute-method"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/execute-method > /dev/null
+
+echo "  - GET /test/sql-file"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-file > /dev/null
+
+echo "  - GET /test/pending-query-raw"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pending-query-raw > /dev/null
+
+echo "  - GET /test/sql-reserve"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-reserve > /dev/null
+
+echo "  - GET /test/sql-cursor"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-cursor > /dev/null
+
+echo "  - GET /test/sql-cursor-callback"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-cursor-callback > /dev/null
+
+echo "  - GET /test/sql-foreach"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/sql-foreach > /dev/null
+
+echo "  - GET /test/describe-method"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/describe-method > /dev/null
+
+echo "  - GET /test/savepoint"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/savepoint > /dev/null
+
+echo "  - GET /test/listen-notify"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/listen-notify > /dev/null
+
+echo "  - GET /test/bytea-data"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/bytea-data > /dev/null
+
+echo "  - GET /test/unsafe-cursor"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/unsafe-cursor > /dev/null
+
+echo "  - GET /test/unsafe-foreach"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/unsafe-foreach > /dev/null
+
+echo "  - GET /test/large-object"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/large-object > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
