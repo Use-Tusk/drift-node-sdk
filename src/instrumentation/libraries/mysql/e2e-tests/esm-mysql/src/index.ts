@@ -1134,6 +1134,35 @@ app.get("/stream/query-stream-method", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/test/query-object-reuse", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing query object passed directly...");
+    const connection = getConnection();
+
+    // Create a query object manually using Connection.createQuery
+    const queryObj = (mysql as any).createQuery(
+      "SELECT * FROM cache LIMIT 2",
+      (error: any, results: any, fields: any) => {
+        if (error) {
+          console.error("Error executing query:", error);
+          return res.status(500).json({ error: error.message });
+        }
+
+        res.json({
+          message: "Query object direct execution completed",
+          data: results,
+        });
+      },
+    );
+
+    // Pass the query object directly to connection.query
+    connection.query(queryObj);
+  } catch (error: any) {
+    console.error("Error in query-object-reuse:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {

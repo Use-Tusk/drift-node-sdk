@@ -145,6 +145,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/stream
 echo "    - GET /test/connection-destroy"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/connection-destroy > /dev/null
 
+echo "    - GET /test/query-object-reuse"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/query-object-reuse > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

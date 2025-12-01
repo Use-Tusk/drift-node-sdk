@@ -319,6 +319,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
             };
             // Find callback in args
             callback = args.find((arg) => typeof arg === "function");
+
+            // If no callback in args but the Query object has an internal callback, use that
+            // This handles the case where a pre-created Query object is passed to query()
+            if (!callback && hasInternalCallback) {
+              callback = firstArg._callback;
+            }
           } catch (error) {
             logger.debug(
               `[MysqlInstrumentation] Error using createQuery, falling back to manual parsing:`,
@@ -1044,6 +1050,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
             };
             // Find callback in args
             callback = args.find((arg) => typeof arg === "function");
+
+            // If no callback in args but the Query object has an internal callback, use that
+            // This handles the case where a pre-created Query object is passed to query()
+            if (!callback && hasInternalCallback) {
+              callback = firstArg._callback;
+            }
           } catch (error) {
             logger.debug(
               `[MysqlInstrumentation] Error using createQuery, falling back to manual parsing:`,
