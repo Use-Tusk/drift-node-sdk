@@ -1099,67 +1099,6 @@ app.get("/stream/query-stream-method", async (req: Request, res: Response) => {
   }
 });
 
-// ===== BUG HUNTING TESTS =====
-
-// Test 1: Connection.statistics() - NOT patched
-app.get("/test/connection-statistics", async (req: Request, res: Response) => {
-  try {
-    console.log("Testing connection.statistics()...");
-    const connection = getConnection();
-
-    // Use 'any' to bypass TypeScript strict typing - the statistics method does exist
-    (connection as any).statistics((error: any, stats: any) => {
-      if (error) {
-        console.error("Error getting statistics:", error);
-        return res.status(500).json({ error: error.message });
-      }
-
-      console.log("Statistics:", stats);
-      res.json({
-        message: "Statistics retrieved",
-        stats: stats,
-      });
-    });
-  } catch (error: any) {
-    console.error("Error in connection-statistics:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Test 8: Query with nestTables as string separator
-app.get("/test/nest-tables-separator", async (req: Request, res: Response) => {
-  try {
-    console.log("Testing query with nestTables as separator string...");
-    const connection = getConnection();
-
-    const query = `
-      SELECT u.id, u.name, c.id, c.\`key\`
-      FROM users u
-      CROSS JOIN cache c
-      LIMIT 2
-    `;
-
-    // Test nestTables: '_' (use underscore as separator)
-    connection.query({ sql: query, nestTables: "_" }, (error: any, results: any, fields: any) => {
-      if (error) {
-        console.error("Error executing nestTables separator query:", error);
-        return res.status(500).json({ error: error.message });
-      }
-
-      console.log("NestTables separator results:", results);
-      res.json({
-        message: "NestTables separator query executed",
-        count: results.length,
-        data: results,
-        sampleKeys: results[0] ? Object.keys(results[0]) : [],
-      });
-    });
-  } catch (error: any) {
-    console.error("Error in nest-tables-separator:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Start server
 const server = app.listen(PORT, async () => {
   try {
