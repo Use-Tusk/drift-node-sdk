@@ -340,6 +340,41 @@ app.get("/test/pool-events", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/test/pool-namespace-query", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing PoolNamespace.query()...");
+
+    // Create a pool cluster
+    const poolCluster = mysql.createPoolCluster();
+
+    poolCluster.add("NODE1", {
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+    });
+
+    // Use the namespace to query
+    const namespace = poolCluster.of("NODE*");
+    namespace.query("SELECT COUNT(*) as count FROM cache", (err, results) => {
+      poolCluster.end(() => {});
+
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+
+      res.json({
+        message: "PoolNamespace.query test completed",
+        data: results,
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in pool-namespace-query:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ===== TRANSACTION TESTS =====
 
 // Test transaction with commit

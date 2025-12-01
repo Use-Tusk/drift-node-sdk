@@ -131,6 +131,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/pool/e
 echo "    - GET /test/pool-events"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-events > /dev/null
 
+echo "    - GET /test/pool-namespace-query"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-namespace-query > /dev/null
+
 echo "  Event Tests:"
 echo "    - GET /events/connect"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/events/connect > /dev/null

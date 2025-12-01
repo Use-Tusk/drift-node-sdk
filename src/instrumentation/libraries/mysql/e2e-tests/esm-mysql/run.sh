@@ -78,6 +78,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/pool/q
 echo "    - GET /pool/get-connection"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/pool/get-connection > /dev/null
 
+echo "    - GET /test/pool-namespace-query"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-namespace-query > /dev/null
+
 echo "  Transaction Tests:"
 echo "    - POST /transaction/commit"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/transaction/commit > /dev/null
