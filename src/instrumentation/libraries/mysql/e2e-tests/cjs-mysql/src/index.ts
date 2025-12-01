@@ -1163,6 +1163,56 @@ app.get("/test/query-object-reuse", async (req: Request, res: Response) => {
   }
 });
 
+// Test PoolNamespace.query().stream()
+app.get("/test/pool-namespace-query-stream", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing PoolNamespace.query().stream()...");
+
+    // Create a pool cluster
+    const poolCluster = mysql.createPoolCluster();
+
+    poolCluster.add("NODE1", {
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+    });
+
+    const results: any[] = [];
+
+    // Use the namespace to query and then call stream()
+    const namespace = poolCluster.of("NODE*");
+    const query = namespace.query("SELECT * FROM users ORDER BY id ASC");
+
+    // This is the critical call - stream() may not exist in REPLAY mode
+    const stream = query.stream();
+
+    stream
+      .on("error", (err) => {
+        console.error("Stream error:", err);
+        poolCluster.end(() => {});
+        res.status(500).json({ error: err.message });
+      })
+      .on("data", (row) => {
+        console.log("Received data from stream:", row);
+        results.push(row);
+      })
+      .on("end", () => {
+        console.log("Stream ended");
+        poolCluster.end(() => {});
+        res.json({
+          message: "PoolNamespace.query().stream() test completed",
+          count: results.length,
+          data: results,
+        });
+      });
+  } catch (error: any) {
+    console.error("Error in pool-namespace-query-stream:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {

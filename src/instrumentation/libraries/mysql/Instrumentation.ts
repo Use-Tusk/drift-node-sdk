@@ -2189,12 +2189,28 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self.queryMock.handleReplayQuery(
+                  const queryEmitter = self.queryMock.handleReplayQuery(
                     { sql, values, callback, options },
                     inputValue,
                     spanInfo,
                     stackTrace,
                   );
+
+                  // Add stream() method to the emitter so query.stream() works in REPLAY mode
+                  // This mirrors the behavior in _getQueryPatchFn()
+                  if (queryEmitter && typeof queryEmitter === "object") {
+                    (queryEmitter as any).stream = function (streamOptions?: any) {
+                      return self._createReplayStreamForQuery(
+                        inputValue,
+                        spanInfo,
+                        stackTrace,
+                        queryEmitter,
+                        streamOptions,
+                      );
+                    };
+                  }
+
+                  return queryEmitter;
                 },
               );
             },
@@ -2230,7 +2246,9 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
               const mockConnection = new TdMysqlConnectionMock(self, "pool", undefined, undefined);
               if (callback) {
                 process.nextTick(() => callback(null, mockConnection));
+                return;
               }
+              return mockConnection;
             },
             isServerRequest: false,
             replayModeHandler: () => {
@@ -2256,8 +2274,9 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   );
                   if (callback) {
                     process.nextTick(() => callback(null, mockConnection));
+                    return;
                   }
-                  return undefined;
+                  return mockConnection;
                 },
               );
             },

@@ -148,6 +148,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/c
 echo "    - GET /test/query-object-reuse"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/query-object-reuse > /dev/null
 
+echo "    - GET /test/pool-namespace-query-stream"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-namespace-query-stream > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
