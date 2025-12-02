@@ -105,7 +105,7 @@ Your Tusk Drift API key, required when using Tusk Cloud for storing and managing
 - Or use the Tusk CLI login command (recommended):
 
   ```bash
-  tusk login
+  tusk auth login
   ```
 
   This will securely store your auth key for future replay sessions.
