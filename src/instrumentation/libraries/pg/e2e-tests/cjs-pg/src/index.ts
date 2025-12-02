@@ -272,6 +272,22 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Multi-statement queries
+    if (url === "/test/multi-statement" && method === "GET") {
+      // PostgreSQL pg library handles multi-statement queries and returns array of results
+      const result = await client.query("SELECT 1 as num; SELECT 2 as num; SELECT 3 as num");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          success: true,
+          // Multi-statement returns array of results or single result
+          data: Array.isArray(result) ? result.map((r: any) => r.rows) : result.rows,
+          queryType: "multi-statement",
+        }),
+      );
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
@@ -294,18 +310,6 @@ server.listen(PORT, async () => {
     TuskDrift.markAppAsReady();
     console.log(`PostgreSQL integration test server running on port ${PORT}`);
     console.log(`Test mode: ${process.env.TUSK_DRIFT_MODE}`);
-    console.log("Available endpoints:");
-    console.log("  GET  /health - Health check");
-    console.log("  GET  /test/basic-query - Test basic query");
-    console.log("  POST /test/parameterized-query - Test parameterized query");
-    console.log("  GET  /test/client-query - Test client query");
-    console.log("  GET  /test/client-connect - Test client connect");
-    console.log("  GET  /test/client-close - Test client close");
-    console.log("  GET  /test/pool-query - Test pool query");
-    console.log("  POST /test/pool-parameterized - Test pool parameterized");
-    console.log("  GET  /test/pool-connect - Test pool connect");
-    console.log("  GET  /test/pool-transaction - Test pool transaction");
-    console.log("  GET  /test/query-rowmode-array - Test query with rowMode: 'array'");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
