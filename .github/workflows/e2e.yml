@@ -3,15 +3,23 @@ name: E2E Tests
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
   pull_request:
     branches: [main]
+    paths:
+      - 'src/**'
   workflow_dispatch: {}
 
 jobs:
   e2e:
-    name: E2E Tests (SDK + CLI)
+    name: E2E Tests - ${{ matrix.library }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      max-parallel: 6
+      matrix:
+        library: [fetch, firestore, grpc, http, ioredis, mysql, mysql2, nextjs, pg, postgres, prisma, upstash-redis-js]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,7 +54,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Latest Tusk CLI version: $VERSION"
 
-      - name: Run all E2E tests
+      - name: Run E2E tests for ${{ matrix.library }}
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
           TUSK_CLI_VERSION: ${{ steps.tusk-version.outputs.version }}
@@ -55,7 +63,7 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           UPSTASH_REDIS_REST_URL: ${{ vars.UPSTASH_REDIS_REST_URL }}
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
-        run: ./run-all-e2e-tests.sh 1
+        run: ./src/instrumentation/libraries/${{ matrix.library }}/e2e-tests/run-all.sh 3000
 
       - name: Cleanup Docker resources
         if: always()

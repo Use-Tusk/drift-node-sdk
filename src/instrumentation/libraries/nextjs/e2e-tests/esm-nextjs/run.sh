@@ -73,7 +73,7 @@ sleep 2
 
 # Step 7: Run tests using tusk CLI
 echo "Step 7: Running tests using tusk CLI..."
-TEST_RESULTS=$(docker compose -p $PROJECT_NAME exec -T app tusk run --print --output-format "json" --enable-service-logs)
+TEST_RESULTS=$(docker compose -p $PROJECT_NAME exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk run --print --output-format "json" --enable-service-logs)
 
 # Step 8: Log test results
 parse_and_display_test_results "$TEST_RESULTS"
