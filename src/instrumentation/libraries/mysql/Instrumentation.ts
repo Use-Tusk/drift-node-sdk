@@ -2173,6 +2173,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
 
     return (originalQuery: Function) => {
       return function query(this: any, ...args: any[]) {
+        // Check if args[0] is a Query object with an internal callback
+        // This happens when a pre-created Query object is passed to PoolNamespace.query()
+        const firstArg = args[0];
+        const hasInternalCallback =
+          firstArg && typeof firstArg === "object" && typeof firstArg._callback === "function";
+
         if (self.mode === TuskDriftMode.REPLAY) {
           // Parse arguments using same logic as regular query
           let sql: string;
@@ -2187,6 +2193,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
               values = queryObj.values;
               options = { nestTables: queryObj.nestTables };
               callback = args.find((arg) => typeof arg === "function");
+
+              // If no callback in args but the Query object has an internal callback, use that
+              // This handles the case where a pre-created Query object is passed to query()
+              if (!callback && hasInternalCallback) {
+                callback = firstArg._callback;
+              }
             } catch (error) {
               ({ sql, values, callback, options } = self._parseQueryArgs(args));
             }

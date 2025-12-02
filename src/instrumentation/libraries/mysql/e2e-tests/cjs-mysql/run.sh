@@ -55,104 +55,101 @@ echo "Step 4: Hitting all MySQL endpoints..."
 echo "  - GET /health"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/health > /dev/null
 
-echo "  Connection Tests:"
-echo "    - GET /connection/query-callback"
+echo "  - GET /connection/query-callback"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/connection/query-callback > /dev/null
 
-echo "    - GET /connection/query-params"
+echo "  - GET /connection/query-params"
 docker compose -p $PROJECT_NAME exec -T app curl -s "http://localhost:3000/connection/query-params?key=test_key_1" > /dev/null
 
-echo "    - GET /connection/query-options"
+echo "  - GET /connection/query-options"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/connection/query-options > /dev/null
 
-echo "    - GET /connection/query-stream"
+echo "  - GET /connection/query-stream"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/connection/query-stream > /dev/null
 
-echo "    - GET /connection/multi-statement"
+echo "  - GET /connection/multi-statement"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/connection/multi-statement > /dev/null
 
-echo "  Pool Tests:"
-echo "    - GET /pool/query"
+echo "  - GET /pool/query"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/pool/query > /dev/null
 
-echo "    - GET /pool/get-connection"
+echo "  - GET /pool/get-connection"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/pool/get-connection > /dev/null
 
-echo "  Transaction Tests:"
-echo "    - POST /transaction/commit"
+echo "  - POST /transaction/commit"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/transaction/commit > /dev/null
 
-echo "    - POST /transaction/rollback"
+echo "  - POST /transaction/rollback"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/transaction/rollback > /dev/null
 
-echo "    - POST /test/transaction-with-options"
+echo "  - POST /test/transaction-with-options"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/test/transaction-with-options > /dev/null
 
-echo "  CRUD Tests:"
-echo "    - POST /crud/insert"
+echo "  - POST /crud/insert"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST -H "Content-Type: application/json" -d '{"key":"crud_test_insert","value":"test_value"}' http://localhost:3000/crud/insert > /dev/null
 
-echo "    - PUT /crud/update"
+echo "  - PUT /crud/update"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X PUT -H "Content-Type: application/json" -d '{"key":"test_key_1","value":"updated_value"}' http://localhost:3000/crud/update > /dev/null
 
-echo "    - DELETE /crud/delete"
+echo "  - DELETE /crud/delete"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X DELETE -H "Content-Type: application/json" -d '{"key":"crud_test_insert"}' http://localhost:3000/crud/delete > /dev/null
 
-echo "  Advanced Tests:"
-echo "    - GET /advanced/join"
+echo "  - GET /advanced/join"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/advanced/join > /dev/null
 
-echo "    - GET /advanced/aggregate"
+echo "  - GET /advanced/aggregate"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/advanced/aggregate > /dev/null
 
-echo "    - GET /advanced/subquery"
+echo "  - GET /advanced/subquery"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/advanced/subquery > /dev/null
 
-echo "    - GET /advanced/prepared"
+echo "  - GET /advanced/prepared"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/advanced/prepared > /dev/null
 
-echo "  Lifecycle Tests:"
-echo "    - GET /lifecycle/ping"
+echo "  - GET /lifecycle/ping"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/lifecycle/ping > /dev/null
 
-echo "    - GET /lifecycle/end-and-reconnect"
+echo "  - GET /lifecycle/end-and-reconnect"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/lifecycle/end-and-reconnect > /dev/null
 
-echo "    - POST /lifecycle/change-user"
+echo "  - POST /lifecycle/change-user"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/lifecycle/change-user > /dev/null
 
-echo "    - GET /lifecycle/pause-resume"
+echo "  - GET /lifecycle/pause-resume"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/lifecycle/pause-resume > /dev/null
 
-echo "  Pool Lifecycle Tests:"
-echo "    - GET /pool/end-and-recreate"
+echo "  - GET /pool/end-and-recreate"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/pool/end-and-recreate > /dev/null
 
-echo "    - GET /test/pool-events"
+echo "  - GET /test/pool-events"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-events > /dev/null
 
-echo "    - GET /test/pool-namespace-query"
+echo "  - GET /test/pool-namespace-query"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-namespace-query > /dev/null
 
-echo "  Event Tests:"
-echo "    - GET /events/connect"
+echo "  - GET /events/connect"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/events/connect > /dev/null
 
-echo "  Stream Tests:"
-echo "    - GET /stream/query-stream-method"
+echo "  - GET /stream/query-stream-method"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/stream/query-stream-method > /dev/null
 
-echo "    - GET /test/connection-destroy"
+echo "  - GET /test/connection-destroy"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/connection-destroy > /dev/null
 
-echo "    - GET /test/query-object-reuse"
+echo "  - GET /test/query-object-reuse"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/query-object-reuse > /dev/null
 
-echo "    - GET /test/pool-namespace-query-stream"
+echo "  - GET /test/pool-namespace-query-stream"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-namespace-query-stream > /dev/null
 
-echo "    - POST /test/pool-connection-transaction-options"
+echo "  - POST /test/pool-connection-transaction-options"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/test/pool-connection-transaction-options > /dev/null
+
+echo "  - GET /test/pool-getconnection-query-with-internal-callback"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-getconnection-query-with-internal-callback > /dev/null
+
+echo "  - GET /test/pool-namespace-query-with-internal-callback"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-namespace-query-with-internal-callback > /dev/null
 
 echo "All endpoints hit successfully."
 

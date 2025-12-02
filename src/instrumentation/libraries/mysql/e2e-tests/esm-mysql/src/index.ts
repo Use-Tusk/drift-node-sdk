@@ -1270,6 +1270,102 @@ app.post("/test/pool-connection-transaction-options", async (req: Request, res: 
   }
 });
 
+// Test pool.getConnection() then query with pre-created Query object having internal _callback
+// Tests if TdMysqlConnectionMock properly handles Query objects with _callback
+app.get(
+  "/test/pool-getconnection-query-with-internal-callback",
+  async (req: Request, res: Response) => {
+    try {
+      console.log("Testing pool.getConnection() then query with pre-created Query object...");
+      const pool = getPool();
+
+      pool.getConnection((err, connection) => {
+        if (err) {
+          console.error("Error getting connection:", err);
+          return res.status(500).json({ error: err.message });
+        }
+
+        // Create a Query object with internal callback using mysql.createQuery
+        const queryObj = (mysql as any).createQuery(
+          "SELECT * FROM cache LIMIT 2",
+          (queryErr: any, results: any, fields: any) => {
+            connection.release();
+
+            if (queryErr) {
+              console.error("Query callback error:", queryErr);
+              return res.status(500).json({ error: queryErr.message });
+            }
+
+            console.log("Query callback results:", results);
+            res.json({
+              message: "pool.getConnection().query with internal callback completed",
+              count: results.length,
+              data: results,
+            });
+          },
+        );
+
+        // Pass the Query object directly to connection.query
+        connection.query(queryObj);
+      });
+    } catch (error: any) {
+      console.error("Error in pool-getconnection-query-with-internal-callback:", error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+);
+
+// Test PoolNamespace.query with pre-created Query object that has internal _callback
+app.get(
+  "/test/pool-namespace-query-with-internal-callback",
+  async (req: Request, res: Response) => {
+    try {
+      console.log(
+        "Testing PoolNamespace.query() with pre-created Query object having internal _callback...",
+      );
+
+      // Create a pool cluster
+      const poolCluster = mysql.createPoolCluster();
+
+      poolCluster.add("NODE1", {
+        host: process.env.MYSQL_HOST || "mysql",
+        port: parseInt(process.env.MYSQL_PORT || "3306"),
+        user: process.env.MYSQL_USER || "testuser",
+        password: process.env.MYSQL_PASSWORD || "testpass",
+        database: process.env.MYSQL_DB || "testdb",
+      });
+
+      // Create a Query object with internal callback using mysql.createQuery
+      // This is exactly how PoolNamespace.query internally works
+      const queryObj = (mysql as any).createQuery(
+        "SELECT * FROM users LIMIT 2",
+        (err: any, results: any, fields: any) => {
+          poolCluster.end(() => {});
+
+          if (err) {
+            console.error("Query callback error:", err);
+            return res.status(500).json({ error: err.message });
+          }
+
+          console.log("Query callback results:", results);
+          res.json({
+            message: "PoolNamespace.query with internal callback completed",
+            count: results.length,
+            data: results,
+          });
+        },
+      );
+
+      // Use the namespace to query by passing the pre-created Query object
+      const namespace = poolCluster.of("NODE*");
+      namespace.query(queryObj);
+    } catch (error: any) {
+      console.error("Error in pool-namespace-query-with-internal-callback:", error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+);
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {

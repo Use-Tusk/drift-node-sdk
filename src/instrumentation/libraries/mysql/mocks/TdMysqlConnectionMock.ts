@@ -45,14 +45,28 @@ export class TdMysqlConnectionMock extends EventEmitter {
     // query(sql, values, callback)
     // query(options, callback)
     // query(options, values, callback)
+    // query(queryObject) - where queryObject._callback holds the callback
 
     let sql: string;
     let values: any[] | undefined;
     let callback: Function | undefined;
     let options: any = {};
 
+    // Check for Query object with internal _callback
+    const firstArg = args[0];
+    const hasInternalCallback =
+      firstArg && typeof firstArg === "object" && typeof firstArg._callback === "function";
+
     // Determine which signature is being used
-    if (typeof args[0] === "string") {
+    if (hasInternalCallback) {
+      // Query object passed directly - extract properties from it
+      sql = firstArg.sql;
+      values = firstArg.values;
+      callback = firstArg._callback;
+      options = {
+        nestTables: firstArg.nestTables,
+      };
+    } else if (typeof args[0] === "string") {
       sql = args[0];
       if (typeof args[1] === "function") {
         callback = args[1];

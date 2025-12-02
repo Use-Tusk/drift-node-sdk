@@ -262,7 +262,7 @@ docker compose exec -d -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm
 docker compose exec app pkill -f "node" || true
 
 # Run tests
-docker compose exec -T app tusk run --print --output-format "json" --enable-service-logs
+docker compose exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk run --print --output-format "json" --enable-service-logs
 
 # View logs
 docker compose exec app ls .tusk/logs
