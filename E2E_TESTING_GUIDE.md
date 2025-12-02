@@ -119,7 +119,7 @@ sleep 2
 Run the Tusk CLI to replay the recorded traces:
 
 ```bash
-docker compose exec -T app tusk run --print --output-format "json" --enable-service-logs
+docker compose exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk run --print --output-format "json" --enable-service-logs
 ```
 
 **Flags explained:**

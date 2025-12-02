@@ -79,6 +79,14 @@ export class PgInstrumentation extends TdInstrumentationBase {
 
     return (originalQuery: Function) => {
       return function query(this: Query, ...args: any[]) {
+        // Check if this is a Submittable Query object - pass through uninstrumented
+        // Submittable queries use EventEmitter pattern (row, end, error events)
+        // and return the Query object itself, not a Promise
+        if (self.isSubmittable(args[0])) {
+          logger.debug(`[PgInstrumentation] Submittable query detected, passing through uninstrumented`);
+          return originalQuery.apply(this, args);
+        }
+
         // Parse query arguments - pg supports multiple signatures
         let queryConfig: QueryConfig | null = null;
         try {
@@ -245,6 +253,14 @@ export class PgInstrumentation extends TdInstrumentationBase {
         }
       };
     };
+  }
+
+  /**
+   * Check if an object is a Submittable (Query object with submit method).
+   * This is the same check pg uses internally: typeof config.submit === 'function'
+   */
+  private isSubmittable(arg: any): boolean {
+    return arg && typeof arg.submit === "function";
   }
 
   parseQueryArgs(args: any[]): QueryConfig | null {
