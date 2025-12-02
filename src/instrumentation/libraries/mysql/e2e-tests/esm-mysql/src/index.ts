@@ -1213,6 +1213,63 @@ app.get("/test/pool-namespace-query-stream", async (req: Request, res: Response)
   }
 });
 
+// Pool connection with beginTransaction(options, callback) signature
+app.post("/test/pool-connection-transaction-options", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing pool connection with beginTransaction(options, callback)...");
+    const pool = getPool();
+
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.error("Error getting pool connection:", err);
+        return res.status(500).json({ error: err.message });
+      }
+
+      // Use beginTransaction with (options, callback) signature
+      (connection as any).beginTransaction({ timeout: 10000 }, (beginError: any) => {
+        if (beginError) {
+          connection.release();
+          console.error("Error beginning transaction:", beginError);
+          return res.status(500).json({ error: beginError.message });
+        }
+
+        const timestamp = Date.now();
+        const key = `pool_tx_options_${timestamp}`;
+
+        connection.query(
+          "INSERT INTO cache (`key`, value, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 DAY))",
+          [key, `Pool transaction with options test ${timestamp}`],
+          (insertError: any, insertResults: any) => {
+            if (insertError) {
+              return connection.rollback(() => {
+                connection.release();
+                res.status(500).json({ error: insertError.message });
+              });
+            }
+
+            // Commit with (options, callback) signature
+            (connection as any).commit({ timeout: 10000 }, (commitError: any) => {
+              connection.release();
+
+              if (commitError) {
+                return res.status(500).json({ error: commitError.message });
+              }
+
+              res.json({
+                message: "Pool connection transaction with options completed",
+                insertId: insertResults.insertId,
+              });
+            });
+          },
+        );
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in pool-connection-transaction-options:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {

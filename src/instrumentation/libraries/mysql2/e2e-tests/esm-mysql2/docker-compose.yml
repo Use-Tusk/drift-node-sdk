@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   mysql:
@@ -30,6 +30,7 @@ services:
       - MYSQL_DB=testdb
       - MYSQL_USER=testuser
       - MYSQL_PASSWORD=testpass
+      - TUSK_ANALYTICS_DISABLED=1
     volumes:
       # Mount SDK source for hot reload (this is what package.json expects)
       - ../../../../../..:/sdk:ro

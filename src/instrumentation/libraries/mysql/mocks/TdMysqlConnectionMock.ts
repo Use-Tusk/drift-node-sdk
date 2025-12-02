@@ -153,7 +153,9 @@ export class TdMysqlConnectionMock extends EventEmitter {
     return undefined;
   }
 
-  beginTransaction(callback?: Function) {
+  beginTransaction(optionsOrCallback?: any, callbackArg?: Function) {
+    // Handle both signatures: beginTransaction(callback) and beginTransaction(options, callback)
+    const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : callbackArg;
     if (callback) {
       process.nextTick(() => callback(null));
       return;
@@ -161,7 +163,9 @@ export class TdMysqlConnectionMock extends EventEmitter {
     return undefined;
   }
 
-  commit(callback?: Function) {
+  commit(optionsOrCallback?: any, callbackArg?: Function) {
+    // Handle both signatures: commit(callback) and commit(options, callback)
+    const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : callbackArg;
     if (callback) {
       process.nextTick(() => callback(null));
       return;
@@ -169,7 +173,9 @@ export class TdMysqlConnectionMock extends EventEmitter {
     return undefined;
   }
 
-  rollback(callback?: Function) {
+  rollback(optionsOrCallback?: any, callbackArg?: Function) {
+    // Handle both signatures: rollback(callback) and rollback(options, callback)
+    const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : callbackArg;
     if (callback) {
       process.nextTick(() => callback(null));
       return;

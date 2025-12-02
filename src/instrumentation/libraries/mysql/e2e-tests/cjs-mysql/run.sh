@@ -151,6 +151,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/q
 echo "    - GET /test/pool-namespace-query-stream"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-namespace-query-stream > /dev/null
 
+echo "    - POST /test/pool-connection-transaction-options"
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/test/pool-connection-transaction-options > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

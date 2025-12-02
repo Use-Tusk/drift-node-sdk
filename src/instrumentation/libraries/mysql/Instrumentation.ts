@@ -1375,7 +1375,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _patchBeginTransaction(connection: any) {
     const self = this;
     return (originalBeginTransaction: Function) => {
-      return function beginTransaction(callback?: Function) {
+      // Handle both signatures: beginTransaction(callback) and beginTransaction(options, callback)
+      return function beginTransaction(optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "BEGIN",
         };
@@ -1383,8 +1392,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -1403,7 +1412,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -1431,7 +1440,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalBeginTransaction,
                     connection,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -1448,7 +1457,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _patchCommit(connection: any) {
     const self = this;
     return (originalCommit: Function) => {
-      return function commit(callback?: Function) {
+      // Handle both signatures: commit(callback) and commit(options, callback)
+      return function commit(optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "COMMIT",
         };
@@ -1456,8 +1474,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -1476,7 +1494,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -1504,7 +1522,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalCommit,
                     connection,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -1521,7 +1539,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _patchRollback(connection: any) {
     const self = this;
     return (originalRollback: Function) => {
-      return function rollback(callback?: Function) {
+      // Handle both signatures: rollback(callback) and rollback(options, callback)
+      return function rollback(optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "ROLLBACK",
         };
@@ -1529,8 +1556,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -1549,7 +1576,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -1577,7 +1604,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalRollback,
                     connection,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -1691,7 +1718,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     spanInfo: SpanInfo,
     originalGetConnection: Function,
     callback: Function | undefined,
-    context: any,
+    poolContext: any,
   ): any {
     const self = this;
 
@@ -1728,15 +1755,20 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           });
           SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
         }
-        return callback(error, connection);
+        // Bind the user callback to the span context so child operations (like queries, transactions)
+        // can access the parent span via SpanUtils.getCurrentSpanInfo() and be properly recorded.
+        // Without this binding, the OpenTelemetry context is lost when the callback executes asynchronously,
+        // causing child spans to have no parent context and be recorded under the wrong trace.
+        const boundCallback = context.bind(spanInfo.context, callback);
+        return boundCallback(error, connection);
       };
 
-      return originalGetConnection.call(context, wrappedCallback);
+      return originalGetConnection.call(poolContext, wrappedCallback);
     } else {
       // No callback - just execute and end span
       // MySQL module is callback-based, but handle this case anyway
       try {
-        const result = originalGetConnection.call(context);
+        const result = originalGetConnection.call(poolContext);
         SpanUtils.addSpanAttributes(spanInfo.span, {
           outputValue: {
             connected: true,
