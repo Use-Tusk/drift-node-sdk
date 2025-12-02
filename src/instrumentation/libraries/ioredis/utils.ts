@@ -69,3 +69,31 @@ export function convertValueToJsonable(value: any): ConvertedValue {
     encoding: BufferEncoding.NONE,
   };
 }
+
+/**
+ * Recursively deserialize Buffer objects from JSON representation.
+ * Converts {"type":"Buffer","data":[...]} back to actual Buffer instances.
+ * This handles the format produced by JSON.stringify(Buffer).
+ */
+export function deserializeBufferValue(value: any): any {
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  // Check if value is a serialized Buffer: {"type":"Buffer","data":[...]}
+  if (value.type === "Buffer" && Array.isArray(value.data)) {
+    return Buffer.from(value.data);
+  }
+
+  // Recursively handle arrays
+  if (Array.isArray(value)) {
+    return value.map((item) => deserializeBufferValue(item));
+  }
+
+  // Recursively handle plain objects
+  const result: Record<string, any> = {};
+  for (const key of Object.keys(value)) {
+    result[key] = deserializeBufferValue(value[key]);
+  }
+  return result;
+}

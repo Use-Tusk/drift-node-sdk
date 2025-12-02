@@ -157,6 +157,12 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/m
 echo "  - GET /test/new-client"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/new-client > /dev/null
 
+echo "  - GET /test/getbuffer"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/getbuffer > /dev/null
+
+echo "  - GET /test/mgetbuffer"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/mgetbuffer > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
