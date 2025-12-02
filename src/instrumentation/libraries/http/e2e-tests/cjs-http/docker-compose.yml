@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   app:
@@ -12,6 +12,7 @@ services:
       - "${APP_PORT:-3000}:3000"
     environment:
       - PORT=3000
+      - TUSK_ANALYTICS_DISABLED=1
     volumes:
       # Mount SDK source for hot reload (this is what package.json expects)
       - ../../../../../..:/sdk:ro

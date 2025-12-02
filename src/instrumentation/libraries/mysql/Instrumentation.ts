@@ -57,6 +57,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
             supportedVersions: ["2.*"],
             patch: (moduleExports: any) => this._patchPoolFile(moduleExports),
           }),
+          // Patch mysql/lib/PoolNamespace.js at the prototype level
+          new TdInstrumentationNodeModuleFile({
+            name: "mysql/lib/PoolNamespace.js",
+            supportedVersions: ["2.*"],
+            patch: (moduleExports: any) => this._patchPoolNamespaceFile(moduleExports),
+          }),
         ],
       }),
     ];
@@ -245,6 +251,44 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   }
 
   /**
+   * Patch PoolNamespace.prototype methods at the file level
+   * This handles queries made via poolCluster.of("pattern").query()
+   */
+  private _patchPoolNamespaceFile(PoolNamespaceClass: any): any {
+    logger.debug(`[MysqlInstrumentation] Patching PoolNamespace class (file-based)`);
+
+    if (this.isModulePatched(PoolNamespaceClass)) {
+      logger.debug(`[MysqlInstrumentation] PoolNamespace class already patched, skipping`);
+      return PoolNamespaceClass;
+    }
+
+    // Wrap PoolNamespace.prototype.query
+    if (PoolNamespaceClass.prototype && PoolNamespaceClass.prototype.query) {
+      if (!isWrapped(PoolNamespaceClass.prototype.query)) {
+        this._wrap(PoolNamespaceClass.prototype, "query", this._getPoolNamespaceQueryPatchFn());
+        logger.debug(`[MysqlInstrumentation] Wrapped PoolNamespace.prototype.query`);
+      }
+    }
+
+    // Wrap PoolNamespace.prototype.getConnection
+    if (PoolNamespaceClass.prototype && PoolNamespaceClass.prototype.getConnection) {
+      if (!isWrapped(PoolNamespaceClass.prototype.getConnection)) {
+        this._wrap(
+          PoolNamespaceClass.prototype,
+          "getConnection",
+          this._getPoolNamespaceGetConnectionPatchFn(),
+        );
+        logger.debug(`[MysqlInstrumentation] Wrapped PoolNamespace.prototype.getConnection`);
+      }
+    }
+
+    this.markModuleAsPatched(PoolNamespaceClass);
+    logger.debug(`[MysqlInstrumentation] PoolNamespace class patching complete`);
+
+    return PoolNamespaceClass;
+  }
+
+  /**
    * Get wrapper function for query method (prototype-level patching)
    */
   private _getQueryPatchFn() {
@@ -252,6 +296,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
 
     return (originalQuery: Function) => {
       return function query(this: any, ...args: any[]) {
+        // Check if args[0] is a Query object with an internal callback
+        // This happens when PoolNamespace.query() passes a pre-created Query object
+        const firstArg = args[0];
+        const hasInternalCallback =
+          firstArg && typeof firstArg === "object" && typeof firstArg._callback === "function";
+
         // Use createQuery to parse arguments if available, otherwise fallback to manual parsing
         let sql: string;
         let values: any[] | undefined;
@@ -269,6 +319,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
             };
             // Find callback in args
             callback = args.find((arg) => typeof arg === "function");
+
+            // If no callback in args but the Query object has an internal callback, use that
+            // This handles the case where a pre-created Query object is passed to query()
+            if (!callback && hasInternalCallback) {
+              callback = firstArg._callback;
+            }
           } catch (error) {
             logger.debug(
               `[MysqlInstrumentation] Error using createQuery, falling back to manual parsing:`,
@@ -288,7 +344,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           options: options.nestTables ? { nestTables: options.nestTables } : undefined,
         };
 
-        const isEventEmitterMode = !callback;
+        // If no callback in args but Query object has internal callback, treat as callback mode
+        const isEventEmitterMode = !callback && !hasInternalCallback;
 
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
@@ -428,7 +485,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _getBeginTransactionPatchFn() {
     const self = this;
     return (originalBeginTransaction: Function) => {
-      return function beginTransaction(this: any, callback?: Function) {
+      // Handle both signatures: beginTransaction(callback) and beginTransaction(options, callback)
+      return function beginTransaction(this: any, optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "BEGIN",
         };
@@ -436,8 +502,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -456,7 +522,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -484,7 +550,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalBeginTransaction,
                     this,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -504,7 +570,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _getCommitPatchFn() {
     const self = this;
     return (originalCommit: Function) => {
-      return function commit(this: any, callback?: Function) {
+      // Handle both signatures: commit(callback) and commit(options, callback)
+      return function commit(this: any, optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "COMMIT",
         };
@@ -512,8 +587,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -532,7 +607,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -560,7 +635,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalCommit,
                     this,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -580,7 +655,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _getRollbackPatchFn() {
     const self = this;
     return (originalRollback: Function) => {
-      return function rollback(this: any, callback?: Function) {
+      // Handle both signatures: rollback(callback) and rollback(options, callback)
+      return function rollback(this: any, optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "ROLLBACK",
         };
@@ -588,8 +672,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -608,7 +692,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -636,7 +720,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalRollback,
                     this,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -875,11 +959,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     return (originalGetConnection: Function) => {
       return function getConnection(this: any, callback?: Function) {
         const inputValue = { clientType: "pool" as const };
+        const pool = this; // Capture pool reference
 
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              return self._handleNoOpReplayGetConnection(callback);
+              return self._handleNoOpReplayGetConnection(pool, callback);
             },
             isServerRequest: false,
             replayModeHandler: () => {
@@ -897,7 +982,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayPoolGetConnection(spanInfo, callback);
+                  return self._handleReplayPoolGetConnection(pool, spanInfo, callback);
                 },
               );
             },
@@ -942,6 +1027,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     const self = this;
     return (originalQuery: Function) => {
       return function query(this: any, ...args: any[]) {
+        // Check if args[0] is a Query object with an internal callback
+        // This happens when PoolNamespace.query() passes a pre-created Query object
+        const firstArg = args[0];
+        const hasInternalCallback =
+          firstArg && typeof firstArg === "object" && typeof firstArg._callback === "function";
+
         // Use createQuery to parse arguments if available, otherwise fallback to manual parsing
         let sql: string;
         let values: any[] | undefined;
@@ -959,6 +1050,12 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
             };
             // Find callback in args
             callback = args.find((arg) => typeof arg === "function");
+
+            // If no callback in args but the Query object has an internal callback, use that
+            // This handles the case where a pre-created Query object is passed to query()
+            if (!callback && hasInternalCallback) {
+              callback = firstArg._callback;
+            }
           } catch (error) {
             logger.debug(
               `[MysqlInstrumentation] Error using createQuery, falling back to manual parsing:`,
@@ -978,7 +1075,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           options: options.nestTables ? { nestTables: options.nestTables } : undefined,
         };
 
-        const isEventEmitterMode = !callback;
+        // If no callback in args but Query object has internal callback, treat as callback mode
+        const isEventEmitterMode = !callback && !hasInternalCallback;
 
         // Handle replay mode
         if (self.mode === TuskDriftMode.REPLAY) {
@@ -1159,6 +1257,44 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
       return queryEmitter;
     } else {
       // Callback mode - wrap the callback
+      // The callback might be in args OR inside a Query object's _callback property
+      const queryObject = args[0];
+      const hasInternalCallback =
+        queryObject &&
+        typeof queryObject === "object" &&
+        typeof queryObject._callback === "function";
+
+      if (hasInternalCallback) {
+        // Wrap the internal _callback on the Query object
+        const originalCallback = queryObject._callback;
+        queryObject._callback = function (err: any, results: any, fields: any) {
+          if (err) {
+            try {
+              SpanUtils.endSpan(spanInfo.span, {
+                code: SpanStatusCode.ERROR,
+                message: err.message,
+              });
+            } catch (error) {
+              logger.error(`[MysqlInstrumentation] error ending span:`, error);
+            }
+          } else {
+            try {
+              const outputValue: MysqlOutputValue = {
+                results: results,
+                fields: fields,
+              };
+              SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
+              SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+            } catch (error) {
+              logger.error(`[MysqlInstrumentation] error ending span:`, error);
+            }
+          }
+          logger.debug(`[MysqlInstrumentation] Query completed`);
+          originalCallback.call(this, err, results, fields);
+        };
+        return originalQuery.apply(connection, args);
+      }
+
       const originalCallback = callback!;
       const callbackIndex = args.findIndex((arg) => typeof arg === "function");
 
@@ -1239,7 +1375,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _patchBeginTransaction(connection: any) {
     const self = this;
     return (originalBeginTransaction: Function) => {
-      return function beginTransaction(callback?: Function) {
+      // Handle both signatures: beginTransaction(callback) and beginTransaction(options, callback)
+      return function beginTransaction(optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "BEGIN",
         };
@@ -1247,8 +1392,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -1267,7 +1412,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -1295,7 +1440,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalBeginTransaction,
                     connection,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -1312,7 +1457,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _patchCommit(connection: any) {
     const self = this;
     return (originalCommit: Function) => {
-      return function commit(callback?: Function) {
+      // Handle both signatures: commit(callback) and commit(options, callback)
+      return function commit(optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "COMMIT",
         };
@@ -1320,8 +1474,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -1340,7 +1494,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -1368,7 +1522,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalCommit,
                     connection,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -1385,7 +1539,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
   private _patchRollback(connection: any) {
     const self = this;
     return (originalRollback: Function) => {
-      return function rollback(callback?: Function) {
+      // Handle both signatures: rollback(callback) and rollback(options, callback)
+      return function rollback(optionsOrCallback?: any, callbackArg?: Function) {
+        // Detect the actual callback - same logic as MySQL library
+        let actualCallback: Function | undefined;
+        if (typeof optionsOrCallback === "function") {
+          actualCallback = optionsOrCallback;
+        } else {
+          actualCallback = callbackArg;
+        }
+
         const inputValue: MysqlTransactionInputValue = {
           query: "ROLLBACK",
         };
@@ -1393,8 +1556,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
         if (self.mode === TuskDriftMode.REPLAY) {
           return handleReplayMode({
             noOpRequestHandler: () => {
-              if (callback) {
-                setImmediate(() => callback(null));
+              if (actualCallback) {
+                setImmediate(() => actualCallback(null));
               }
             },
             isServerRequest: false,
@@ -1413,7 +1576,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
-                  return self._handleReplayTransaction(inputValue, callback);
+                  return self._handleReplayTransaction(inputValue, actualCallback);
                 },
               );
             },
@@ -1441,7 +1604,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                     originalRollback,
                     connection,
                     arguments,
-                    callback,
+                    actualCallback,
                   );
                 },
               );
@@ -1493,7 +1656,9 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     const callbackIndex = argsArray.findIndex((arg) => typeof arg === "function");
 
     if (callbackIndex !== -1) {
-      const originalCallback = callback;
+      // Use the actual callback from argsArray, not the 'callback' parameter
+      // This handles both beginTransaction(callback) and beginTransaction(options, callback) signatures
+      const originalCallback = argsArray[callbackIndex] as Function;
       argsArray[callbackIndex] = function (err: any) {
         if (err) {
           try {
@@ -1553,7 +1718,7 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     spanInfo: SpanInfo,
     originalGetConnection: Function,
     callback: Function | undefined,
-    context: any,
+    poolContext: any,
   ): any {
     const self = this;
 
@@ -1590,15 +1755,20 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           });
           SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
         }
-        return callback(error, connection);
+        // Bind the user callback to the span context so child operations (like queries, transactions)
+        // can access the parent span via SpanUtils.getCurrentSpanInfo() and be properly recorded.
+        // Without this binding, the OpenTelemetry context is lost when the callback executes asynchronously,
+        // causing child spans to have no parent context and be recorded under the wrong trace.
+        const boundCallback = context.bind(spanInfo.context, callback);
+        return boundCallback(error, connection);
       };
 
-      return originalGetConnection.call(context, wrappedCallback);
+      return originalGetConnection.call(poolContext, wrappedCallback);
     } else {
       // No callback - just execute and end span
       // MySQL module is callback-based, but handle this case anyway
       try {
-        const result = originalGetConnection.call(context);
+        const result = originalGetConnection.call(poolContext);
         SpanUtils.addSpanAttributes(spanInfo.span, {
           outputValue: {
             connected: true,
@@ -1617,28 +1787,36 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     }
   }
 
-  private _handleNoOpReplayGetConnection(callback?: Function): any {
+  private _handleNoOpReplayGetConnection(pool: any, callback?: Function): any {
     logger.debug(
       `[MysqlInstrumentation] Background getConnection detected, returning mock connection`,
     );
 
-    const mockConnection = new TdMysqlConnectionMock(this, "pool");
+    const mockConnection = new TdMysqlConnectionMock(this, "pool", undefined, pool);
 
     if (callback) {
-      process.nextTick(() => callback(null, mockConnection));
+      process.nextTick(() => {
+        pool.emit("connection", mockConnection);
+        pool.emit("acquire", mockConnection);
+        callback(null, mockConnection);
+      });
       return;
     }
     return mockConnection;
   }
 
-  private _handleReplayPoolGetConnection(spanInfo: SpanInfo, callback?: Function) {
+  private _handleReplayPoolGetConnection(pool: any, spanInfo: SpanInfo, callback?: Function) {
     logger.debug(`[MysqlInstrumentation] Replaying MySQL Pool getConnection`);
 
     // For pool getConnection operations, simulate returning a mock connection
-    const mockConnection = new TdMysqlConnectionMock(this, "pool", spanInfo);
+    const mockConnection = new TdMysqlConnectionMock(this, "pool", spanInfo, pool);
 
     if (callback) {
-      process.nextTick(() => callback(null, mockConnection));
+      process.nextTick(() => {
+        pool.emit("connection", mockConnection);
+        pool.emit("acquire", mockConnection);
+        callback(null, mockConnection);
+      });
       return;
     }
     return mockConnection;
@@ -1984,6 +2162,177 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
     });
 
     return readableStream;
+  }
+
+  /**
+   * Get wrapper function for PoolNamespace.query method
+   * This handles queries made via poolCluster.of("pattern").query()
+   */
+  private _getPoolNamespaceQueryPatchFn() {
+    const self = this;
+
+    return (originalQuery: Function) => {
+      return function query(this: any, ...args: any[]) {
+        // Check if args[0] is a Query object with an internal callback
+        // This happens when a pre-created Query object is passed to PoolNamespace.query()
+        const firstArg = args[0];
+        const hasInternalCallback =
+          firstArg && typeof firstArg === "object" && typeof firstArg._callback === "function";
+
+        if (self.mode === TuskDriftMode.REPLAY) {
+          // Parse arguments using same logic as regular query
+          let sql: string;
+          let values: any[] | undefined;
+          let callback: Function | undefined;
+          let options: any = {};
+
+          if (self.createQuery) {
+            try {
+              const queryObj = self.createQuery(...args);
+              sql = queryObj.sql;
+              values = queryObj.values;
+              options = { nestTables: queryObj.nestTables };
+              callback = args.find((arg) => typeof arg === "function");
+
+              // If no callback in args but the Query object has an internal callback, use that
+              // This handles the case where a pre-created Query object is passed to query()
+              if (!callback && hasInternalCallback) {
+                callback = firstArg._callback;
+              }
+            } catch (error) {
+              ({ sql, values, callback, options } = self._parseQueryArgs(args));
+            }
+          } else {
+            ({ sql, values, callback, options } = self._parseQueryArgs(args));
+          }
+
+          const inputValue: MysqlQueryInputValue = {
+            sql: sql,
+            values: values,
+            options: options.nestTables ? { nestTables: options.nestTables } : undefined,
+          };
+          const stackTrace = captureStackTrace(["MysqlInstrumentation"]);
+
+          return handleReplayMode({
+            noOpRequestHandler: () => {
+              return self.queryMock.handleNoOpReplayQuery({ sql, values, callback, options });
+            },
+            isServerRequest: false,
+            replayModeHandler: () => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalQuery.apply(this, args),
+                {
+                  name: "mysql.query",
+                  kind: SpanKind.CLIENT,
+                  submodule: "query",
+                  packageType: PackageType.MYSQL,
+                  packageName: "mysql",
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart: false,
+                },
+                (spanInfo) => {
+                  const queryEmitter = self.queryMock.handleReplayQuery(
+                    { sql, values, callback, options },
+                    inputValue,
+                    spanInfo,
+                    stackTrace,
+                  );
+
+                  // Add stream() method to the emitter so query.stream() works in REPLAY mode
+                  // This mirrors the behavior in _getQueryPatchFn()
+                  if (queryEmitter && typeof queryEmitter === "object") {
+                    (queryEmitter as any).stream = function (streamOptions?: any) {
+                      return self._createReplayStreamForQuery(
+                        inputValue,
+                        spanInfo,
+                        stackTrace,
+                        queryEmitter,
+                        streamOptions,
+                      );
+                    };
+                  }
+
+                  return queryEmitter;
+                },
+              );
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          // In RECORD mode, we rely on the underlying Connection.query instrumentation
+          // to capture the query results. PoolNamespace.query() internally calls
+          // cluster._getConnection() -> pool.getConnection() -> conn.query(queryObj)
+          // The Connection.query wrapper will properly capture the results.
+          return originalQuery.apply(this, args);
+        } else {
+          return originalQuery.apply(this, args);
+        }
+      };
+    };
+  }
+
+  /**
+   * Get wrapper function for PoolNamespace.getConnection method
+   * This handles connections obtained via poolCluster.of("pattern").getConnection()
+   */
+  private _getPoolNamespaceGetConnectionPatchFn() {
+    const self = this;
+
+    return (originalGetConnection: Function) => {
+      return function getConnection(this: any, callback?: Function) {
+        const namespace = this;
+        const inputValue = { clientType: "poolNamespace" as const };
+
+        if (self.mode === TuskDriftMode.REPLAY) {
+          return handleReplayMode({
+            noOpRequestHandler: () => {
+              const mockConnection = new TdMysqlConnectionMock(self, "pool", undefined, undefined);
+              if (callback) {
+                process.nextTick(() => callback(null, mockConnection));
+                return;
+              }
+              return mockConnection;
+            },
+            isServerRequest: false,
+            replayModeHandler: () => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalGetConnection.apply(namespace, [callback]),
+                {
+                  name: `mysql.poolNamespace.getConnection`,
+                  kind: SpanKind.CLIENT,
+                  submodule: "getConnection",
+                  packageName: "mysql",
+                  packageType: PackageType.MYSQL,
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart: false,
+                },
+                (spanInfo) => {
+                  const mockConnection = new TdMysqlConnectionMock(
+                    self,
+                    "pool",
+                    spanInfo,
+                    undefined,
+                  );
+                  if (callback) {
+                    process.nextTick(() => callback(null, mockConnection));
+                    return;
+                  }
+                  return mockConnection;
+                },
+              );
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          // In RECORD mode, the underlying Pool.getConnection is already patched
+          return originalGetConnection.apply(namespace, [callback]);
+        } else {
+          return originalGetConnection.apply(namespace, [callback]);
+        }
+      };
+    };
   }
 
   private _wrap(target: any, propertyName: string, wrapper: (original: any) => any): void {

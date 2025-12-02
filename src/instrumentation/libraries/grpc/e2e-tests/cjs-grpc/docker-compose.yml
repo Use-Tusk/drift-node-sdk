@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   app:
@@ -14,6 +14,7 @@ services:
     environment:
       - PORT=3000
       - GRPC_SERVER_ADDRESS=localhost:50051
+      - TUSK_ANALYTICS_DISABLED=1
     volumes:
       # Mount SDK source for hot reload (this is what package.json expects)
       - ../../../../../..:/sdk:ro

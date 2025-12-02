@@ -276,9 +276,108 @@ app.get("/pool/get-connection", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/test/pool-events", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing pool events...");
+
+    const events: string[] = [];
+
+    // Create a new pool to track events
+    const eventPool = mysql.createPool({
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+      connectionLimit: 1, // Force queueing
+    });
+
+    eventPool.on("connection", (connection: any) => {
+      console.log("Pool event: connection");
+      events.push("connection");
+    });
+
+    eventPool.on("acquire", (connection: any) => {
+      console.log("Pool event: acquire");
+      events.push("acquire");
+    });
+
+    eventPool.on("release", (connection: any) => {
+      console.log("Pool event: release");
+      events.push("release");
+    });
+
+    eventPool.on("enqueue", () => {
+      console.log("Pool event: enqueue");
+      events.push("enqueue");
+    });
+
+    // Get connection to trigger events
+    eventPool.getConnection((error: any, connection: any) => {
+      if (error) {
+        eventPool.end(() => {});
+        return res.status(500).json({ error: error.message });
+      }
+
+      connection.query("SELECT 1 as test", (queryError: any, results: any) => {
+        connection.release();
+
+        // Give time for release event to fire
+        setTimeout(() => {
+          eventPool.end((endError: any) => {
+            res.json({
+              message: "Pool events test completed",
+              events: events,
+              queryResults: results,
+            });
+          });
+        }, 100);
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in pool-events:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/test/pool-namespace-query", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing PoolNamespace.query()...");
+
+    // Create a pool cluster
+    const poolCluster = mysql.createPoolCluster();
+
+    poolCluster.add("NODE1", {
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+    });
+
+    // Use the namespace to query
+    const namespace = poolCluster.of("NODE*");
+    namespace.query("SELECT COUNT(*) as count FROM cache", (err, results) => {
+      poolCluster.end(() => {});
+
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+
+      res.json({
+        message: "PoolNamespace.query test completed",
+        data: results,
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in pool-namespace-query:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ===== TRANSACTION TESTS =====
 
-// Test transaction with commit
+// Test beginTransaction(callback) signature
 app.post("/transaction/commit", async (req: Request, res: Response) => {
   try {
     console.log("Testing transaction with commit...");
@@ -323,6 +422,69 @@ app.post("/transaction/commit", async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Error in transaction commit:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test beginTransaction(options, callback) signature
+app.post("/test/transaction-with-options", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing transaction with options object...");
+
+    // Create a temporary connection for this test
+    const tempConnection = mysql.createConnection({
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+    });
+
+    tempConnection.connect((connectError: any) => {
+      if (connectError) {
+        return res.status(500).json({ error: connectError.message });
+      }
+
+      // Begin transaction with options object (timeout) - cast to any for extended options
+      (tempConnection as any).beginTransaction({ timeout: 10000 }, (beginError: any) => {
+        if (beginError) {
+          tempConnection.end(() => {});
+          return res.status(500).json({ error: beginError.message });
+        }
+
+        const timestamp = Date.now();
+        const key = `tx_options_${timestamp}`;
+
+        tempConnection.query(
+          "INSERT INTO cache (`key`, value, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 DAY))",
+          [key, `Options transaction test ${timestamp}`],
+          (insertError: any, insertResults: any) => {
+            if (insertError) {
+              return tempConnection.rollback(() => {
+                tempConnection.end(() => {});
+                res.status(500).json({ error: insertError.message });
+              });
+            }
+
+            // Commit with options - cast to any for extended options
+            (tempConnection as any).commit({ timeout: 10000 }, (commitError: any) => {
+              tempConnection.end(() => {});
+
+              if (commitError) {
+                return res.status(500).json({ error: commitError.message });
+              }
+
+              res.json({
+                message: "Transaction with options executed",
+                insertId: insertResults.insertId,
+              });
+            });
+          },
+        );
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in transaction-with-options:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -972,6 +1134,238 @@ app.get("/stream/query-stream-method", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/test/query-object-reuse", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing query object passed directly...");
+    const connection = getConnection();
+
+    // Create a query object manually using Connection.createQuery
+    const queryObj = (mysql as any).createQuery(
+      "SELECT * FROM cache LIMIT 2",
+      (error: any, results: any, fields: any) => {
+        if (error) {
+          console.error("Error executing query:", error);
+          return res.status(500).json({ error: error.message });
+        }
+
+        res.json({
+          message: "Query object direct execution completed",
+          data: results,
+        });
+      },
+    );
+
+    // Pass the query object directly to connection.query
+    connection.query(queryObj);
+  } catch (error: any) {
+    console.error("Error in query-object-reuse:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test PoolNamespace.query().stream()
+app.get("/test/pool-namespace-query-stream", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing PoolNamespace.query().stream()...");
+
+    // Create a pool cluster
+    const poolCluster = mysql.createPoolCluster();
+
+    poolCluster.add("NODE1", {
+      host: process.env.MYSQL_HOST || "mysql",
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
+      user: process.env.MYSQL_USER || "testuser",
+      password: process.env.MYSQL_PASSWORD || "testpass",
+      database: process.env.MYSQL_DB || "testdb",
+    });
+
+    const results: any[] = [];
+
+    // Use the namespace to query and then call stream()
+    const namespace = poolCluster.of("NODE*");
+    const query = namespace.query("SELECT * FROM users ORDER BY id ASC");
+
+    // This is the critical call - stream() may not exist in REPLAY mode
+    const stream = query.stream();
+
+    stream
+      .on("error", (err) => {
+        console.error("Stream error:", err);
+        poolCluster.end(() => {});
+        res.status(500).json({ error: err.message });
+      })
+      .on("data", (row) => {
+        console.log("Received data from stream:", row);
+        results.push(row);
+      })
+      .on("end", () => {
+        console.log("Stream ended");
+        poolCluster.end(() => {});
+        res.json({
+          message: "PoolNamespace.query().stream() test completed",
+          count: results.length,
+          data: results,
+        });
+      });
+  } catch (error: any) {
+    console.error("Error in pool-namespace-query-stream:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Pool connection with beginTransaction(options, callback) signature
+app.post("/test/pool-connection-transaction-options", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing pool connection with beginTransaction(options, callback)...");
+    const pool = getPool();
+
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.error("Error getting pool connection:", err);
+        return res.status(500).json({ error: err.message });
+      }
+
+      // Use beginTransaction with (options, callback) signature
+      (connection as any).beginTransaction({ timeout: 10000 }, (beginError: any) => {
+        if (beginError) {
+          connection.release();
+          console.error("Error beginning transaction:", beginError);
+          return res.status(500).json({ error: beginError.message });
+        }
+
+        const timestamp = Date.now();
+        const key = `pool_tx_options_${timestamp}`;
+
+        connection.query(
+          "INSERT INTO cache (`key`, value, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 DAY))",
+          [key, `Pool transaction with options test ${timestamp}`],
+          (insertError: any, insertResults: any) => {
+            if (insertError) {
+              return connection.rollback(() => {
+                connection.release();
+                res.status(500).json({ error: insertError.message });
+              });
+            }
+
+            // Commit with (options, callback) signature
+            (connection as any).commit({ timeout: 10000 }, (commitError: any) => {
+              connection.release();
+
+              if (commitError) {
+                return res.status(500).json({ error: commitError.message });
+              }
+
+              res.json({
+                message: "Pool connection transaction with options completed",
+                insertId: insertResults.insertId,
+              });
+            });
+          },
+        );
+      });
+    });
+  } catch (error: any) {
+    console.error("Error in pool-connection-transaction-options:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test pool.getConnection() then query with pre-created Query object having internal _callback
+// Tests if TdMysqlConnectionMock properly handles Query objects with _callback
+app.get(
+  "/test/pool-getconnection-query-with-internal-callback",
+  async (req: Request, res: Response) => {
+    try {
+      console.log("Testing pool.getConnection() then query with pre-created Query object...");
+      const pool = getPool();
+
+      pool.getConnection((err, connection) => {
+        if (err) {
+          console.error("Error getting connection:", err);
+          return res.status(500).json({ error: err.message });
+        }
+
+        // Create a Query object with internal callback using mysql.createQuery
+        const queryObj = (mysql as any).createQuery(
+          "SELECT * FROM cache LIMIT 2",
+          (queryErr: any, results: any, fields: any) => {
+            connection.release();
+
+            if (queryErr) {
+              console.error("Query callback error:", queryErr);
+              return res.status(500).json({ error: queryErr.message });
+            }
+
+            console.log("Query callback results:", results);
+            res.json({
+              message: "pool.getConnection().query with internal callback completed",
+              count: results.length,
+              data: results,
+            });
+          },
+        );
+
+        // Pass the Query object directly to connection.query
+        connection.query(queryObj);
+      });
+    } catch (error: any) {
+      console.error("Error in pool-getconnection-query-with-internal-callback:", error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+);
+
+// Test PoolNamespace.query with pre-created Query object that has internal _callback
+app.get(
+  "/test/pool-namespace-query-with-internal-callback",
+  async (req: Request, res: Response) => {
+    try {
+      console.log(
+        "Testing PoolNamespace.query() with pre-created Query object having internal _callback...",
+      );
+
+      // Create a pool cluster
+      const poolCluster = mysql.createPoolCluster();
+
+      poolCluster.add("NODE1", {
+        host: process.env.MYSQL_HOST || "mysql",
+        port: parseInt(process.env.MYSQL_PORT || "3306"),
+        user: process.env.MYSQL_USER || "testuser",
+        password: process.env.MYSQL_PASSWORD || "testpass",
+        database: process.env.MYSQL_DB || "testdb",
+      });
+
+      // Create a Query object with internal callback using mysql.createQuery
+      // This is exactly how PoolNamespace.query internally works
+      const queryObj = (mysql as any).createQuery(
+        "SELECT * FROM users LIMIT 2",
+        (err: any, results: any, fields: any) => {
+          poolCluster.end(() => {});
+
+          if (err) {
+            console.error("Query callback error:", err);
+            return res.status(500).json({ error: err.message });
+          }
+
+          console.log("Query callback results:", results);
+          res.json({
+            message: "PoolNamespace.query with internal callback completed",
+            count: results.length,
+            data: results,
+          });
+        },
+      );
+
+      // Use the namespace to query by passing the pre-created Query object
+      const namespace = poolCluster.of("NODE*");
+      namespace.query(queryObj);
+    } catch (error: any) {
+      console.error("Error in pool-namespace-query-with-internal-callback:", error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+);
+
 // Start server
 const server = app.listen(PORT, async () => {
   try {
@@ -980,50 +1374,6 @@ const server = app.listen(PORT, async () => {
     TuskDrift.markAppAsReady();
     console.log(`Server running on port ${PORT}`);
     console.log(`TUSK_DRIFT_MODE: ${process.env.TUSK_DRIFT_MODE || "DISABLED"}`);
-    console.log("Available endpoints:");
-    console.log("  GET    /health - Health check");
-    console.log("");
-    console.log("  Connection Tests:");
-    console.log("  GET    /connection/query-callback - Basic query with callback");
-    console.log("  GET    /connection/query-params - Query with parameters");
-    console.log("  GET    /connection/query-options - Query with options object");
-    console.log("  GET    /connection/query-stream - Query with event emitter");
-    console.log("  GET    /connection/multi-statement - Multi-statement query");
-    console.log("");
-    console.log("  Pool Tests:");
-    console.log("  GET    /pool/query - Pool query");
-    console.log("  GET    /pool/get-connection - Pool getConnection");
-    console.log("");
-    console.log("  Transaction Tests:");
-    console.log("  POST   /transaction/commit - Transaction with commit");
-    console.log("  POST   /transaction/rollback - Transaction with rollback");
-    console.log("");
-    console.log("  CRUD Tests:");
-    console.log("  POST   /crud/insert - INSERT query");
-    console.log("  PUT    /crud/update - UPDATE query");
-    console.log("  DELETE /crud/delete - DELETE query");
-    console.log("");
-    console.log("  Advanced Tests:");
-    console.log("  GET    /advanced/join - JOIN query");
-    console.log("  GET    /advanced/aggregate - Aggregate functions");
-    console.log("  GET    /advanced/subquery - Subquery");
-    console.log("  GET    /advanced/prepared - Prepared statement-like query");
-    console.log("");
-    console.log("  Lifecycle Tests:");
-    console.log("  GET    /lifecycle/ping - Connection ping");
-    console.log("  GET    /lifecycle/end-and-reconnect - Connection end");
-    console.log("  POST   /lifecycle/change-user - Connection changeUser");
-    console.log("  GET    /lifecycle/pause-resume - Connection pause/resume");
-    console.log("");
-    console.log("  Pool Lifecycle Tests:");
-    console.log("  GET    /pool/end-and-recreate - Pool end");
-    console.log("");
-    console.log("  Event Tests:");
-    console.log("  GET    /events/connect - Connect event emission");
-    console.log("  GET    /test/connection-destroy - Connection destroy");
-    console.log("");
-    console.log("  Stream Tests:");
-    console.log("  GET    /stream/query-stream-method - Query.stream() method");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

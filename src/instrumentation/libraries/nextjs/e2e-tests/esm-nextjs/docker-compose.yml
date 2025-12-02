@@ -13,6 +13,7 @@ services:
     environment:
       - PORT=3000
       - NODE_PATH=/sdk/node_modules
+      - TUSK_ANALYTICS_DISABLED=1
     volumes:
       # Mount SDK source for hot reload (this is what package.json expects)
       - ../../../../../..:/sdk:ro
