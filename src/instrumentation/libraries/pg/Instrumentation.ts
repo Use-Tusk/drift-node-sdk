@@ -483,6 +483,16 @@ export class PgInstrumentation extends TdInstrumentationBase {
    * Reference for data type IDs: https://jdbc.postgresql.org/documentation/publicapi/constant-values.html
    */
   private convertPostgresTypes(result: any, rowMode?: 'array'): any {
+    // Handle multi-statement results (wrapped format from _addOutputAttributesToSpan)
+    if (result && result.isMultiStatement && Array.isArray(result.results)) {
+      return result.results.map((singleResult: any) => this.convertPostgresTypes(singleResult, rowMode));
+    }
+
+    // Handle multi-statement results (array of Results - legacy/direct format)
+    if (Array.isArray(result)) {
+      return result.map(singleResult => this.convertPostgresTypes(singleResult, rowMode));
+    }
+
     if (!result || !result.fields || !result.rows) {
       return result;
     }
@@ -620,16 +630,34 @@ export class PgInstrumentation extends TdInstrumentationBase {
     }
   }
 
-  private _addOutputAttributesToSpan(spanInfo: SpanInfo, result?: PgResult): void {
+  private _addOutputAttributesToSpan(spanInfo: SpanInfo, result?: PgResult | PgResult[]): void {
     if (!result) return;
 
-    const outputValue = {
-      command: result.command,
-      rowCount: result.rowCount,
-      oid: result.oid,
-      rows: result.rows || [],
-      fields: result.fields || [],
-    };
+    let outputValue: any;
+
+    if (Array.isArray(result)) {
+      // Multi-statement query: array of Result objects
+      // Wrap in object with 'results' key to ensure CLI can handle it properly
+      outputValue = {
+        isMultiStatement: true,
+        results: result.map(r => ({
+          command: r.command,
+          rowCount: r.rowCount,
+          oid: r.oid,
+          rows: r.rows || [],
+          fields: r.fields || [],
+        })),
+      };
+    } else {
+      // Single statement query
+      outputValue = {
+        command: result.command,
+        rowCount: result.rowCount,
+        oid: result.oid,
+        rows: result.rows || [],
+        fields: result.fields || [],
+      };
+    }
 
     SpanUtils.addSpanAttributes(spanInfo.span, {
       outputValue,
