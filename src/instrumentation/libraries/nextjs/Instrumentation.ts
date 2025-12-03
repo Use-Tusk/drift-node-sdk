@@ -436,7 +436,7 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
       });
 
       const status =
-        (capturedStatusCode || 200) >= 400
+        (capturedStatusCode || 200) >= 300
           ? { code: SpanStatusCode.ERROR, message: `HTTP ${capturedStatusCode}` }
           : { code: SpanStatusCode.OK };
 
@@ -507,8 +507,8 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
             kind: SpanKind.SERVER,
             packageType: PackageType.HTTP,
             status: {
-              code: (capturedStatusCode || 200) >= 400 ? StatusCode.ERROR : StatusCode.OK,
-              message: (capturedStatusCode || 200) >= 400 ? `HTTP ${capturedStatusCode}` : "",
+              code: (capturedStatusCode || 200) >= 300 ? StatusCode.ERROR : StatusCode.OK,
+              message: (capturedStatusCode || 200) >= 300 ? `HTTP ${capturedStatusCode}` : "",
             },
             timestamp: {
               seconds: Math.floor(now.getTime() / 1000),
