@@ -484,7 +484,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           });
 
           const status =
-            statusCode >= 400
+            statusCode >= 300
               ? { code: SpanStatusCode.ERROR, message: `HTTP ${statusCode}` }
               : { code: SpanStatusCode.OK };
 
