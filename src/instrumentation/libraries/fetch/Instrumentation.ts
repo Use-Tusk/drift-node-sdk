@@ -225,7 +225,7 @@ export class FetchInstrumentation extends TdInstrumentationBase {
               });
 
               const status =
-                response.status >= 400
+                response.status >= 300
                   ? { code: SpanStatusCode.ERROR, message: `HTTP ${response.status}` }
                   : { code: SpanStatusCode.OK };
 
