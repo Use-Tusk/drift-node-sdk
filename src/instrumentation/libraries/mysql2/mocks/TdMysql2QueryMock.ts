@@ -212,7 +212,7 @@ export class TdMysql2QueryMock {
       return { rows: [], fields: [] };
     }
 
-    // If result has rows and fields, use them
+    // If result has rows and fields, use them (SELECT with explicit structure)
     if (result.rows !== undefined && result.fields !== undefined) {
       return {
         rows: result.rows,
@@ -220,7 +220,17 @@ export class TdMysql2QueryMock {
       };
     }
 
-    // Otherwise, assume result is the rows
+    // Check for ResultSetHeader (INSERT/UPDATE/DELETE)
+    // These have affectedRows but no rows/fields properties
+    if (result.affectedRows !== undefined) {
+      // Return the ResultSetHeader as-is - it's the result, not row data
+      return {
+        rows: result,
+        fields: [],
+      };
+    }
+
+    // Otherwise, assume result is the rows (array of RowDataPacket)
     return {
       rows: result,
       fields: [],

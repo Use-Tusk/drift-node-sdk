@@ -599,7 +599,9 @@ const server = http.createServer(async (req, res) => {
     if (url === "/test/promise-connection-query" && method === "GET") {
       try {
         const promiseConnection = await mysqlPromise.createConnection(dbConfig);
-        const [rows] = await promiseConnection.query("SELECT * FROM test_users ORDER BY id LIMIT 3");
+        const [rows] = await promiseConnection.query(
+          "SELECT * FROM test_users ORDER BY id LIMIT 3",
+        );
         await promiseConnection.end();
 
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -676,6 +678,64 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url === "/test/transaction-methods" && method === "GET") {
+      const txConnection = mysql.createConnection(dbConfig);
+
+      txConnection.connect((connectErr) => {
+        if (connectErr) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: connectErr.message }));
+          return;
+        }
+
+        txConnection.beginTransaction((beginErr) => {
+          if (beginErr) {
+            txConnection.end();
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: beginErr.message }));
+            return;
+          }
+
+          txConnection.query(
+            "INSERT INTO test_users (name, email) VALUES (?, ?)",
+            ["TX User", `tx_${Date.now()}@example.com`],
+            (insertErr, insertResults) => {
+              if (insertErr) {
+                txConnection.rollback(() => {
+                  txConnection.end();
+                  res.writeHead(500, { "Content-Type": "application/json" });
+                  res.end(JSON.stringify({ success: false, error: insertErr.message }));
+                });
+                return;
+              }
+
+              txConnection.commit((commitErr) => {
+                if (commitErr) {
+                  txConnection.rollback(() => {
+                    txConnection.end();
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: commitErr.message }));
+                  });
+                  return;
+                }
+
+                txConnection.end();
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(
+                  JSON.stringify({
+                    success: true,
+                    data: insertResults,
+                    queryType: "transaction",
+                  }),
+                );
+              });
+            },
+          );
+        });
+      });
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
@@ -699,31 +759,6 @@ server.listen(PORT, async () => {
     TuskDrift.markAppAsReady();
     console.log(`MySQL2 integration test server running on port ${PORT}`);
     console.log(`Test mode: ${process.env.TUSK_DRIFT_MODE}`);
-    console.log("Available endpoints:");
-    console.log("  GET  /health - Health check");
-    console.log("  GET  /test/connection-query - Test connection query");
-    console.log("  POST /test/connection-parameterized - Test connection parameterized query");
-    console.log("  GET  /test/connection-execute - Test connection execute (prepared statement)");
-    console.log("  POST /test/connection-execute-params - Test connection execute with params");
-    console.log("  GET  /test/pool-query - Test pool query");
-    console.log("  POST /test/pool-parameterized - Test pool parameterized query");
-    console.log("  GET  /test/pool-execute - Test pool execute (prepared statement)");
-    console.log("  POST /test/pool-execute-params - Test pool execute with params");
-    console.log("  GET  /test/pool-getConnection - Test pool getConnection");
-    console.log("  GET  /test/connection-connect - Test connection connect");
-    console.log("  GET  /test/connection-ping - Test connection ping");
-    console.log("  GET  /test/stream-query - Test stream query");
-    console.log(
-      "  GET  /test/sequelize-authenticate - Test Sequelize authenticate (triggers internal queries)",
-    );
-    console.log("  GET  /test/sequelize-findall - Test Sequelize findAll");
-    console.log("  POST /test/sequelize-findone - Test Sequelize findOne");
-    console.log("  GET  /test/sequelize-complex - Test Sequelize complex queries");
-    console.log("  GET  /test/sequelize-raw - Test Sequelize raw query");
-    console.log("  POST /test/sequelize-transaction - Test Sequelize transaction");
-    console.log("  GET  /test/promise-connection-query - Test mysql2/promise connection query");
-    console.log("  GET  /test/promise-pool-query - Test mysql2/promise pool query");
-    console.log("  GET  /test/promise-pool-getconnection - Test mysql2/promise pool.getConnection()");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

@@ -1374,11 +1374,16 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         fields: fields || [],
       };
     } else if (result.affectedRows !== undefined) {
-      // INSERT/UPDATE/DELETE query - OkPacket or ResultSetHeader
+      // INSERT/UPDATE/DELETE query - ResultSetHeader
+      // Preserve ALL fields matching mysql2's resultset_header.js structure
       outputValue = {
-        affectedRows: result.affectedRows,
-        insertId: result.insertId,
-        warningCount: result.warningCount,
+        fieldCount: result.fieldCount, // Always set by mysql2
+        affectedRows: result.affectedRows, // Always set by mysql2
+        insertId: result.insertId, // Always set by mysql2
+        info: result.info ?? "", // Initialized to '' in mysql2
+        serverStatus: result.serverStatus ?? 0, // May be undefined (protocol-dependent)
+        warningStatus: result.warningStatus ?? 0, // May be undefined (protocol-dependent)
+        changedRows: result.changedRows ?? 0, // Default 0 in mysql2
       };
     } else {
       // Other result types
