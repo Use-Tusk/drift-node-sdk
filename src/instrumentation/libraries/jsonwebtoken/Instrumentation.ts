@@ -4,7 +4,7 @@ import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { TuskDriftCore, TuskDriftMode } from "../../../core/TuskDrift";
 import { captureStackTrace, wrap } from "../../core/utils";
-import { findMockResponseAsync } from "../../core/utils/mockResponseUtils";
+import { findMockResponseSync } from "../../core/utils/mockResponseUtils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
 import {
   JsonwebtokenModuleExports,
@@ -520,16 +520,16 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
     }
   }
 
-  async handleReplayVerify(
+  handleReplayVerify(
     verifyConfig: VerifyQueryConfig,
     inputValue: JwtVerifyInputValue,
     spanInfo: SpanInfo,
     stackTrace?: string,
-  ): Promise<any> {
+  ): any {
     logger.debug(`[JsonwebtokenInstrumentation] Replaying JWT verify`);
 
     // Look for matching recorded response
-    const mockData = await findMockResponseAsync({
+    const mockData = findMockResponseSync({
       mockRequestData: {
         traceId: spanInfo.traceId,
         spanId: spanInfo.spanId,
@@ -596,16 +596,16 @@ export class JsonwebtokenInstrumentation extends TdInstrumentationBase {
     }
   }
 
-  async handleReplaySign(
+  handleReplaySign(
     signConfig: SignQueryConfig,
     inputValue: JwtSignInputValue,
     spanInfo: SpanInfo,
     stackTrace?: string,
-  ): Promise<any> {
+  ): any {
     logger.debug(`[JsonwebtokenInstrumentation] Replaying JWT sign`);
 
     // Look for matching recorded response
-    const mockData = await findMockResponseAsync({
+    const mockData = findMockResponseSync({
       mockRequestData: {
         traceId: spanInfo?.traceId,
         spanId: spanInfo?.spanId,
