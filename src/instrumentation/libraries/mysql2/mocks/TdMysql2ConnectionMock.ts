@@ -189,6 +189,34 @@ export class TdMysql2ConnectionMock extends EventEmitter {
     return Promise.resolve();
   }
 
+  prepare(sql: string | object, callback?: Function) {
+    const sqlStr = typeof sql === "string" ? sql : (sql as any).sql;
+    const self = this;
+
+    const mockStatement = {
+      query: sqlStr,
+      id: 1,
+      columns: [],
+      parameters: [],
+      execute: (...args: any[]) => {
+        const values = Array.isArray(args[0]) ? args[0] : [];
+        const execCallback =
+          typeof args[args.length - 1] === "function" ? args[args.length - 1] : undefined;
+        return self.mysql2Instrumentation.handleNoOpReplayQuery({
+          sql: sqlStr,
+          values,
+          callback: execCallback,
+        });
+      },
+      close: () => {},
+    };
+
+    if (callback) {
+      process.nextTick(() => callback(null, mockStatement));
+    }
+    return undefined;
+  }
+
   pause() {
     // No-op
   }

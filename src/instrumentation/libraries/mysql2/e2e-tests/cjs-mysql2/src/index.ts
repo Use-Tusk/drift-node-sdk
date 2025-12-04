@@ -736,6 +736,49 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url === "/test/prepare-statement" && method === "GET") {
+      const prepConnection = mysql.createConnection(dbConfig);
+
+      prepConnection.connect((connectErr) => {
+        if (connectErr) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: connectErr.message }));
+          return;
+        }
+
+        prepConnection.prepare("SELECT * FROM test_users WHERE id = ?", (prepErr, statement) => {
+          if (prepErr) {
+            prepConnection.end();
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: prepErr.message }));
+            return;
+          }
+
+          statement.execute([1], (execErr, results) => {
+            statement.close();
+            prepConnection.end();
+
+            if (execErr) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: execErr.message }));
+              return;
+            }
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                success: true,
+                data: results,
+                rowCount: Array.isArray(results) ? results.length : 0,
+                queryType: "prepare-statement",
+              }),
+            );
+          });
+        });
+      });
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));

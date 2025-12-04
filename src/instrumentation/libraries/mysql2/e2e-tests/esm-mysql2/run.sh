@@ -121,6 +121,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/p
 echo "  - GET /test/transaction-methods"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/transaction-methods > /dev/null
 
+echo "  - GET /test/prepare-statement"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/prepare-statement > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
