@@ -17,7 +17,7 @@ import {
   IORedisOutputValue,
   BufferMetadata,
 } from "./types";
-import { convertValueToJsonable } from "./utils";
+import { convertValueToJsonable, deserializeBufferValue } from "./utils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger, isEsm } from "../../../core/utils";
 import { captureStackTrace } from "src/instrumentation/core/utils";
@@ -690,8 +690,9 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
       return [];
     }
 
-    // Return the stored value as-is (already in final form)
-    return outputValue.value || outputValue;
+    // Deserialize the value, converting any serialized Buffers back to Buffer instances
+    const value = outputValue.value || outputValue;
+    return deserializeBufferValue(value);
   }
 
   private _deserializeOutput(outputValue: any): any {
@@ -702,11 +703,11 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     // If outputValue is not an IORedisOutputValue object (doesn't have 'value' property),
     // it might be the raw value itself
     if (typeof outputValue !== "object" || !("value" in outputValue)) {
-      return outputValue;
+      return deserializeBufferValue(outputValue);
     }
 
-    // Return the stored value as-is (it's already in final form from ioredis transformations)
-    return outputValue.value;
+    // Deserialize the value, converting any serialized Buffers back to Buffer instances
+    return deserializeBufferValue(outputValue.value);
   }
 
   private _wrap(target: any, propertyName: string, wrapper: (original: any) => any): void {
