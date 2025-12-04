@@ -7,7 +7,8 @@ import { getNextjsVersion, shouldSetInstrumentationHook, debugLog, warn } from "
  *
  * This function automatically configures Next.js to work with Tusk Drift by:
  * - Enabling the Next.js instrumentation hook (for Next.js < 15.0.0-rc.1)
- * - Configuring webpack externals to prevent bundling of core instrumentation packages
+ * - Configuring server external packages to prevent bundling of core instrumentation packages
+ * - Supporting both webpack and Turbopack bundlers
  * - Preserving your existing Next.js configuration and webpack customizations
  *
  * @param nextConfig - Your existing Next.js configuration object (optional)
@@ -42,9 +43,12 @@ import { getNextjsVersion, shouldSetInstrumentationHook, debugLog, warn } from "
  * ```
  *
  * @remarks
- * The following webpack externals are added for server-side builds:
+ * The following packages are added as server externals for both webpack and Turbopack:
  * - `require-in-the-middle` - Required for CommonJS module interception
  * - `jsonpath` - Required for schema manipulation
+ * - Additional packages when TUSK_DRIFT_MODE is RECORD or REPLAY (e.g., database clients, etc.)
+ *
+ * Works with both webpack (default) and Turbopack (`next dev --turbo`).
  */
 export function withTuskDrift(
   nextConfig: NextConfig = {},
@@ -72,6 +76,53 @@ export function withTuskDrift(
   const needsInstrumentationHook =
     !options.disableInstrumentationHook && shouldSetInstrumentationHook(nextjsVersion);
 
+  // Check if we're in RECORD or REPLAY mode
+  const mode = process.env.TUSK_DRIFT_MODE?.toUpperCase();
+  const isRecordOrReplay = mode === "RECORD" || mode === "REPLAY";
+
+  // Core packages that must be external for instrumentation
+  //
+  // Why these packages need to be external:
+  //
+  // 1. require-in-the-middle & jsonpath:
+  //    Required for the instrumentation infrastructure itself.
+  //
+  // 2. Others:
+  //    By default, Next.js bundlers (webpack/Turbopack) bundle packages into the server bundle at build time.
+  //    Once bundled, there's no runtime require() call for require-in-the-middle to intercept.
+  //    The instrumentation's patch callback never executes because module loading has already
+  //    happened during the build process, not at runtime.
+  //
+  //    By adding packages to serverExternalPackages (for both webpack and Turbopack) and webpack externals
+  //    (for webpack specifically), we tell the bundler to exclude these packages from bundling.
+  //    Instead, the bundler leaves these packages as runtime require() calls. When the Next.js server starts,
+  //    require-in-the-middle intercepts these runtime require() calls, triggers our instrumentation's
+  //    patch callback, and successfully returns the wrapped moduleExports with the instrumented class.
+  //
+  //    Next.js externalizes some packages by default, see: https://nextjs.org/docs/app/api-reference/config/next-config-js/serverExternalPackages
+  //    Others we need to add ourselves.
+  //
+  // Note: Other packages are only added when TUSK_DRIFT_MODE is RECORD or REPLAY
+  const coreExternals = [
+    "require-in-the-middle",
+    "jsonpath",
+    ...(isRecordOrReplay
+      ? [
+          "@upstash/redis",
+          "ioredis",
+          "pg",
+          "postgres",
+          "mysql2",
+          "@prisma/client",
+          "@google-cloud/firestore",
+          "@grpc/grpc-js",
+          "graphql",
+          "jsonwebtoken",
+          "jwks-rsa",
+        ]
+      : []),
+  ];
+
   const wrappedConfig: NextConfig = {
     ...config,
     ...(needsInstrumentationHook
@@ -84,56 +135,15 @@ export function withTuskDrift(
       : {
           experimental: config.experimental,
         }),
+
+    // Add serverExternalPackages for Turbopack + Webpack support (Next.js 13.1+)
+    // This ensures packages remain external regardless of which bundler is used
+    serverExternalPackages: [...(config.serverExternalPackages || []), ...coreExternals],
+
     webpack: (webpackConfig: any, webpackOptions: any) => {
       if (webpackOptions.isServer) {
         // Safely handle different externals formats (array, function, object, or undefined)
         const originalExternals = webpackConfig.externals;
-
-        // Check if we're in RECORD or REPLAY mode
-        const mode = process.env.TUSK_DRIFT_MODE?.toUpperCase();
-        const isRecordOrReplay = mode === "RECORD" || mode === "REPLAY";
-
-        // Core packages that must be external for instrumentation
-        //
-        // Why these packages need to be external:
-        //
-        // 1. require-in-the-middle & jsonpath:
-        //    Required for the instrumentation infrastructure itself.
-        //
-        // 2. Others:
-        //    By default, Next.js webpack bundles other packages into the server bundle at build time.
-        //    Once bundled, there's no runtime require() call for require-in-the-middle to intercept.
-        //    The instrumentation's patch callback never executes because module loading has already
-        //    happened during the webpack build process, not at runtime.
-        //
-        //    By adding it to webpack externals, we tell webpack to exclude these packages from bundling.
-        //    Instead, webpack leaves these packages as a runtime require() call. When the Next.js server starts,
-        //    require-in-the-middle intercepts these runtime require() calls, triggers our instrumentation's
-        //    patch callback, and successfully returns the wrapped moduleExports with the instrumented class.
-
-        //    Next.js externalizes some packages by default, see: https://nextjs.org/docs/app/api-reference/config/next-config-js/serverExternalPackages
-        //    Others we need to add ourselves.
-
-        // Note: Other packages are only added when TUSK_DRIFT_MODE is RECORD or REPLAY
-        const coreExternals = [
-          "require-in-the-middle",
-          "jsonpath",
-          ...(isRecordOrReplay
-            ? [
-                "@upstash/redis",
-                "ioredis",
-                "pg",
-                "postgres",
-                "mysql2",
-                "@prisma/client",
-                "@google-cloud/firestore",
-                "@grpc/grpc-js",
-                "graphql",
-                "jsonwebtoken",
-                "jwks-rsa",
-              ]
-            : []),
-        ];
 
         // Create externals mapping - since SDK's node_modules aren't published,
         // we rely on these packages being available in the consumer's node_modules
