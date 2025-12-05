@@ -779,6 +779,55 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url === "/test/change-user" && method === "GET") {
+      const changeConnection = mysql.createConnection(dbConfig);
+
+      changeConnection.connect((connectErr) => {
+        if (connectErr) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: connectErr.message }));
+          return;
+        }
+
+        // Change user (using same user in test since we only have one)
+        changeConnection.changeUser(
+          {
+            user: dbConfig.user,
+            password: dbConfig.password,
+            database: dbConfig.database,
+          },
+          (changeErr) => {
+            if (changeErr) {
+              changeConnection.end();
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: changeErr.message }));
+              return;
+            }
+
+            // Now query to verify connection still works
+            changeConnection.query("SELECT 1 as test", (queryErr, results) => {
+              changeConnection.end();
+              if (queryErr) {
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ success: false, error: queryErr.message }));
+                return;
+              }
+
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  data: results,
+                  queryType: "change-user",
+                }),
+              );
+            });
+          },
+        );
+      });
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));

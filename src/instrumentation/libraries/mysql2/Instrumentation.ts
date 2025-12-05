@@ -150,6 +150,18 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       }
     }
 
+    // Wrap BaseConnection.prototype.changeUser
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.changeUser) {
+      if (!isWrapped(BaseConnectionClass.prototype.changeUser)) {
+        this._wrap(
+          BaseConnectionClass.prototype,
+          "changeUser",
+          this._getChangeUserPatchFn("connection"),
+        );
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.changeUser`);
+      }
+    }
+
     this.markModuleAsPatched(BaseConnectionClass);
     logger.debug(`[Mysql2Instrumentation] BaseConnection class patching complete`);
 
@@ -234,6 +246,18 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       if (!isWrapped(ConnectionClass.prototype.prepare)) {
         this._wrap(ConnectionClass.prototype, "prepare", this._getPreparePatchFn("connection"));
         logger.debug(`[Mysql2Instrumentation] Wrapped Connection.prototype.prepare`);
+      }
+    }
+
+    // Wrap Connection.prototype.changeUser
+    if (ConnectionClass.prototype && ConnectionClass.prototype.changeUser) {
+      if (!isWrapped(ConnectionClass.prototype.changeUser)) {
+        this._wrap(
+          ConnectionClass.prototype,
+          "changeUser",
+          this._getChangeUserPatchFn("connection"),
+        );
+        logger.debug(`[Mysql2Instrumentation] Wrapped Connection.prototype.changeUser`);
       }
     }
   }
@@ -822,6 +846,90 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
           });
         } else {
           return originalEnd.apply(this, [callback]);
+        }
+      };
+    };
+  }
+
+  private _getChangeUserPatchFn(clientType: "connection" | "pool" | "poolConnection") {
+    const self = this;
+
+    return (originalChangeUser: Function) => {
+      return function changeUser(this: Connection, options?: any, callback?: Function) {
+        // Handle signature: changeUser(options, callback?) or changeUser(callback?)
+        if (typeof options === "function") {
+          callback = options;
+          options = {};
+        }
+
+        const inputValue = { clientType };
+
+        if (self.mode === TuskDriftMode.REPLAY) {
+          return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (callback) {
+                process.nextTick(() => callback(null));
+                return;
+              }
+              return Promise.resolve();
+            },
+            isServerRequest: false,
+            replayModeHandler: () => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalChangeUser.apply(this, [options, callback]),
+                {
+                  name: `mysql2.${clientType}.changeUser`,
+                  kind: SpanKind.CLIENT,
+                  submodule: "changeUser",
+                  packageName: "mysql2",
+                  packageType: PackageType.MYSQL,
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart: false,
+                },
+                (spanInfo) => {
+                  // In replay mode, return success immediately
+                  if (callback) {
+                    process.nextTick(() => callback(null));
+                    return;
+                  }
+                  return Promise.resolve();
+                },
+              );
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalChangeUser.apply(this, [options, callback]),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalChangeUser.apply(this, [options, callback]),
+                {
+                  name: `mysql2.${clientType}.changeUser`,
+                  kind: SpanKind.CLIENT,
+                  submodule: "changeUser",
+                  packageName: "mysql2",
+                  packageType: PackageType.MYSQL,
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart,
+                },
+                (spanInfo) => {
+                  return self._handleSimpleCallbackMethod(
+                    spanInfo,
+                    originalChangeUser.bind(this, options),
+                    callback,
+                    this,
+                  );
+                },
+              );
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else {
+          return originalChangeUser.apply(this, [options, callback]);
         }
       };
     };
