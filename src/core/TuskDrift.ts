@@ -472,22 +472,11 @@ export class TuskDriftCore {
         // Unix socket mode (default)
         const socketPath = mockSocket || path.join(os.tmpdir(), "tusk-connect.sock");
 
-        // Check if socket exists and is ready
-        try {
-          fs.accessSync(socketPath, fs.constants.F_OK);
-          const stats = fs.statSync(socketPath);
-          if (!stats.isSocket()) {
-            throw new Error(`Path exists but is not a socket: ${socketPath}`);
-          }
-          logger.debug("Socket found and verified at", socketPath);
-        } catch (error) {
-          if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-            throw new Error(`Socket not found at ${socketPath}. Make sure Tusk CLI is running.`);
-          }
-          throw new Error(
-            `Socket check failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-          );
+        // Check if socket exists
+        if (!fs.existsSync(socketPath)) {
+          throw new Error(`Socket not found at ${socketPath}. Make sure Tusk CLI is running.`);
         }
+        logger.debug("Socket found at", socketPath);
 
         connectionInfo = { socketPath };
       }

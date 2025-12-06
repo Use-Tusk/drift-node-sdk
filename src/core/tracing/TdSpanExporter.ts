@@ -7,6 +7,8 @@ import { ApiSpanAdapter } from "./adapters/ApiSpanAdapter";
 import { logger } from "../utils/logger";
 import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME, TdSpanAttributes } from "../types";
 import { TraceBlockingManager } from "./TraceBlockingManager";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { SpanKind } from "@opentelemetry/api";
 
 export interface TdTraceExporterConfig {
   baseDirectory: string;
@@ -135,6 +137,12 @@ export class TdSpanExporter implements SpanExporter {
         logger.debug(
           `Skipping span '${span.name}' (${span.spanContext().spanId}) - trace ${traceId} is blocked`,
         );
+        return false;
+      }
+
+      if (span.kind === SpanKind.SERVER && span.status.code === SpanStatusCode.ERROR) {
+        traceBlockingManager.blockTrace(traceId);
+        logger.debug(`Blocking trace ${traceId} - server span has error status`);
         return false;
       }
 
