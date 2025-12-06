@@ -140,9 +140,9 @@ export class TdSpanExporter implements SpanExporter {
         return false;
       }
 
-      if (span.kind === SpanKind.SERVER && span.status.code !== SpanStatusCode.OK) {
+      if (span.kind === SpanKind.SERVER && span.status.code === SpanStatusCode.ERROR) {
         traceBlockingManager.blockTrace(traceId);
-        logger.debug(`Blocking trace ${traceId} - server span has non-OK status`);
+        logger.debug(`Blocking trace ${traceId} - server span has error status`);
         return false;
       }
 
