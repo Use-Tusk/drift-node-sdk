@@ -828,6 +828,60 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url === "/test/nested-null-values" && method === "GET") {
+      // First create a test table with nullable columns
+      connection.query(
+        `CREATE TABLE IF NOT EXISTS nullable_test (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(100),
+          value INT
+        )`,
+        (createErr) => {
+          if (createErr) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: createErr.message }));
+            return;
+          }
+
+          // Insert with NULL values
+          connection.query(
+            "INSERT INTO nullable_test (name, value) VALUES (?, ?)",
+            [null, 42],
+            (insertErr, insertResults) => {
+              if (insertErr) {
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ success: false, error: insertErr.message }));
+                return;
+              }
+
+              // Query back the inserted data
+              connection.query(
+                "SELECT * FROM nullable_test WHERE name IS NULL ORDER BY id DESC LIMIT 1",
+                (selectErr, selectResults) => {
+                  if (selectErr) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: selectErr.message }));
+                    return;
+                  }
+
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(
+                    JSON.stringify({
+                      success: true,
+                      insertId: (insertResults as any).insertId,
+                      data: selectResults,
+                      queryType: "null-values",
+                    }),
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));

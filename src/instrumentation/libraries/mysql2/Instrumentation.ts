@@ -2,7 +2,7 @@ import { TdInstrumentationBase } from "../../core/baseClasses/TdInstrumentationB
 import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrumentationNodeModule";
 import { TdInstrumentationNodeModuleFile } from "../../core/baseClasses/TdInstrumentationNodeModuleFile";
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
-import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, context as otelContext } from "@opentelemetry/api";
 import { TuskDriftMode } from "../../../core/TuskDrift";
 import { wrap, isWrapped } from "../../core/utils/shimmerUtils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
@@ -1357,6 +1357,11 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
 
     if (hasCallback) {
       // Callback-based query
+      // Capture the current context (which includes the parent HTTP span)
+      // This must be done before the async callback runs to ensure nested queries
+      // inherit the proper trace context
+      const parentContext = otelContext.active();
+
       const originalCallback = queryConfig.callback!;
       const wrappedCallback = (error: QueryError | null, results?: any, fields?: FieldPacket[]) => {
         if (error) {
@@ -1382,7 +1387,10 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
             logger.error(`[Mysql2Instrumentation] error processing response:`, error);
           }
         }
-        return originalCallback(error, results, fields);
+        // Execute the original callback within the parent context
+        // This ensures that nested queries made inside the callback inherit
+        // the trace context and are recorded as part of the same trace
+        return otelContext.with(parentContext, () => originalCallback(error, results, fields));
       };
 
       // Replace callback in args
