@@ -130,6 +130,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/c
 echo "  - GET /test/nested-null-values"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/nested-null-values > /dev/null
 
+echo "  - GET /test/binary-data"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/binary-data > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

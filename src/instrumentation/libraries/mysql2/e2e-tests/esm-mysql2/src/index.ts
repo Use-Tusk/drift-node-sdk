@@ -882,6 +882,64 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url === "/test/binary-data" && method === "GET") {
+      // Create table if not exists
+      connection.query(
+        `CREATE TABLE IF NOT EXISTS binary_test (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          data BLOB
+        )`,
+        (createErr) => {
+          if (createErr) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: createErr.message }));
+            return;
+          }
+
+          // Insert binary data
+          const binaryData = Buffer.from([0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd]);
+          connection.query(
+            "INSERT INTO binary_test (data) VALUES (?)",
+            [binaryData],
+            (insertErr, insertResult) => {
+              if (insertErr) {
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ success: false, error: insertErr.message }));
+                return;
+              }
+
+              // Read it back
+              connection.query(
+                "SELECT * FROM binary_test WHERE id = ?",
+                [(insertResult as any).insertId],
+                (selectErr, selectResults: any) => {
+                  if (selectErr) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: selectErr.message }));
+                    return;
+                  }
+
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(
+                    JSON.stringify({
+                      success: true,
+                      originalData: binaryData.toString("hex"),
+                      retrievedData:
+                        selectResults[0]?.data instanceof Buffer
+                          ? selectResults[0].data.toString("hex")
+                          : null,
+                      queryType: "binary-data",
+                    }),
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));

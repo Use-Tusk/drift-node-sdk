@@ -205,6 +205,43 @@ export class TdMysql2QueryMock {
   }
 
   /**
+   * Recursively restore Buffer objects from their JSON serialized form.
+   * JSON.stringify converts Buffer to {"type":"Buffer","data":[...]}
+   * This function converts them back to actual Buffer instances.
+   */
+  private _restoreBuffers(obj: any): any {
+    if (obj === null || obj === undefined) {
+      return obj;
+    }
+
+    // Check if this is a serialized Buffer: {"type":"Buffer","data":[...]}
+    if (
+      typeof obj === "object" &&
+      obj.type === "Buffer" &&
+      Array.isArray(obj.data)
+    ) {
+      return Buffer.from(obj.data);
+    }
+
+    // Recursively process arrays
+    if (Array.isArray(obj)) {
+      return obj.map((item) => this._restoreBuffers(item));
+    }
+
+    // Recursively process plain objects
+    if (typeof obj === "object") {
+      const result: any = {};
+      for (const key of Object.keys(obj)) {
+        result[key] = this._restoreBuffers(obj[key]);
+      }
+      return result;
+    }
+
+    // Return primitives as-is
+    return obj;
+  }
+
+  /**
    * Convert stored MySQL2 values back to appropriate JavaScript types
    */
   private _convertMysql2Types(result: any): Mysql2Result {
@@ -212,27 +249,30 @@ export class TdMysql2QueryMock {
       return { rows: [], fields: [] };
     }
 
+    // Restore any serialized Buffer objects in the result
+    const restoredResult = this._restoreBuffers(result);
+
     // If result has rows and fields, use them (SELECT with explicit structure)
-    if (result.rows !== undefined && result.fields !== undefined) {
+    if (restoredResult.rows !== undefined && restoredResult.fields !== undefined) {
       return {
-        rows: result.rows,
-        fields: result.fields,
+        rows: restoredResult.rows,
+        fields: restoredResult.fields,
       };
     }
 
     // Check for ResultSetHeader (INSERT/UPDATE/DELETE)
     // These have affectedRows but no rows/fields properties
-    if (result.affectedRows !== undefined) {
+    if (restoredResult.affectedRows !== undefined) {
       // Return the ResultSetHeader as-is - it's the result, not row data
       return {
-        rows: result,
+        rows: restoredResult,
         fields: [],
       };
     }
 
     // Otherwise, assume result is the rows (array of RowDataPacket)
     return {
-      rows: result,
+      rows: restoredResult,
       fields: [],
     };
   }
