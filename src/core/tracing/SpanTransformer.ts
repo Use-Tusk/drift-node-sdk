@@ -15,7 +15,7 @@ export class SpanTransformer {
    * We use JSON because serialized protobuf is extremely verbose and not readable.
    */
   static transformSpanToCleanJSON(span: ReadableSpan, environment?: string): CleanSpanData {
-    const isRootSpan = !span.parentSpanId || span.kind === OtSpanKind.SERVER;
+    const isRootSpan = span.kind === OtSpanKind.SERVER;
 
     // Extract data from span attributes
     const attributes = span.attributes;
