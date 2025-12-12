@@ -1058,7 +1058,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
   }
 
   private _getPreparedStatementExecuteWrapper(
-    originalExecute: Function,
+    originalExecute: Function, // MUST be pre-bound via .bind(statement)
     sql: string,
     clientType: "connection" | "pool" | "poolConnection",
   ): (...args: any[]) => any {
@@ -1135,12 +1135,14 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
                 isPreAppStart,
               },
               (spanInfo) => {
+                // Context is undefined because originalExecute is pre-bound to the statement.
+                // See _handleRecordPrepare where statement.execute.bind(statement) is called.
                 return self._handleRecordQueryInSpan(
                   spanInfo,
                   originalExecute,
                   queryConfig,
                   args,
-                  null as any,
+                  undefined,
                 );
               },
             );
@@ -1212,7 +1214,8 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       parameters: [],
       execute: (...args: any[]) => {
         const values = Array.isArray(args[0]) ? args[0] : [];
-        const callback = typeof args[args.length - 1] === "function" ? args[args.length - 1] : undefined;
+        const callback =
+          typeof args[args.length - 1] === "function" ? args[args.length - 1] : undefined;
         return self.queryMock.handleNoOpReplayQuery({ sql, values, callback });
       },
       close: () => {},
@@ -1351,9 +1354,14 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     originalQuery: Function,
     queryConfig: Mysql2QueryConfig,
     args: any[],
-    context: Connection | Pool | PoolConnection,
+    context: Connection | Pool | PoolConnection | undefined,
   ): any {
     const hasCallback = !!queryConfig.callback;
+
+    // Helper to invoke the original query - uses .apply() only when context is provided
+    const invokeOriginal = (invokeArgs: any[]) => {
+      return context ? originalQuery.apply(context, invokeArgs) : originalQuery(...invokeArgs);
+    };
 
     if (hasCallback) {
       // Callback-based query
@@ -1412,10 +1420,10 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         logger.error(`[Mysql2Instrumentation] error replacing callback:`, error, args);
       }
 
-      return originalQuery.apply(context, args);
+      return invokeOriginal(args);
     } else {
       // Promise-based query or streaming query (no callback)
-      const result = originalQuery.apply(context, args);
+      const result = invokeOriginal(args);
 
       // For streaming queries (event emitters), attach event listeners
       // In mysql2, streaming queries are identified by checking if result has 'on' method
