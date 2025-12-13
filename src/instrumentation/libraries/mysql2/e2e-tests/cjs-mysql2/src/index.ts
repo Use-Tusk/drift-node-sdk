@@ -599,7 +599,9 @@ const server = http.createServer(async (req, res) => {
     if (url === "/test/promise-connection-query" && method === "GET") {
       try {
         const promiseConnection = await mysqlPromise.createConnection(dbConfig);
-        const [rows] = await promiseConnection.query("SELECT * FROM test_users ORDER BY id LIMIT 3");
+        const [rows] = await promiseConnection.query(
+          "SELECT * FROM test_users ORDER BY id LIMIT 3",
+        );
         await promiseConnection.end();
 
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -676,6 +678,268 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url === "/test/transaction-methods" && method === "GET") {
+      const txConnection = mysql.createConnection(dbConfig);
+
+      txConnection.connect((connectErr) => {
+        if (connectErr) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: connectErr.message }));
+          return;
+        }
+
+        txConnection.beginTransaction((beginErr) => {
+          if (beginErr) {
+            txConnection.end();
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: beginErr.message }));
+            return;
+          }
+
+          txConnection.query(
+            "INSERT INTO test_users (name, email) VALUES (?, ?)",
+            ["TX User", `tx_${Date.now()}@example.com`],
+            (insertErr, insertResults) => {
+              if (insertErr) {
+                txConnection.rollback(() => {
+                  txConnection.end();
+                  res.writeHead(500, { "Content-Type": "application/json" });
+                  res.end(JSON.stringify({ success: false, error: insertErr.message }));
+                });
+                return;
+              }
+
+              txConnection.commit((commitErr) => {
+                if (commitErr) {
+                  txConnection.rollback(() => {
+                    txConnection.end();
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: commitErr.message }));
+                  });
+                  return;
+                }
+
+                txConnection.end();
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(
+                  JSON.stringify({
+                    success: true,
+                    data: insertResults,
+                    queryType: "transaction",
+                  }),
+                );
+              });
+            },
+          );
+        });
+      });
+      return;
+    }
+
+    if (url === "/test/prepare-statement" && method === "GET") {
+      const prepConnection = mysql.createConnection(dbConfig);
+
+      prepConnection.connect((connectErr) => {
+        if (connectErr) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: connectErr.message }));
+          return;
+        }
+
+        prepConnection.prepare("SELECT * FROM test_users WHERE id = ?", (prepErr, statement) => {
+          if (prepErr) {
+            prepConnection.end();
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: prepErr.message }));
+            return;
+          }
+
+          statement.execute([1], (execErr, results) => {
+            statement.close();
+            prepConnection.end();
+
+            if (execErr) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: execErr.message }));
+              return;
+            }
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                success: true,
+                data: results,
+                rowCount: Array.isArray(results) ? results.length : 0,
+                queryType: "prepare-statement",
+              }),
+            );
+          });
+        });
+      });
+      return;
+    }
+
+    if (url === "/test/change-user" && method === "GET") {
+      const changeConnection = mysql.createConnection(dbConfig);
+
+      changeConnection.connect((connectErr) => {
+        if (connectErr) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: connectErr.message }));
+          return;
+        }
+
+        // Change user (using same user in test since we only have one)
+        changeConnection.changeUser(
+          {
+            user: dbConfig.user,
+            password: dbConfig.password,
+            database: dbConfig.database,
+          },
+          (changeErr) => {
+            if (changeErr) {
+              changeConnection.end();
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: changeErr.message }));
+              return;
+            }
+
+            // Now query to verify connection still works
+            changeConnection.query("SELECT 1 as test", (queryErr, results) => {
+              changeConnection.end();
+              if (queryErr) {
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ success: false, error: queryErr.message }));
+                return;
+              }
+
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  data: results,
+                  queryType: "change-user",
+                }),
+              );
+            });
+          },
+        );
+      });
+      return;
+    }
+
+    if (url === "/test/nested-null-values" && method === "GET") {
+      // First create a test table with nullable columns
+      connection.query(
+        `CREATE TABLE IF NOT EXISTS nullable_test (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(100),
+          value INT
+        )`,
+        (createErr) => {
+          if (createErr) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: createErr.message }));
+            return;
+          }
+
+          // Insert with NULL values
+          connection.query(
+            "INSERT INTO nullable_test (name, value) VALUES (?, ?)",
+            [null, 42],
+            (insertErr, insertResults) => {
+              if (insertErr) {
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ success: false, error: insertErr.message }));
+                return;
+              }
+
+              // Query back the inserted data
+              connection.query(
+                "SELECT * FROM nullable_test WHERE name IS NULL ORDER BY id DESC LIMIT 1",
+                (selectErr, selectResults) => {
+                  if (selectErr) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: selectErr.message }));
+                    return;
+                  }
+
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(
+                    JSON.stringify({
+                      success: true,
+                      insertId: (insertResults as any).insertId,
+                      data: selectResults,
+                      queryType: "null-values",
+                    }),
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+      return;
+    }
+
+    if (url === "/test/binary-data" && method === "GET") {
+      // Create table if not exists
+      connection.query(
+        `CREATE TABLE IF NOT EXISTS binary_test (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          data BLOB
+        )`,
+        (createErr) => {
+          if (createErr) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: createErr.message }));
+            return;
+          }
+
+          // Insert binary data
+          const binaryData = Buffer.from([0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd]);
+          connection.query(
+            "INSERT INTO binary_test (data) VALUES (?)",
+            [binaryData],
+            (insertErr, insertResult) => {
+              if (insertErr) {
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ success: false, error: insertErr.message }));
+                return;
+              }
+
+              // Read it back
+              connection.query(
+                "SELECT * FROM binary_test WHERE id = ?",
+                [(insertResult as any).insertId],
+                (selectErr, selectResults: any) => {
+                  if (selectErr) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: selectErr.message }));
+                    return;
+                  }
+
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(
+                    JSON.stringify({
+                      success: true,
+                      originalData: binaryData.toString("hex"),
+                      retrievedData:
+                        selectResults[0]?.data instanceof Buffer
+                          ? selectResults[0].data.toString("hex")
+                          : null,
+                      queryType: "binary-data",
+                    }),
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
@@ -699,31 +963,6 @@ server.listen(PORT, async () => {
     TuskDrift.markAppAsReady();
     console.log(`MySQL2 integration test server running on port ${PORT}`);
     console.log(`Test mode: ${process.env.TUSK_DRIFT_MODE}`);
-    console.log("Available endpoints:");
-    console.log("  GET  /health - Health check");
-    console.log("  GET  /test/connection-query - Test connection query");
-    console.log("  POST /test/connection-parameterized - Test connection parameterized query");
-    console.log("  GET  /test/connection-execute - Test connection execute (prepared statement)");
-    console.log("  POST /test/connection-execute-params - Test connection execute with params");
-    console.log("  GET  /test/pool-query - Test pool query");
-    console.log("  POST /test/pool-parameterized - Test pool parameterized query");
-    console.log("  GET  /test/pool-execute - Test pool execute (prepared statement)");
-    console.log("  POST /test/pool-execute-params - Test pool execute with params");
-    console.log("  GET  /test/pool-getConnection - Test pool getConnection");
-    console.log("  GET  /test/connection-connect - Test connection connect");
-    console.log("  GET  /test/connection-ping - Test connection ping");
-    console.log("  GET  /test/stream-query - Test stream query");
-    console.log(
-      "  GET  /test/sequelize-authenticate - Test Sequelize authenticate (triggers internal queries)",
-    );
-    console.log("  GET  /test/sequelize-findall - Test Sequelize findAll");
-    console.log("  POST /test/sequelize-findone - Test Sequelize findOne");
-    console.log("  GET  /test/sequelize-complex - Test Sequelize complex queries");
-    console.log("  GET  /test/sequelize-raw - Test Sequelize raw query");
-    console.log("  POST /test/sequelize-transaction - Test Sequelize transaction");
-    console.log("  GET  /test/promise-connection-query - Test mysql2/promise connection query");
-    console.log("  GET  /test/promise-pool-query - Test mysql2/promise pool query");
-    console.log("  GET  /test/promise-pool-getconnection - Test mysql2/promise pool.getConnection()");
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

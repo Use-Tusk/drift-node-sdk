@@ -118,6 +118,21 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/p
 echo "  - GET /test/promise-pool-getconnection"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/promise-pool-getconnection > /dev/null
 
+echo "  - GET /test/transaction-methods"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/transaction-methods > /dev/null
+
+echo "  - GET /test/prepare-statement"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/prepare-statement > /dev/null
+
+echo "  - GET /test/change-user"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/change-user > /dev/null
+
+echo "  - GET /test/nested-null-values"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/nested-null-values > /dev/null
+
+echo "  - GET /test/binary-data"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/binary-data > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

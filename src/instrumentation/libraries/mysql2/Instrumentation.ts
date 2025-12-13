@@ -2,7 +2,7 @@ import { TdInstrumentationBase } from "../../core/baseClasses/TdInstrumentationB
 import { TdInstrumentationNodeModule } from "../../core/baseClasses/TdInstrumentationNodeModule";
 import { TdInstrumentationNodeModuleFile } from "../../core/baseClasses/TdInstrumentationNodeModuleFile";
 import { SpanUtils, SpanInfo } from "../../../core/tracing/SpanUtils";
-import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, context as otelContext } from "@opentelemetry/api";
 import { TuskDriftMode } from "../../../core/TuskDrift";
 import { wrap, isWrapped } from "../../core/utils/shimmerUtils";
 import { handleRecordMode, handleReplayMode } from "../../core/utils/modeUtils";
@@ -142,6 +142,26 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       }
     }
 
+    // Wrap BaseConnection.prototype.prepare
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.prepare) {
+      if (!isWrapped(BaseConnectionClass.prototype.prepare)) {
+        this._wrap(BaseConnectionClass.prototype, "prepare", this._getPreparePatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.prepare`);
+      }
+    }
+
+    // Wrap BaseConnection.prototype.changeUser
+    if (BaseConnectionClass.prototype && BaseConnectionClass.prototype.changeUser) {
+      if (!isWrapped(BaseConnectionClass.prototype.changeUser)) {
+        this._wrap(
+          BaseConnectionClass.prototype,
+          "changeUser",
+          this._getChangeUserPatchFn("connection"),
+        );
+        logger.debug(`[Mysql2Instrumentation] Wrapped BaseConnection.prototype.changeUser`);
+      }
+    }
+
     this.markModuleAsPatched(BaseConnectionClass);
     logger.debug(`[Mysql2Instrumentation] BaseConnection class patching complete`);
 
@@ -218,6 +238,26 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       if (!isWrapped(ConnectionClass.prototype.end)) {
         this._wrap(ConnectionClass.prototype, "end", this._getEndPatchFn("connection"));
         logger.debug(`[Mysql2Instrumentation] Wrapped Connection.prototype.end`);
+      }
+    }
+
+    // Wrap Connection.prototype.prepare
+    if (ConnectionClass.prototype && ConnectionClass.prototype.prepare) {
+      if (!isWrapped(ConnectionClass.prototype.prepare)) {
+        this._wrap(ConnectionClass.prototype, "prepare", this._getPreparePatchFn("connection"));
+        logger.debug(`[Mysql2Instrumentation] Wrapped Connection.prototype.prepare`);
+      }
+    }
+
+    // Wrap Connection.prototype.changeUser
+    if (ConnectionClass.prototype && ConnectionClass.prototype.changeUser) {
+      if (!isWrapped(ConnectionClass.prototype.changeUser)) {
+        this._wrap(
+          ConnectionClass.prototype,
+          "changeUser",
+          this._getChangeUserPatchFn("connection"),
+        );
+        logger.debug(`[Mysql2Instrumentation] Wrapped Connection.prototype.changeUser`);
       }
     }
   }
@@ -811,6 +851,383 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     };
   }
 
+  private _getChangeUserPatchFn(clientType: "connection" | "pool" | "poolConnection") {
+    const self = this;
+
+    return (originalChangeUser: Function) => {
+      return function changeUser(this: Connection, options?: any, callback?: Function) {
+        // Handle signature: changeUser(options, callback?) or changeUser(callback?)
+        if (typeof options === "function") {
+          callback = options;
+          options = {};
+        }
+
+        const inputValue = { clientType };
+
+        if (self.mode === TuskDriftMode.REPLAY) {
+          return handleReplayMode({
+            noOpRequestHandler: () => {
+              if (callback) {
+                process.nextTick(() => callback(null));
+                return;
+              }
+              return Promise.resolve();
+            },
+            isServerRequest: false,
+            replayModeHandler: () => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalChangeUser.apply(this, [options, callback]),
+                {
+                  name: `mysql2.${clientType}.changeUser`,
+                  kind: SpanKind.CLIENT,
+                  submodule: "changeUser",
+                  packageName: "mysql2",
+                  packageType: PackageType.MYSQL,
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart: false,
+                },
+                (spanInfo) => {
+                  // In replay mode, return success immediately
+                  if (callback) {
+                    process.nextTick(() => callback(null));
+                    return;
+                  }
+                  return Promise.resolve();
+                },
+              );
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalChangeUser.apply(this, [options, callback]),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalChangeUser.apply(this, [options, callback]),
+                {
+                  name: `mysql2.${clientType}.changeUser`,
+                  kind: SpanKind.CLIENT,
+                  submodule: "changeUser",
+                  packageName: "mysql2",
+                  packageType: PackageType.MYSQL,
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart,
+                },
+                (spanInfo) => {
+                  return self._handleSimpleCallbackMethod(
+                    spanInfo,
+                    originalChangeUser.bind(this, options),
+                    callback,
+                    this,
+                  );
+                },
+              );
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else {
+          return originalChangeUser.apply(this, [options, callback]);
+        }
+      };
+    };
+  }
+
+  private _getPreparePatchFn(clientType: "connection" | "pool" | "poolConnection") {
+    const self = this;
+
+    return (originalPrepare: Function) => {
+      return function prepare(this: Connection, ...args: any[]) {
+        // Parse args: prepare(sql | options, callback?)
+        const firstArg = args[0];
+        const sql = typeof firstArg === "string" ? firstArg : firstArg?.sql;
+        const originalCallback =
+          typeof args[args.length - 1] === "function" ? args[args.length - 1] : undefined;
+
+        const inputValue = { sql, clientType, method: "prepare" };
+
+        if (self.mode === TuskDriftMode.REPLAY) {
+          return handleReplayMode({
+            noOpRequestHandler: () => self._handleNoOpReplayPrepare(sql, originalCallback),
+            isServerRequest: false,
+            replayModeHandler: () => self._handleReplayPrepare(sql, originalCallback, clientType),
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalPrepare.apply(this, args),
+            recordModeHandler: ({ isPreAppStart }) =>
+              self._handleRecordPrepare(
+                originalPrepare,
+                args,
+                sql,
+                originalCallback,
+                this,
+                clientType,
+                isPreAppStart,
+              ),
+            spanKind: SpanKind.CLIENT,
+          });
+        }
+
+        return originalPrepare.apply(this, args);
+      };
+    };
+  }
+
+  private _handleRecordPrepare(
+    originalPrepare: Function,
+    args: any[],
+    sql: string,
+    originalCallback: Function | undefined,
+    context: Connection,
+    clientType: "connection" | "pool" | "poolConnection",
+    isPreAppStart: boolean,
+  ): any {
+    const self = this;
+
+    return SpanUtils.createAndExecuteSpan(
+      this.mode,
+      () => originalPrepare.apply(context, args),
+      {
+        name: `mysql2.${clientType}.prepare`,
+        kind: SpanKind.CLIENT,
+        submodule: "prepare",
+        packageType: PackageType.MYSQL,
+        packageName: "mysql2",
+        instrumentationName: this.INSTRUMENTATION_NAME,
+        inputValue: { sql, clientType },
+        isPreAppStart,
+      },
+      (spanInfo) => {
+        const wrappedCallback = (err: Error | null, statement: any) => {
+          if (err) {
+            logger.debug(
+              `[Mysql2Instrumentation] MySQL2 prepare error: ${err.message} (${SpanUtils.getTraceInfo()})`,
+            );
+            try {
+              SpanUtils.endSpan(spanInfo.span, {
+                code: SpanStatusCode.ERROR,
+                message: err.message,
+              });
+            } catch (error) {
+              logger.error(`[Mysql2Instrumentation] error ending span:`, error);
+            }
+          } else {
+            logger.debug(
+              `[Mysql2Instrumentation] MySQL2 prepare completed successfully (${SpanUtils.getTraceInfo()})`,
+            );
+            try {
+              SpanUtils.addSpanAttributes(spanInfo.span, {
+                outputValue: { prepared: true, statementId: statement?.id },
+              });
+              SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+            } catch (error) {
+              logger.error(`[Mysql2Instrumentation] error processing prepare response:`, error);
+            }
+
+            // Wrap statement.execute() to record/replay its calls
+            if (statement && statement.execute) {
+              const originalExecute = statement.execute.bind(statement);
+              statement.execute = self._getPreparedStatementExecuteWrapper(
+                originalExecute,
+                sql,
+                clientType,
+              );
+            }
+          }
+
+          if (originalCallback) {
+            originalCallback(err, statement);
+          }
+        };
+
+        // Replace callback in args or add it if not present
+        const newArgs = [...args];
+        const callbackIndex = newArgs.findIndex((a) => typeof a === "function");
+        if (callbackIndex >= 0) {
+          newArgs[callbackIndex] = wrappedCallback;
+        } else {
+          newArgs.push(wrappedCallback);
+        }
+
+        return originalPrepare.apply(context, newArgs);
+      },
+    );
+  }
+
+  private _getPreparedStatementExecuteWrapper(
+    originalExecute: Function, // MUST be pre-bound via .bind(statement)
+    sql: string,
+    clientType: "connection" | "pool" | "poolConnection",
+  ): (...args: any[]) => any {
+    const self = this;
+
+    return function execute(...args: any[]): any {
+      // Parse values and callback from args
+      // PreparedStatementInfo.execute signature: execute(parameters, callback)
+      // where parameters can be array or function (if no params, callback is first arg)
+      let values: any[] = [];
+      let callback: Function | undefined;
+
+      for (const arg of args) {
+        if (typeof arg === "function") {
+          callback = arg;
+        } else if (Array.isArray(arg)) {
+          values = arg;
+        } else if (arg !== undefined) {
+          values = [arg];
+        }
+      }
+
+      const inputValue = { sql, values, clientType };
+      const queryConfig: Mysql2QueryConfig = { sql, values, callback };
+      const stackTrace = captureStackTrace(["Mysql2Instrumentation"]);
+
+      if (self.mode === TuskDriftMode.REPLAY) {
+        return handleReplayMode({
+          noOpRequestHandler: () => self.queryMock.handleNoOpReplayQuery(queryConfig),
+          isServerRequest: false,
+          replayModeHandler: () => {
+            const spanName = `mysql2.${clientType}.preparedExecute`;
+            return SpanUtils.createAndExecuteSpan(
+              self.mode,
+              () => originalExecute(...args),
+              {
+                name: spanName,
+                kind: SpanKind.CLIENT,
+                submodule: "preparedExecute",
+                packageType: PackageType.MYSQL,
+                packageName: "mysql2",
+                instrumentationName: self.INSTRUMENTATION_NAME,
+                inputValue,
+                isPreAppStart: false,
+              },
+              (spanInfo) => {
+                return self.handleReplayQuery(
+                  queryConfig,
+                  inputValue,
+                  spanInfo,
+                  "preparedExecute",
+                  stackTrace,
+                );
+              },
+            );
+          },
+        });
+      } else if (self.mode === TuskDriftMode.RECORD) {
+        return handleRecordMode({
+          originalFunctionCall: () => originalExecute(...args),
+          recordModeHandler: ({ isPreAppStart }) => {
+            const spanName = `mysql2.${clientType}.preparedExecute`;
+            return SpanUtils.createAndExecuteSpan(
+              self.mode,
+              () => originalExecute(...args),
+              {
+                name: spanName,
+                kind: SpanKind.CLIENT,
+                submodule: "preparedExecute",
+                packageType: PackageType.MYSQL,
+                packageName: "mysql2",
+                instrumentationName: self.INSTRUMENTATION_NAME,
+                inputValue,
+                isPreAppStart,
+              },
+              (spanInfo) => {
+                // Context is undefined because originalExecute is pre-bound to the statement.
+                // See _handleRecordPrepare where statement.execute.bind(statement) is called.
+                return self._handleRecordQueryInSpan(
+                  spanInfo,
+                  originalExecute,
+                  queryConfig,
+                  args,
+                  undefined,
+                );
+              },
+            );
+          },
+          spanKind: SpanKind.CLIENT,
+        });
+      }
+
+      return originalExecute(...args);
+    };
+  }
+
+  private _handleReplayPrepare(
+    sql: string,
+    originalCallback: Function | undefined,
+    clientType: "connection" | "pool" | "poolConnection",
+  ): any {
+    const self = this;
+
+    return SpanUtils.createAndExecuteSpan(
+      this.mode,
+      () => {}, // No original call in replay
+      {
+        name: `mysql2.${clientType}.prepare`,
+        kind: SpanKind.CLIENT,
+        submodule: "prepare",
+        packageType: PackageType.MYSQL,
+        packageName: "mysql2",
+        instrumentationName: this.INSTRUMENTATION_NAME,
+        inputValue: { sql, clientType },
+        isPreAppStart: false,
+      },
+      (spanInfo) => {
+        // Create a mock PreparedStatementInfo
+        const mockStatement = {
+          query: sql,
+          id: 1,
+          columns: [],
+          parameters: [],
+          execute: self._getPreparedStatementExecuteWrapper(() => {}, sql, clientType),
+          close: () => {},
+        };
+
+        try {
+          SpanUtils.addSpanAttributes(spanInfo.span, {
+            outputValue: { prepared: true },
+          });
+          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+        } catch (error) {
+          logger.error(`[Mysql2Instrumentation] error ending prepare span:`, error);
+        }
+
+        if (originalCallback) {
+          process.nextTick(() => originalCallback(null, mockStatement));
+        }
+
+        return undefined; // prepare() returns the Command object, but we don't need it for replay
+      },
+    );
+  }
+
+  private _handleNoOpReplayPrepare(sql: string, originalCallback: Function | undefined): any {
+    const self = this;
+
+    const mockStatement = {
+      query: sql,
+      id: 1,
+      columns: [],
+      parameters: [],
+      execute: (...args: any[]) => {
+        const values = Array.isArray(args[0]) ? args[0] : [];
+        const callback =
+          typeof args[args.length - 1] === "function" ? args[args.length - 1] : undefined;
+        return self.queryMock.handleNoOpReplayQuery({ sql, values, callback });
+      },
+      close: () => {},
+    };
+
+    if (originalCallback) {
+      process.nextTick(() => originalCallback(null, mockStatement));
+    }
+
+    return undefined;
+  }
+
   private _handleSimpleCallbackMethod(
     spanInfo: SpanInfo,
     originalMethod: Function,
@@ -937,12 +1354,22 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     originalQuery: Function,
     queryConfig: Mysql2QueryConfig,
     args: any[],
-    context: Connection | Pool | PoolConnection,
+    context: Connection | Pool | PoolConnection | undefined,
   ): any {
     const hasCallback = !!queryConfig.callback;
 
+    // Helper to invoke the original query - uses .apply() only when context is provided
+    const invokeOriginal = (invokeArgs: any[]) => {
+      return context ? originalQuery.apply(context, invokeArgs) : originalQuery(...invokeArgs);
+    };
+
     if (hasCallback) {
       // Callback-based query
+      // Capture the current context (which includes the parent HTTP span)
+      // This must be done before the async callback runs to ensure nested queries
+      // inherit the proper trace context
+      const parentContext = otelContext.active();
+
       const originalCallback = queryConfig.callback!;
       const wrappedCallback = (error: QueryError | null, results?: any, fields?: FieldPacket[]) => {
         if (error) {
@@ -968,7 +1395,10 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
             logger.error(`[Mysql2Instrumentation] error processing response:`, error);
           }
         }
-        return originalCallback(error, results, fields);
+        // Execute the original callback within the parent context
+        // This ensures that nested queries made inside the callback inherit
+        // the trace context and are recorded as part of the same trace
+        return otelContext.with(parentContext, () => originalCallback(error, results, fields));
       };
 
       // Replace callback in args
@@ -990,10 +1420,10 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         logger.error(`[Mysql2Instrumentation] error replacing callback:`, error, args);
       }
 
-      return originalQuery.apply(context, args);
+      return invokeOriginal(args);
     } else {
       // Promise-based query or streaming query (no callback)
-      const result = originalQuery.apply(context, args);
+      const result = invokeOriginal(args);
 
       // For streaming queries (event emitters), attach event listeners
       // In mysql2, streaming queries are identified by checking if result has 'on' method
@@ -1374,11 +1804,16 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         fields: fields || [],
       };
     } else if (result.affectedRows !== undefined) {
-      // INSERT/UPDATE/DELETE query - OkPacket or ResultSetHeader
+      // INSERT/UPDATE/DELETE query - ResultSetHeader
+      // Preserve ALL fields matching mysql2's resultset_header.js structure
       outputValue = {
-        affectedRows: result.affectedRows,
-        insertId: result.insertId,
-        warningCount: result.warningCount,
+        fieldCount: result.fieldCount, // Always set by mysql2
+        affectedRows: result.affectedRows, // Always set by mysql2
+        insertId: result.insertId, // Always set by mysql2
+        info: result.info ?? "", // Initialized to '' in mysql2
+        serverStatus: result.serverStatus ?? 0, // May be undefined (protocol-dependent)
+        warningStatus: result.warningStatus ?? 0, // May be undefined (protocol-dependent)
+        changedRows: result.changedRows ?? 0, // Default 0 in mysql2
       };
     } else {
       // Other result types
