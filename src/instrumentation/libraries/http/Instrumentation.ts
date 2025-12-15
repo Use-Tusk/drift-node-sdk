@@ -1048,18 +1048,29 @@ export class HttpInstrumentation extends TdInstrumentationBase {
 
     return (originalRequest: Function) => {
       return function (this: Request, ...args: any[]) {
-        // Handle both URL string and RequestOptions object
+        // Handle URL string, URL object, and RequestOptions object
         let requestOptions: RequestOptions;
         if (typeof args[0] === "string") {
           // Parse URL string into RequestOptions
           const url = new URL(args[0]);
+          const additionalOptions = typeof args[1] === "function" ? undefined : args[1];
           requestOptions = {
             protocol: url.protocol,
             hostname: url.hostname,
             port: url.port ? parseInt(url.port) : undefined,
             path: url.pathname + url.search,
-            method: args[1]?.method || "GET",
-            headers: args[1]?.headers || {},
+            method: additionalOptions?.method || "GET",
+            headers: additionalOptions?.headers || {},
+          };
+        } else if (self._isURLObject(args[0])) {
+          // Handle URL object - convert to RequestOptions
+          const url = args[0] as URL;
+          const additionalOptions = typeof args[1] === "function" ? undefined : args[1];
+          requestOptions = {
+            ...self._urlToRequestOptions(url),
+            method: additionalOptions?.method || "GET",
+            headers: additionalOptions?.headers || {},
+            ...additionalOptions,
           };
         } else {
           requestOptions = args[0] || {};
@@ -1197,17 +1208,26 @@ export class HttpInstrumentation extends TdInstrumentationBase {
 
     return (originalGet: Function) => {
       return function (this: Request, ...args: any[]) {
-        // Handle both URL string and RequestOptions object
+        // Handle URL string, URL object, and RequestOptions object
         let requestOptions: RequestOptions;
         if (typeof args[0] === "string") {
           // Parse URL string into RequestOptions
           const url = new URL(args[0]);
+          const additionalOptions = typeof args[1] === "function" ? undefined : args[1];
           requestOptions = {
             protocol: url.protocol,
             hostname: url.hostname,
             port: url.port ? parseInt(url.port) : undefined,
             path: url.pathname + url.search,
-            headers: args[1]?.headers || {},
+            headers: additionalOptions?.headers || {},
+          };
+        } else if (self._isURLObject(args[0])) {
+          // Handle URL object - convert to RequestOptions
+          const url = args[0] as URL;
+          const additionalOptions = typeof args[1] === "function" ? undefined : args[1];
+          requestOptions = {
+            ...self._urlToRequestOptions(url),
+            ...additionalOptions,
           };
         } else {
           requestOptions = args[0] || {};
@@ -1371,6 +1391,30 @@ export class HttpInstrumentation extends TdInstrumentationBase {
 
         return originalEmit.apply(this, [eventName, ...args]);
       };
+    };
+  }
+
+  /**
+   * Check if the input is a URL object (WHATWG URL API)
+   * This is used to detect when a URL object is passed to http.get/request
+   */
+  private _isURLObject(input: any): input is URL {
+    return (
+      input instanceof URL ||
+      (input && typeof input.href === "string" && typeof input.pathname === "string")
+    );
+  }
+
+  /**
+   * Convert a URL object to RequestOptions
+   * Similar to Node.js's internal urlToHttpOptions function
+   */
+  private _urlToRequestOptions(url: URL): RequestOptions {
+    return {
+      protocol: url.protocol,
+      hostname: url.hostname,
+      port: url.port ? parseInt(url.port) : undefined,
+      path: url.pathname + url.search,
     };
   }
 
