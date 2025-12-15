@@ -1227,6 +1227,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           const additionalOptions = typeof args[1] === "function" ? undefined : args[1];
           requestOptions = {
             ...self._urlToRequestOptions(url),
+            headers: additionalOptions?.headers || {},
             ...additionalOptions,
           };
         } else {
