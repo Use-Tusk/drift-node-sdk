@@ -28,6 +28,7 @@ import {
 } from "./utils";
 import { EventEmitter } from "events";
 import { Readable } from "stream";
+import { Metadata } from "@grpc/grpc-js";
 
 const GRPC_MODULE_NAME = "@grpc/grpc-js";
 
@@ -35,9 +36,9 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "GrpcInstrumentation";
   private mode: TuskDriftMode;
   private tuskDrift: TuskDriftCore;
-  private Metadata: any;
+  private Metadata: typeof Metadata;
   // Store for version-specific Metadata constructors
-  private static metadataStore = new Map<string, any>();
+  private static metadataStore = new Map<string, typeof Metadata>();
 
   constructor(config: GrpcInstrumentationConfig = {}) {
     super("grpc", config);
@@ -168,17 +169,28 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
   /**
    * Helper method to parse optional unary response arguments
    *
-   * Handles the following cases:
-   * 1. (metadata: Metadata, callback: Function) - no options
-   * 2. (metadata: Metadata, options: Object, callback: Function) - with options
+   * Handles the following cases (matching grpc-node's checkOptionalUnaryResponseArguments):
+   * 1. (callback: Function) - callback only, no metadata or options
+   * 2. (metadata: Metadata, callback: Function) - metadata + callback, no options
+   * 3. (options: Object, callback: Function) - options + callback, no metadata
+   * 4. (metadata: Metadata, options: Object, callback: Function) - full signature
    */
   private parseUnaryCallArguments(
-    MetadataConstructor: any,
+    MetadataConstructor: typeof Metadata,
     arg1: any,
     arg2: any,
     arg3: any,
   ): { metadata: any; options: any; callback: Function } {
-    // Case 1: metadata + callback (no options)
+    // Case 1: callback only (no metadata, no options)
+    if (typeof arg1 === "function") {
+      return {
+        metadata: new MetadataConstructor(),
+        options: {},
+        callback: arg1,
+      };
+    }
+
+    // Case 2: metadata + callback (no options)
     if (arg1 instanceof MetadataConstructor && typeof arg2 === "function") {
       return {
         metadata: arg1,
@@ -187,7 +199,22 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
       };
     }
 
-    // Case 2: metadata + options + callback
+    // Case 3: options + callback (no metadata)
+    // arg1 is an object but NOT Metadata, arg2 is the callback
+    if (
+      !(arg1 instanceof MetadataConstructor) &&
+      typeof arg1 === "object" &&
+      arg1 !== null &&
+      typeof arg2 === "function"
+    ) {
+      return {
+        metadata: new MetadataConstructor(),
+        options: arg1,
+        callback: arg2,
+      };
+    }
+
+    // Case 4: metadata + options + callback (full signature)
     if (
       arg1 instanceof MetadataConstructor &&
       arg2 instanceof Object &&
@@ -211,7 +238,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
    */
   private extractRequestParameters(
     args: any[],
-    MetadataConstructor: any,
+    MetadataConstructor: typeof Metadata,
   ): {
     method: string;
     serialize: Function;
@@ -259,7 +286,7 @@ export class GrpcInstrumentation extends TdInstrumentationBase {
           serialize: Function;
           deserialize: Function;
           argument: any;
-          metadata: any;
+          metadata: typeof Metadata;
           options: any;
           callback: Function;
         };

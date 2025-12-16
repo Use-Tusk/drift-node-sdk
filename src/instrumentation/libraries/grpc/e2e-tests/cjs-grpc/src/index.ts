@@ -608,33 +608,78 @@ app.get("/files/download/:fileId", async (req: Request, res: Response) => {
   }
 });
 
+// makeUnaryRequest with callback only (no metadata)
+app.get("/test/unary-callback-only", async (req: Request, res: Response) => {
+  try {
+    const response: any = await new Promise((resolve, reject) => {
+      // Call with just callback (no metadata, no options)
+      greeterClient.SayHello(
+        { name: "CallbackOnly", greeting_type: "formal" },
+        (error: any, response: any) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(response);
+          }
+        },
+      );
+    });
+
+    res.json({
+      success: true,
+      data: response,
+    });
+  } catch (error: any) {
+    console.error("[Express] Error in /test/unary-callback-only:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+    });
+  }
+});
+
+// makeUnaryRequest with options (no metadata)
+app.get("/test/unary-options-only", async (req: Request, res: Response) => {
+  try {
+    const options = {
+      deadline: Date.now() + 30000, // 30 second deadline
+    };
+
+    const response: any = await new Promise((resolve, reject) => {
+      // Call with options but no metadata
+      greeterClient.SayHello(
+        { name: "OptionsOnly", greeting_type: "casual" },
+        options,
+        (error: any, response: any) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(response);
+          }
+        },
+      );
+    });
+
+    res.json({
+      success: true,
+      data: response,
+    });
+  } catch (error: any) {
+    console.error("[Express] Error in /test/unary-options-only:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+    });
+  }
+});
+
 // Start Express server
 const server = app.listen(PORT, async () => {
   TuskDrift.markAppAsReady();
   console.log(`[Express] Server running on port ${PORT}`);
   console.log(`[Express] TUSK_DRIFT_MODE: ${process.env.TUSK_DRIFT_MODE || "DISABLED"}`);
-  console.log("[Express] Available endpoints:");
-  console.log("  GET    /health - Health check");
-  console.log("  GET    /greet/hello - Simple hello");
-  console.log("  GET    /greet/hello-with-metadata - Hello with metadata");
-  console.log("  POST   /greet/custom - Custom greeting");
-  console.log("  GET    /greet/hello-again - Say hello again");
-  console.log("  GET    /greet/many-times - Greet many times");
-  console.log("  GET    /calc/add - Add operation");
-  console.log("  GET    /calc/subtract - Subtract operation");
-  console.log("  GET    /calc/multiply - Multiply operation");
-  console.log("  POST   /calc/divide - Divide operation");
-  console.log("  GET    /calc/divide-by-zero - Test division by zero error");
-  console.log("  GET    /users/:id - Get user by ID");
-  console.log("  POST   /users - Create user");
-  console.log("  PUT    /users/:id - Update user");
-  console.log("  DELETE /users/:id - Delete user");
-  console.log("  GET    /users - List users");
-  console.log("  GET    /test/user-not-found - Test user not found error");
-  console.log("  GET    /test/sequential-calls - Test multiple sequential calls");
-  console.log("  POST   /test/complex-data - Test complex nested data");
-  console.log("  POST   /files/upload - Upload file with binary content");
-  console.log("  GET    /files/download/:fileId - Download file");
 });
 
 // Graceful shutdown
