@@ -1415,7 +1415,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
       protocol: url.protocol,
       hostname: url.hostname,
       port: url.port ? parseInt(url.port) : undefined,
-      path: url.pathname + url.search,
+      path: url.pathname + (url.search || ""),
     };
   }
 
