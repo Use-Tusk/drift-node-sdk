@@ -62,6 +62,12 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test-a
 echo "  - POST /test-axios-post"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/test-axios-post > /dev/null
 
+echo "  - GET /test-url-object-get"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test-url-object-get > /dev/null
+
+echo "  - POST /test-url-object-request"
+docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/test-url-object-request > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
