@@ -1,14 +1,15 @@
 import { TdInstrumentationConfig } from "../../core/baseClasses/TdInstrumentationAbstract";
 import { TuskDriftMode } from "../../../core/TuskDrift";
+import type { Client, Server, Metadata } from "@grpc/grpc-js";
 
 export interface GrpcInstrumentationConfig extends TdInstrumentationConfig {
   mode?: TuskDriftMode;
 }
 
 export interface GrpcModuleExports {
-  Client: any;
-  Server: any;
-  Metadata: any;
+  Client: typeof Client;
+  Server: typeof Server;
+  Metadata: typeof Metadata;
   [key: string]: any;
 }
 

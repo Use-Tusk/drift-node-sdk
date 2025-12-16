@@ -114,6 +114,12 @@ docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:300
 echo "  - GET /files/download/file_1 (testing binary data)"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/files/download/file_1 > /dev/null
 
+echo "  - GET /test/unary-callback-only"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/unary-callback-only > /dev/null
+
+echo "  - GET /test/unary-options-only"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/unary-options-only > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
