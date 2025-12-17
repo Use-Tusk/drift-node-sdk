@@ -1337,12 +1337,31 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       return config;
     }
 
-    // Query options object: query(options, callback?)
+    // Query options object: query(options, values?, callback?)
+    // Supports signatures:
+    //   - query(options)
+    //   - query(options, callback)
+    //   - query(options, values)
+    //   - query(options, values, callback)
     if (typeof firstArg === "object" && firstArg.sql) {
+      let values = firstArg.values;
+      let callback: Function | undefined = firstArg.callback;
+
+      if (typeof args[1] === "function") {
+        // query(options, callback)
+        callback = args[1];
+      } else if (args[1] !== undefined) {
+        // query(options, values, callback)
+        values = Array.isArray(args[1]) ? args[1] : [args[1]];
+        if (typeof args[2] === "function") {
+          callback = args[2];
+        }
+      }
+
       return {
         sql: firstArg.sql,
-        values: firstArg.values,
-        callback: firstArg.callback || (typeof args[1] === "function" ? args[1] : undefined),
+        values,
+        callback,
       };
     }
 
