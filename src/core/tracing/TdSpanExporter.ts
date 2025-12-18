@@ -99,16 +99,14 @@ export class TdSpanExporter implements SpanExporter {
   }
 
   /**
-   * Set the mode for determining which adapters to run
-   */
-  setMode(mode: TuskDriftMode): void {
-    this.mode = mode;
-  }
-
-  /**
    * Export spans using all configured adapters
    */
   export(spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
+    if (this.mode !== TuskDriftMode.RECORD) {
+      resultCallback({ code: ExportResultCode.SUCCESS });
+      return;
+    }
+
     logger.debug(`TdSpanExporter.export() called with ${spans.length} span(s)`);
 
     const traceBlockingManager = TraceBlockingManager.getInstance();
@@ -185,30 +183,17 @@ export class TdSpanExporter implements SpanExporter {
     }
 
     // Filter adapters based on mode
-    const activeAdapters = this.getActiveAdapters();
 
-    if (activeAdapters.length === 0) {
+    if (this.adapters.length === 0) {
       logger.debug(`No active adapters for mode: ${this.mode}`);
       resultCallback({ code: ExportResultCode.SUCCESS });
       return;
     }
 
     // Export to all active adapters
-    Promise.all(activeAdapters.map((adapter) => adapter.exportSpans(cleanSpans)))
+    Promise.all(this.adapters.map((adapter) => adapter.exportSpans(cleanSpans)))
       .then(() => resultCallback({ code: ExportResultCode.SUCCESS }))
       .catch((error) => resultCallback({ code: ExportResultCode.FAILED, error }));
-  }
-
-  private getActiveAdapters(): SpanExportAdapter[] {
-    if (this.mode !== TuskDriftMode.RECORD) {
-      // In non-RECORD mode, only run in-memory and callback adapters
-      return this.adapters.filter(
-        (adapter) => adapter.name === "in-memory" || adapter.name === "callback",
-      );
-    }
-
-    // In RECORD mode, run all adapters
-    return this.adapters;
   }
 
   /**
