@@ -1343,6 +1343,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     //   - query(options, callback)
     //   - query(options, values)
     //   - query(options, values, callback)
+    //   - query(options, undefined, callback) - knex uses this when no bindings
     if (typeof firstArg === "object" && firstArg.sql) {
       let values = firstArg.values;
       let callback: Function | undefined = firstArg.callback;
@@ -1350,9 +1351,12 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       if (typeof args[1] === "function") {
         // query(options, callback)
         callback = args[1];
-      } else if (args[1] !== undefined) {
-        // query(options, values, callback)
-        values = Array.isArray(args[1]) ? args[1] : [args[1]];
+      } else {
+        // query(options, values, callback) or query(options, undefined, callback)
+        if (args[1] !== undefined) {
+          values = Array.isArray(args[1]) ? args[1] : [args[1]];
+        }
+        // Always check for callback at args[2] (handles knex passing undefined as bindings)
         if (typeof args[2] === "function") {
           callback = args[2];
         }
@@ -1770,6 +1774,71 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
 
                     // For other events, use the parent handler
                     return super.on(event, listener);
+                  }
+
+                  // Override the 'once' method to emit recorded events
+                  // This is critical because mysql2's connect() uses once() to register listeners
+                  once(event: string, listener: Function): any {
+                    if (!this._connectEventMock) {
+                      return super.once(event, listener);
+                    }
+
+                    // Handle 'connect' event - emit recorded connection success
+                    if (event === "connect" && !this._isConnectOrErrorEmitted) {
+                      this._connectEventMock
+                        .getReplayedConnectionEvent(inputValue)
+                        .then(({ output }) => {
+                          if (output !== undefined) {
+                            process.nextTick(() => {
+                              listener.call(this, output);
+                              this._isConnectOrErrorEmitted = true;
+                            });
+                          }
+                        })
+                        .catch((err) => {
+                          logger.error(
+                            `[Mysql2Instrumentation] Error replaying connection event:`,
+                            err,
+                          );
+                        });
+                      return this;
+                    }
+
+                    // Handle 'error' event - suppress in replay mode (connection is mocked)
+                    if (event === "error" && !this._isConnectOrErrorEmitted) {
+                      return this;
+                    }
+
+                    // For other events, use the parent handler
+                    return super.once(event, listener);
+                  }
+
+                  // Override connect() method to bypass parent's error checking
+                  // mysql2's connect() checks _fatalError first and returns early with error
+                  // before any event listeners can be registered. We need to handle this ourselves.
+                  connect(callback?: (err?: Error | null) => void): void {
+                    if (!callback) {
+                      return;
+                    }
+
+                    // Replay the connection event and call callback with success
+                    this._connectEventMock
+                      .getReplayedConnectionEvent(inputValue)
+                      .then(({ output }) => {
+                        if (output !== undefined) {
+                          process.nextTick(() => {
+                            this._isConnectOrErrorEmitted = true;
+                            callback(null);
+                          });
+                        }
+                      })
+                      .catch((err) => {
+                        logger.error(
+                          `[Mysql2Instrumentation] Error replaying connection event in connect():`,
+                          err,
+                        );
+                        process.nextTick(() => callback(err));
+                      });
                   }
                 }
 

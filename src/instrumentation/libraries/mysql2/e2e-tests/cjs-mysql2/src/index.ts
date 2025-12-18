@@ -978,6 +978,84 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Knex transaction test - BUG: REPLAY fails with timeout
+    // Tests BEGIN, queries, COMMIT flow with dedicated transaction connection
+    if (url === "/test/knex-transaction" && method === "POST") {
+      try {
+        const result = await knexInstance.transaction(async (trx) => {
+          // Query 1: Select existing users
+          const users = await trx("test_users").select("*").orderBy("id");
+
+          // Query 2: Insert a new user
+          const insertResult = await trx("test_users").insert({
+            name: `TrxUser_${Date.now()}`,
+            email: `trx_${Date.now()}@example.com`,
+          });
+
+          // Query 3: Get the newly inserted user
+          const newUser = await trx("test_users").where("id", insertResult[0]).first();
+
+          return { users, insertId: insertResult[0], newUser };
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: result,
+            queryType: "knex-transaction",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      return;
+    }
+
+    if (url === "/test/knex-savepoint" && method === "POST") {
+      try {
+        const result = await knexInstance.transaction(async (trx) => {
+          // Outer transaction query
+          const outerUsers = await trx("test_users").select("*").orderBy("id").limit(2);
+
+          // Nested transaction (savepoint)
+          const innerResult = await trx.transaction(async (innerTrx) => {
+            const innerUsers = await innerTrx("test_users")
+              .select("id", "name")
+              .orderBy("id")
+              .limit(1);
+            return { innerUsers };
+          });
+
+          return { outerUsers, innerResult };
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: result,
+            queryType: "knex-savepoint",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));

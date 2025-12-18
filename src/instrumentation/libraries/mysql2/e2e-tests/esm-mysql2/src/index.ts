@@ -978,6 +978,44 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url === "/test/knex-savepoint" && method === "POST") {
+      try {
+        const result = await knexInstance.transaction(async (trx) => {
+          // Outer transaction query
+          const outerUsers = await trx("test_users").select("*").orderBy("id").limit(2);
+
+          // Nested transaction (savepoint)
+          const innerResult = await trx.transaction(async (innerTrx) => {
+            const innerUsers = await innerTrx("test_users")
+              .select("id", "name")
+              .orderBy("id")
+              .limit(1);
+            return { innerUsers };
+          });
+
+          return { outerUsers, innerResult };
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: result,
+            queryType: "knex-savepoint",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
