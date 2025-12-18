@@ -1,4 +1,5 @@
 import { EventEmitter } from "events";
+import { Readable } from "stream";
 import { SpanKind } from "@opentelemetry/api";
 import { SpanInfo } from "../../../../core/tracing/SpanUtils";
 import { TuskDriftCore } from "../../../../core/TuskDrift";
@@ -67,6 +68,12 @@ export class TdMysql2QueryMock {
       }).then(onResolve, onReject);
     };
 
+    // Add stream() method to the emitter so query.stream() works in REPLAY mode
+    const self = this;
+    (emitter as any).stream = function (streamOptions?: any) {
+      return self._createReplayStreamForQuery(emitter, streamOptions);
+    };
+
     // Emit completion asynchronously
     process.nextTick(() => {
       const callback = queryConfig.callback;
@@ -112,6 +119,13 @@ export class TdMysql2QueryMock {
           reject(error);
         });
       }).then(onResolve, onReject);
+    };
+
+    // Add stream() method to the emitter so query.stream() works in REPLAY mode
+    // This is how mysql2's Query object works - it can be streamed
+    const self = this;
+    (emitter as any).stream = function (streamOptions?: any) {
+      return self._createReplayStreamForQuery(emitter, streamOptions);
     };
 
     // Fetch mock data asynchronously and emit events
@@ -205,6 +219,37 @@ export class TdMysql2QueryMock {
   }
 
   /**
+   * Create a replay stream for query.stream() calls
+   * This is called when user calls query.stream() on a query object
+   */
+  private _createReplayStreamForQuery(queryEmitter: EventEmitter, streamOptions?: any): Readable {
+    logger.debug(`[Mysql2Instrumentation] Creating replay stream for query.stream()`);
+
+    // Create a Readable stream that will emit the data
+    const readableStream = new Readable({
+      objectMode: true,
+      read() {
+        // Read is handled by the emitter events
+      },
+    });
+
+    // Forward events from the emitter to the stream
+    queryEmitter.on("result", (row: any) => {
+      readableStream.push(row);
+    });
+
+    queryEmitter.on("error", (err: any) => {
+      readableStream.destroy(err);
+    });
+
+    queryEmitter.on("end", () => {
+      readableStream.push(null);
+    });
+
+    return readableStream;
+  }
+
+  /**
    * Recursively restore Buffer objects from their JSON serialized form.
    * JSON.stringify converts Buffer to {"type":"Buffer","data":[...]}
    * This function converts them back to actual Buffer instances.
@@ -215,11 +260,7 @@ export class TdMysql2QueryMock {
     }
 
     // Check if this is a serialized Buffer: {"type":"Buffer","data":[...]}
-    if (
-      typeof obj === "object" &&
-      obj.type === "Buffer" &&
-      Array.isArray(obj.data)
-    ) {
+    if (typeof obj === "object" && obj.type === "Buffer" && Array.isArray(obj.data)) {
       return Buffer.from(obj.data);
     }
 

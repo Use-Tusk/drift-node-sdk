@@ -139,6 +139,9 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/k
 echo "  - POST /test/knex-savepoint"
 docker compose -p $PROJECT_NAME exec -T app curl -s -X POST http://localhost:3000/test/knex-savepoint > /dev/null
 
+echo "  - GET /test/knex-streaming"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/knex-streaming > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server

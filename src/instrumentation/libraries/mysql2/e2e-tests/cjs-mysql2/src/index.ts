@@ -978,7 +978,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Knex transaction test - BUG: REPLAY fails with timeout
+    // Knex transaction test
     // Tests BEGIN, queries, COMMIT flow with dedicated transaction connection
     if (url === "/test/knex-transaction" && method === "POST") {
       try {
@@ -1042,6 +1042,44 @@ const server = http.createServer(async (req, res) => {
             success: true,
             data: result,
             queryType: "knex-savepoint",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      return;
+    }
+
+    if (url === "/test/knex-streaming" && method === "GET") {
+      try {
+        const results: any[] = [];
+        const stream = knexInstance.select("*").from("test_users").orderBy("id").stream();
+
+        await new Promise<void>((resolve, reject) => {
+          stream.on("data", (row: any) => {
+            results.push(row);
+          });
+          stream.on("error", (err: Error) => {
+            reject(err);
+          });
+          stream.on("end", () => {
+            resolve();
+          });
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: results,
+            rowCount: results.length,
+            queryType: "knex-streaming",
           }),
         );
       } catch (error) {

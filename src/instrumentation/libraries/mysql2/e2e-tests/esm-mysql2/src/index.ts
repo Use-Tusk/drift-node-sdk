@@ -1016,6 +1016,44 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url === "/test/knex-streaming" && method === "GET") {
+      try {
+        const results: any[] = [];
+        const stream = knexInstance.select("*").from("test_users").orderBy("id").stream();
+
+        await new Promise<void>((resolve, reject) => {
+          stream.on("data", (row: any) => {
+            results.push(row);
+          });
+          stream.on("error", (err: Error) => {
+            reject(err);
+          });
+          stream.on("end", () => {
+            resolve();
+          });
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: results,
+            rowCount: results.length,
+            queryType: "knex-streaming",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
