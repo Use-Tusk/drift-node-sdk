@@ -4,6 +4,7 @@ import mysql from "mysql2";
 import mysqlPromise from "mysql2/promise";
 import { sequelize, User, Product, initializeSequelize } from "./sequelizeSetup.js";
 import { Op, QueryTypes } from "sequelize";
+import Knex from "knex";
 
 const PORT = process.env.PORT || 3000;
 
@@ -22,6 +23,7 @@ const dbConfig = {
 let connection: mysql.Connection;
 let pool: mysql.Pool;
 let promisePool: mysqlPromise.Pool;
+let knexInstance: ReturnType<typeof Knex>;
 
 async function initializeDatabase() {
   console.log(`Connecting to database: ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`);
@@ -42,6 +44,18 @@ async function initializeDatabase() {
 
   // Initialize promise pool
   promisePool = mysqlPromise.createPool(dbConfig);
+
+  // Initialize knex
+  knexInstance = Knex({
+    client: "mysql2",
+    connection: {
+      host: dbConfig.host,
+      port: dbConfig.port,
+      database: dbConfig.database,
+      user: dbConfig.user,
+      password: dbConfig.password,
+    },
+  });
 
   // Create test tables
   await new Promise<void>((resolve, reject) => {
@@ -937,6 +951,106 @@ const server = http.createServer(async (req, res) => {
           );
         },
       );
+      return;
+    }
+
+    if (url === "/test/knex-raw-query" && method === "GET") {
+      try {
+        const result = await knexInstance.raw("SELECT * FROM test_users ORDER BY id");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: result[0], // knex.raw returns [rows, fields]
+            rowCount: Array.isArray(result[0]) ? result[0].length : 0,
+            queryType: "knex-raw",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      return;
+    }
+
+    if (url === "/test/knex-savepoint" && method === "POST") {
+      try {
+        const result = await knexInstance.transaction(async (trx) => {
+          // Outer transaction query
+          const outerUsers = await trx("test_users").select("*").orderBy("id").limit(2);
+
+          // Nested transaction (savepoint)
+          const innerResult = await trx.transaction(async (innerTrx) => {
+            const innerUsers = await innerTrx("test_users")
+              .select("id", "name")
+              .orderBy("id")
+              .limit(1);
+            return { innerUsers };
+          });
+
+          return { outerUsers, innerResult };
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: result,
+            queryType: "knex-savepoint",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      return;
+    }
+
+    if (url === "/test/knex-streaming" && method === "GET") {
+      try {
+        const results: any[] = [];
+        const stream = knexInstance.select("*").from("test_users").orderBy("id").stream();
+
+        await new Promise<void>((resolve, reject) => {
+          stream.on("data", (row: any) => {
+            results.push(row);
+          });
+          stream.on("error", (err: Error) => {
+            reject(err);
+          });
+          stream.on("end", () => {
+            resolve();
+          });
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: results,
+            rowCount: results.length,
+            queryType: "knex-streaming",
+          }),
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
       return;
     }
 
