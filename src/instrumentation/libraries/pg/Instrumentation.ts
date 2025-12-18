@@ -132,6 +132,11 @@ export class PgInstrumentation extends TdInstrumentationBase {
                   packageName: packageName,
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    values: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
@@ -159,6 +164,11 @@ export class PgInstrumentation extends TdInstrumentationBase {
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   packageName: packageName,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    values: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart,
                 },
                 (spanInfo) => {
@@ -422,6 +432,11 @@ export class PgInstrumentation extends TdInstrumentationBase {
         stackTrace,
       },
       tuskDrift: this.tuskDrift,
+      inputValueSchemaMerges: {
+        values: {
+          matchImportance: 0,
+        },
+      },
     });
 
     if (!mockData) {
