@@ -215,6 +215,11 @@ export class TdMysql2QueryMock {
         stackTrace,
       },
       tuskDrift: this.tuskDrift,
+      inputValueSchemaMerges: {
+        values: {
+          matchImportance: 0,
+        },
+      },
     });
   }
 

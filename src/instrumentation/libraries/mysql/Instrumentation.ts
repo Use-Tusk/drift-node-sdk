@@ -371,6 +371,11 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    values: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
@@ -414,6 +419,11 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    values: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart,
                 },
                 (spanInfo) => {
@@ -1103,6 +1113,11 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    values: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
@@ -1152,6 +1167,11 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    values: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart,
                 },
                 (spanInfo) => {
@@ -1895,6 +1915,11 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    values: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart: false,
                 },
                 (spanInfo) => {
@@ -1918,6 +1943,11 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    values: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart,
                 },
                 (spanInfo) => {
@@ -2230,6 +2260,11 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
                   packageName: "mysql",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    values: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart: false,
                 },
                 (spanInfo) => {

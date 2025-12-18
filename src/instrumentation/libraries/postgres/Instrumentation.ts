@@ -679,6 +679,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   packageName: "postgres",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    parameters: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart,
                 },
                 (spanInfo) => {
@@ -741,6 +746,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   packageName: "postgres",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    parameters: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart: self.tuskDrift.isAppReady() ? false : true,
                 },
                 async (spanInfo) => {
@@ -1102,6 +1112,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
         stackTrace,
       },
       tuskDrift: this.tuskDrift,
+      inputValueSchemaMerges: {
+        parameters: {
+          matchImportance: 0,
+        },
+      },
     });
   }
 
@@ -1207,6 +1222,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               packageName: "postgres",
               instrumentationName: self.INSTRUMENTATION_NAME,
               inputValue: inputValue,
+              inputSchemaMerges: {
+                parameters: {
+                  matchImportance: 0,
+                },
+              },
               isPreAppStart,
             },
             (spanInfo) => {
@@ -1300,6 +1320,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               packageName: "postgres",
               instrumentationName: self.INSTRUMENTATION_NAME,
               inputValue: inputValue,
+              inputSchemaMerges: {
+                parameters: {
+                  matchImportance: 0,
+                },
+              },
               isPreAppStart: self.tuskDrift.isAppReady() ? false : true,
             },
             async (spanInfo) => {
@@ -1607,6 +1632,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               packageName: "postgres",
               instrumentationName: self.INSTRUMENTATION_NAME,
               inputValue: inputValue,
+              inputSchemaMerges: {
+                parameters: {
+                  matchImportance: 0,
+                },
+              },
               isPreAppStart,
             },
             async (spanInfo) => {
@@ -1675,6 +1705,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
               packageName: "postgres",
               instrumentationName: self.INSTRUMENTATION_NAME,
               inputValue: inputValue,
+              inputSchemaMerges: {
+                parameters: {
+                  matchImportance: 0,
+                },
+              },
               isPreAppStart: self.tuskDrift.isAppReady() ? false : true,
             },
             async (spanInfo) => {
@@ -1765,6 +1800,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   packageName: "postgres",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    parameters: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart,
                 },
                 (spanInfo) => {
@@ -1827,6 +1867,11 @@ export class PostgresInstrumentation extends TdInstrumentationBase {
                   packageName: "postgres",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue: inputValue,
+                  inputSchemaMerges: {
+                    parameters: {
+                      matchImportance: 0,
+                    },
+                  },
                   isPreAppStart: self.tuskDrift.isAppReady() ? false : true,
                 },
                 async (spanInfo) => {
