@@ -120,9 +120,10 @@ export class SpanTransformer {
 
       isPreAppStart: attributes[TdSpanAttributes.IS_PRE_APP_START] === true,
 
+      // Use start time (when span was created)
       timestamp: {
-        seconds: Math.floor(originalDate.getTime() / 1000),
-        nanos: (originalDate.getTime() % 1000) * 1000000,
+        seconds: span.startTime[0],
+        nanos: span.startTime[1],
       },
       duration: {
         seconds: span.duration[0],
