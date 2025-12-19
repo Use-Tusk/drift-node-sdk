@@ -458,6 +458,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           const connectionContext = this;
           return handleReplayMode({
             noOpRequestHandler: () => {
+              // Set connection state to pass Knex's validateConnection check
+              connectionContext.state = "authenticated";
               if (callback) {
                 setImmediate(() => callback(null));
               }
@@ -466,6 +468,8 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
             },
             isServerRequest: false,
             replayModeHandler: () => {
+              // Set connection state to pass Knex's validateConnection check
+              connectionContext.state = "authenticated";
               if (callback) {
                 setImmediate(() => callback(null));
               }
@@ -1362,12 +1366,16 @@ export class MysqlInstrumentation extends TdInstrumentationBase {
           // Just call the callback to signal success
           return handleReplayMode({
             noOpRequestHandler: () => {
+              // Set connection state to pass Knex's validateConnection check
+              connection.state = "authenticated";
               if (callback) {
                 setImmediate(() => callback(null));
               }
             },
             isServerRequest: false,
             replayModeHandler: () => {
+              // Set connection state to pass Knex's validateConnection check
+              connection.state = "authenticated";
               if (callback) {
                 setImmediate(() => callback(null));
               }
