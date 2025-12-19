@@ -3,7 +3,7 @@ import { SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { JsonSchemaHelper, JsonSchemaType, JsonSchema } from "./JsonSchemaHelper";
 import { CleanSpanData, TdSpanAttributes } from "../types";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
-import { logger, OriginalGlobalUtils } from "../utils";
+import { logger } from "../utils";
 
 /**
  * Utility class for transforming OpenTelemetry spans to CleanSpanData
@@ -84,8 +84,6 @@ export class SpanTransformer {
         logger.warn("[SpanTransformer] Failed to parse transform metadata", error);
       }
     }
-
-    const originalDate = OriginalGlobalUtils.getOriginalDate();
 
     return {
       traceId: span.spanContext().traceId,
