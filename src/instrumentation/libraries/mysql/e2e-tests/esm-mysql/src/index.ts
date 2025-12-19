@@ -2,6 +2,7 @@ import { TuskDrift } from "./tdInit.js";
 import express, { Request, Response } from "express";
 import { getConnection, getPool, connectDb, closeDb } from "./db/index.js";
 import mysql from "mysql";
+import Knex from "knex";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1365,6 +1366,52 @@ app.get(
     }
   },
 );
+
+// ===== KNEX TESTS =====
+
+// Initialize knex instance
+const knex = Knex({
+  client: "mysql",
+  connection: {
+    host: process.env.MYSQL_HOST || "mysql",
+    port: parseInt(process.env.MYSQL_PORT || "3306"),
+    user: process.env.MYSQL_USER || "testuser",
+    password: process.env.MYSQL_PASSWORD || "testpass",
+    database: process.env.MYSQL_DB || "testdb",
+  },
+  pool: { min: 0, max: 5 },
+});
+
+app.get("/knex/basic-select", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing knex basic select...");
+    const results = await knex("cache").select("*").limit(3);
+    console.log("Knex basic select results:", results);
+    res.json({
+      message: "Knex basic select completed",
+      count: results.length,
+      data: results,
+    });
+  } catch (error: any) {
+    console.error("Error in knex basic-select:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/knex/raw-query", async (req: Request, res: Response) => {
+  try {
+    console.log("Testing knex raw query...");
+    const results = await knex.raw("SELECT COUNT(*) as count FROM cache");
+    console.log("Knex raw query results:", results);
+    res.json({
+      message: "Knex raw query completed",
+      data: results[0],
+    });
+  } catch (error: any) {
+    console.error("Error in knex raw-query:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Start server
 const server = app.listen(PORT, async () => {

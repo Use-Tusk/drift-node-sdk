@@ -151,6 +151,12 @@ docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/p
 echo "  - GET /test/pool-namespace-query-with-internal-callback"
 docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/test/pool-namespace-query-with-internal-callback > /dev/null
 
+echo "  - GET /knex/basic-select"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/knex/basic-select > /dev/null
+
+echo "  - GET /knex/raw-query"
+docker compose -p $PROJECT_NAME exec -T app curl -s http://localhost:3000/knex/raw-query > /dev/null
+
 echo "All endpoints hit successfully."
 
 # Step 5: Wait before stopping server
