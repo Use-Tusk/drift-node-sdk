@@ -3,7 +3,7 @@ import { SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { JsonSchemaHelper, JsonSchemaType, JsonSchema } from "./JsonSchemaHelper";
 import { CleanSpanData, TdSpanAttributes } from "../types";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
-import { logger, OriginalGlobalUtils } from "../utils";
+import { logger } from "../utils";
 
 /**
  * Utility class for transforming OpenTelemetry spans to CleanSpanData
@@ -85,8 +85,6 @@ export class SpanTransformer {
       }
     }
 
-    const originalDate = OriginalGlobalUtils.getOriginalDate();
-
     return {
       traceId: span.spanContext().traceId,
       spanId: span.spanContext().spanId,
@@ -120,9 +118,10 @@ export class SpanTransformer {
 
       isPreAppStart: attributes[TdSpanAttributes.IS_PRE_APP_START] === true,
 
+      // Use start time (when span was created)
       timestamp: {
-        seconds: Math.floor(originalDate.getTime() / 1000),
-        nanos: (originalDate.getTime() % 1000) * 1000000,
+        seconds: span.startTime[0],
+        nanos: span.startTime[1],
       },
       duration: {
         seconds: span.duration[0],
