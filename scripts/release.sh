@@ -45,7 +45,7 @@ git push origin "v$NEW_VERSION"
 
 # Create GitHub release (triggers publish.yml workflow)
 echo "Creating GitHub release..."
-gh release create "v$NEW_VERSION" --generate-notes --title "v$NEW_VERSION"
+gh release create "v$NEW_VERSION" --generate-notes
 
 echo ""
 echo "Release v$NEW_VERSION created successfully!"
