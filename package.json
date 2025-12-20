@@ -25,14 +25,16 @@
       "require": "./dist/index.cjs"
     },
     "./hook.mjs": "./hook.mjs",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./instrumentation-manifest.json": "./dist/instrumentation-manifest.json"
   },
   "scripts": {
     "prepare": "patch-package",
-    "build": "npm run typecheck && tsdown",
+    "build": "npm run typecheck && tsdown && npm run generate-manifest",
     "build:watch": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
+    "generate-manifest": "tsx scripts/generateManifest.ts",
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
     "test": "ava --workerThreads false",
