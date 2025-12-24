@@ -48,3 +48,39 @@ When setting `matchImportance` on input fields (e.g., to deprioritize certain fi
    ```
 
 If you only add it in one place, the schema hashes will differ between recording and replay, causing mock matching to fail. See the HTTP instrumentation (`src/instrumentation/libraries/http/mocks/TdMockClientRequest.ts`) for a reference implementation with `headers: { matchImportance: 0 }`.
+
+## Instrumentation Self-Reference (POTENTIAL BUG)
+
+**Problem**: Using instrumented global functions within the SDK's own instrumentation code can cause:
+
+- Circular dependencies between instrumentation and utility modules
+- Infinite recursion when instrumented code calls itself
+- Incorrect behavior where SDK internals use mocked/replayed data instead of real data
+
+**Examples of problematic code**:
+
+```typescript
+// BAD: Using potentially instrumented Date in logger
+private formatMessage(message: string): string {
+  const timestamp = new Date().toISOString(); // This Date might be instrumented!
+  return `${timestamp} ${message}`;
+}
+
+// BAD: Using potentially instrumented env vars in SDK code
+const config = process.env.API_KEY; // This might be mocked in replay mode!
+```
+
+**Solution**: Use `OriginalGlobalUtils` or create new original utilities to access uninstrumented versions:
+
+```typescript
+// GOOD: Using original Date for SDK internal logging
+import { OriginalGlobalUtils } from '../utils/originalGlobalUtils';
+
+private formatMessage(message: string): string {
+  const timestamp = OriginalGlobalUtils.getOriginalDate().toISOString();
+  return `${timestamp} ${message}`;
+}
+
+// GOOD: Using original process.env for SDK internal config
+const config = OriginalGlobalUtils.getOriginalProcessEnvVar("API_KEY");
+```

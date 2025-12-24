@@ -29,3 +29,5 @@ Ensure that `TuskDrift.initialize()` is called before any other telemetry provid
 2. **Test with simple endpoint**: Start with endpoints that only return static data
 
 3. **Check dependencies**: Verify you're using supported package versions
+
+4. **Remove concurrency setting for slow replays**: If replaying works but takes a long time (>10,000 ms), remove any `concurrency` setting from your `.tusk/config.yaml` (default is `1`). When tests run concurrently, the Node process may struggle to synchronously fetch mocks while other tests are executing. Running tests sequentially can help in these cases.
