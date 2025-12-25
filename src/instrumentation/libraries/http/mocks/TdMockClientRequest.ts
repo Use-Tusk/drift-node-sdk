@@ -303,6 +303,32 @@ export class TdMockClientRequest extends EventEmitter {
         timeout: this.options.timeout || undefined,
       };
 
+      // Detect proxy scenario: when HTTP_PROXY/HTTPS_PROXY is set, HTTP clients send
+      // the full URL as the path (per RFC 7230 Section 5.3.2) instead of just the path.
+      // We need to extract the real target from the path for mock matching.
+      if (this.path && (this.path.startsWith("http://") || this.path.startsWith("https://"))) {
+        const hasProxyEnv =
+          process.env.HTTP_PROXY ||
+          process.env.HTTPS_PROXY ||
+          process.env.http_proxy ||
+          process.env.https_proxy;
+
+        try {
+          const targetUrl = new URL(this.path);
+          rawInputValue.hostname = targetUrl.hostname;
+          rawInputValue.path = targetUrl.pathname + targetUrl.search;
+          rawInputValue.port = targetUrl.port ? parseInt(targetUrl.port) : undefined;
+          rawInputValue.protocol = targetUrl.protocol.replace(":", "") as "http" | "https";
+          logger.debug(
+            `[TdMockClientRequest] Detected proxy request (proxy env: ${hasProxyEnv ? "set" : "not set"}), ` +
+              `extracted target: ${rawInputValue.hostname}${rawInputValue.path}`,
+          );
+        } catch (e) {
+          // If URL parsing fails, keep original values
+          logger.debug("[TdMockClientRequest] Failed to parse proxy URL from path:", e);
+        }
+      }
+
       if (this.requestBodyBuffers.length > 0) {
         const bodyBuffer = Buffer.concat(
           this.requestBodyBuffers.map((chunk) =>
