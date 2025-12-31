@@ -24,7 +24,7 @@ import {
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
 import { trace, Tracer, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
-import { ProtobufCommunicator, MockRequestInput } from "./ProtobufCommunicator";
+import { ProtobufCommunicator, MockRequestInput, MockResponseOutput } from "./ProtobufCommunicator";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME } from "./types";
 import { TuskDriftInstrumentationModuleNames } from "./TuskDriftInstrumentationModuleNames";
@@ -556,9 +556,7 @@ export class TuskDriftCore {
     }
   }
 
-  private createMockRequestCore(
-    mockRequest: MockRequestInput,
-  ): { found: boolean; response?: unknown; error?: string } | null {
+  private createMockRequestCore(): MockResponseOutput | null {
     if (!this.communicator || this.mode !== TuskDriftMode.REPLAY) {
       logger.error(
         "Cannot request mock: not in replay mode or no CLI connection",
@@ -571,15 +569,13 @@ export class TuskDriftCore {
     return null; // Indicates we should proceed with CLI request
   }
 
-  async requestMockAsync(
-    mockRequest: MockRequestInput,
-  ): Promise<{ found: boolean; response?: unknown; error?: string }> {
+  async requestMockAsync(mockRequest: MockRequestInput): Promise<MockResponseOutput> {
     if (this.cliConnectionPromise && !this.isConnectedWithCLI) {
       logger.debug("Waiting for CLI connection to be established");
       await this.cliConnectionPromise;
     }
 
-    const mockRequestCore = this.createMockRequestCore(mockRequest);
+    const mockRequestCore = this.createMockRequestCore();
     if (mockRequestCore) {
       return mockRequestCore;
     }
@@ -588,7 +584,7 @@ export class TuskDriftCore {
 
   private async requestMockFromCLIAsync(
     mockRequest: MockRequestInput,
-  ): Promise<{ found: boolean; response?: unknown; error?: string }> {
+  ): Promise<MockResponseOutput> {
     if (!this.communicator || this.mode !== TuskDriftMode.REPLAY) {
       logger.error("Cannot request mock: not in replay mode or no CLI connection");
       return { found: false, error: "Not in replay mode or no CLI connection" };
@@ -601,8 +597,6 @@ export class TuskDriftCore {
         testId: mockRequest.testId,
         outboundSpan: mockRequest.outboundSpan,
       });
-
-      logger.debug("Received protobuf response from CLI", JSON.stringify(response, null, 2));
       return response;
     } catch (error) {
       logger.error("Error sending protobuf request to CLI:", error);
@@ -613,11 +607,7 @@ export class TuskDriftCore {
     }
   }
 
-  requestMockSync(mockRequest: MockRequestInput): {
-    found: boolean;
-    response?: unknown;
-    error?: string;
-  } {
+  requestMockSync(mockRequest: MockRequestInput): MockResponseOutput {
     if (!this.isConnectedWithCLI) {
       // We cannot await for the CLI to be connected like we do in requestMockAsync since it's a synchronous call
       // That means this function will likely throw an error if the first mock requested needs to be sync
@@ -626,18 +616,14 @@ export class TuskDriftCore {
       throw new Error("Requesting sync mock but CLI is not ready yet");
     }
 
-    const mockRequestCore = this.createMockRequestCore(mockRequest);
+    const mockRequestCore = this.createMockRequestCore();
     if (mockRequestCore) {
       return mockRequestCore;
     }
     return this.requestMockFromCLISync(mockRequest);
   }
 
-  private requestMockFromCLISync(mockRequest: MockRequestInput): {
-    found: boolean;
-    response?: unknown;
-    error?: string;
-  } {
+  private requestMockFromCLISync(mockRequest: MockRequestInput): MockResponseOutput {
     if (!this.communicator || this.mode !== TuskDriftMode.REPLAY) {
       logger.error(
         "Cannot request mock: not in replay mode or no CLI connection",
@@ -654,8 +640,6 @@ export class TuskDriftCore {
         testId: mockRequest.testId,
         outboundSpan: mockRequest.outboundSpan,
       });
-
-      logger.debug("Received protobuf response from CLI", response);
       return response;
     } catch (error) {
       logger.error("Error sending protobuf request to CLI:", error);
