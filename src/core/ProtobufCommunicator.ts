@@ -38,12 +38,6 @@ export interface MockResponseOutput {
   found: boolean;
   response?: Record<string, unknown>;
   error?: string;
-  matchLevel?: {
-    matchType: string; // e.g., "INPUT_VALUE_HASH", "INPUT_SCHEMA_HASH"
-    matchScope: string; // e.g., "TRACE", "GLOBAL"
-    matchDescription: string;
-    similarityScore?: number;
-  };
 }
 
 export class ProtobufCommunicator {
