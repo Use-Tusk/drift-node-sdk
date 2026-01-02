@@ -112,9 +112,7 @@ export async function findMockResponseAsync({
     }
 
     const responseBody = (mockResponse.response as any)?.response?.body;
-    logger.debug(`Found ${outboundSpan.traceId} mock response:`, responseBody, {
-      timestamp: (mockResponse.response as any)?.timestamp,
-    });
+    logger.debug(`Found ${outboundSpan.traceId} mock response:`);
 
     // Track the latest timestamp for this trace
     if ((mockResponse.response as any)?.timestamp) {
@@ -169,9 +167,7 @@ export function findMockResponseSync({
     }
 
     const responseBody = (mockResponse.response as any)?.response?.body;
-    logger.debug(`Found ${outboundSpan.traceId} mock response and timestamp:`, responseBody, {
-      timestamp: (mockResponse.response as any)?.timestamp,
-    });
+    logger.debug(`Found ${outboundSpan.traceId} mock response:`);
 
     // Track the latest timestamp for this trace
     if ((mockResponse.response as any)?.timestamp) {

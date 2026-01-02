@@ -1,12 +1,11 @@
 import { Value, Struct } from "@use-tusk/drift-schemas/google/protobuf/struct";
 import { SpanKind as OtSpanKind } from "@opentelemetry/api";
-import { SpanKind as PbSpanKind } from "@use-tusk/drift-schemas/core/span";
 import {
-  type JsonSchema,
-  JsonSchemaType,
-  EncodingType,
-  DecodedType,
-} from "@use-tusk/drift-schemas/core/json_schema";
+  SpanKind as PbSpanKind,
+  MatchType,
+  MatchScope,
+  MatchLevel,
+} from "@use-tusk/drift-schemas/core/span";
 
 export const toStruct = (obj: unknown | undefined) =>
   obj ? objectToProtobufStruct(obj) : undefined;
@@ -76,4 +75,64 @@ export function valueToProtobufValue(value: unknown): Value {
 
   // Fallback to string representation for other types
   return Value.create({ kind: { oneofKind: "stringValue", stringValue: String(value) } });
+}
+
+/**
+ * Human-readable labels for MatchType enum values
+ */
+const MATCH_TYPE_LABELS: Record<MatchType, string> = {
+  [MatchType.UNSPECIFIED]: "UNSPECIFIED",
+  [MatchType.INPUT_VALUE_HASH]: "INPUT_VALUE_HASH",
+  [MatchType.INPUT_VALUE_HASH_REDUCED_SCHEMA]: "INPUT_VALUE_HASH_REDUCED_SCHEMA",
+  [MatchType.INPUT_SCHEMA_HASH]: "INPUT_SCHEMA_HASH",
+  [MatchType.INPUT_SCHEMA_HASH_REDUCED_SCHEMA]: "INPUT_SCHEMA_HASH_REDUCED_SCHEMA",
+  [MatchType.FUZZY]: "FUZZY",
+  [MatchType.FALLBACK]: "FALLBACK",
+};
+
+/**
+ * Human-readable labels for MatchScope enum values
+ */
+const MATCH_SCOPE_LABELS: Record<MatchScope, string> = {
+  [MatchScope.UNSPECIFIED]: "UNSPECIFIED",
+  [MatchScope.TRACE]: "TRACE",
+  [MatchScope.GLOBAL]: "GLOBAL",
+};
+
+/**
+ * Converts a MatchType enum to a human-readable label
+ */
+export function getMatchTypeLabel(matchType: MatchType): string {
+  return MATCH_TYPE_LABELS[matchType] ?? `UNKNOWN(${matchType})`;
+}
+
+/**
+ * Converts a MatchScope enum to a human-readable label
+ */
+export function getMatchScopeLabel(matchScope: MatchScope): string {
+  return MATCH_SCOPE_LABELS[matchScope] ?? `UNKNOWN(${matchScope})`;
+}
+
+/**
+ * Formats a matchLevel object as a concise, readable string for logging
+ */
+export function formatMatchLevelForLog(matchLevel: MatchLevel | undefined): string {
+  if (!matchLevel) return "No match level info";
+
+  const matchType = matchLevel.matchType ?? MatchType.UNSPECIFIED;
+  const matchScope = matchLevel.matchScope ?? MatchScope.UNSPECIFIED;
+  const typeLabel = getMatchTypeLabel(matchType);
+  const scopeLabel = getMatchScopeLabel(matchScope);
+
+  let result = `[${typeLabel}] scope=${scopeLabel}`;
+
+  if (matchLevel.matchDescription) {
+    result += ` - "${matchLevel.matchDescription}"`;
+  }
+
+  if (matchLevel.similarityScore !== undefined) {
+    result += ` (score: ${matchLevel.similarityScore})`;
+  }
+
+  return result;
 }

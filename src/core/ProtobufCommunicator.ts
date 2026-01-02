@@ -20,14 +20,21 @@ import { context, Context, SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { Value } from "@use-tusk/drift-schemas/google/protobuf/struct";
 import { CleanSpanData, CALLING_LIBRARY_CONTEXT_KEY } from "./types";
 import { Span } from "@use-tusk/drift-schemas/core/span";
-import { logger, objectToProtobufStruct, toStruct, mapOtToPb, OriginalGlobalUtils } from "./utils";
+import {
+  logger,
+  objectToProtobufStruct,
+  toStruct,
+  mapOtToPb,
+  OriginalGlobalUtils,
+  formatMatchLevelForLog,
+} from "./utils";
 
 export interface MockRequestInput {
   testId: string;
   outboundSpan: CleanSpanData;
 }
 
-interface MockResponseOutput {
+export interface MockResponseOutput {
   found: boolean;
   response?: Record<string, unknown>;
   error?: string;
@@ -696,6 +703,8 @@ try {
           logger.debug(
             "[ProtobufCommunicator] Extracted response data:",
             JSON.stringify(responseValue, null, 2),
+            "\nMatch level:",
+            formatMatchLevelForLog(mockResponse.matchLevel),
           );
           return responseValue as Record<string, unknown>;
         }
