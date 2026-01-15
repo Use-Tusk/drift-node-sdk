@@ -15,6 +15,7 @@ import {
   SendAlertRequest,
   InstrumentationVersionMismatchAlert,
   UnpatchedDependencyAlert,
+  Runtime,
 } from "@use-tusk/drift-schemas/core/communication";
 import { context, Context, SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { Value } from "@use-tusk/drift-schemas/google/protobuf/struct";
@@ -217,6 +218,7 @@ try {
       serviceId,
       sdkVersion: SDK_VERSION,
       minCliVersion: MIN_CLI_VERSION,
+      runtime: Runtime.NODE,
     });
 
     const sdkMessage = SDKMessage.create({
