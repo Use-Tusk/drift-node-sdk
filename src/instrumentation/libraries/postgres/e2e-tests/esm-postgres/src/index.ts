@@ -781,13 +781,13 @@ app.get("/test/savepoint", async (req: Request, res: Response) => {
     let outerResult: any = null;
     let innerResult: any = null;
 
-    const result = await pgClient.begin(async (sql) => {
+    const result = await pgClient.begin(async (sql: any) => {
       // Outer transaction - insert a user
       outerResult =
         await sql`INSERT INTO users (name, email) VALUES ('Outer User', 'outer@test.com') RETURNING *`;
 
       // Nested savepoint
-      await sql.savepoint(async (sql2) => {
+      await sql.savepoint(async (sql2: any) => {
         // Inner savepoint - insert another user
         innerResult =
           await sql2`INSERT INTO users (name, email) VALUES ('Inner User', 'inner@test.com') RETURNING *`;
