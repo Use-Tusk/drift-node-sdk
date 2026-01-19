@@ -155,4 +155,4 @@ export function getDecodedType(
   return undefined;
 }
 
-export const ACCEPTABLE_CONTENT_TYPES = new Set([DecodedType.JSON, DecodedType.PLAIN_TEXT]);
+export const ACCEPTABLE_CONTENT_TYPES = new Set([DecodedType.JSON, DecodedType.PLAIN_TEXT, DecodedType.HTML]);

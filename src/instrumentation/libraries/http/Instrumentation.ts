@@ -484,7 +484,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
           });
 
           const status =
-            statusCode >= 300
+            statusCode >= 400
               ? { code: SpanStatusCode.ERROR, message: `HTTP ${statusCode}` }
               : { code: SpanStatusCode.OK };
 
@@ -566,8 +566,8 @@ export class HttpInstrumentation extends TdInstrumentationBase {
               kind: SpanKind.SERVER,
               packageType: PackageType.HTTP,
               status: {
-                code: statusCode >= 300 ? StatusCode.ERROR : StatusCode.OK,
-                message: statusCode >= 300 ? `HTTP ${statusCode}` : "",
+                code: statusCode >= 400 ? StatusCode.ERROR : StatusCode.OK,
+                message: statusCode >= 400 ? `HTTP ${statusCode}` : "",
               },
               timestamp: {
                 seconds: Math.floor(now.getTime() / 1000),
@@ -1026,7 +1026,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
 
     // Set span status based on HTTP status
     const status =
-      statusCode >= 300
+      statusCode >= 400
         ? { code: SpanStatusCode.ERROR, message: `HTTP ${statusCode}` }
         : { code: SpanStatusCode.OK };
 
