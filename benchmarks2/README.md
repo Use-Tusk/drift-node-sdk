@@ -9,12 +9,12 @@ Simple Go-style benchmarks for measuring SDK overhead.
 ```
 
 This automatically:
-1. Starts the delay server (from Python benchmarks)
+1. Starts the delay server
 2. Runs baseline benchmark (SDK disabled)
 3. Runs benchmark with SDK enabled
-4. Prints comparison
+4. Prints comparison with percentage diff
 
 ## Requirements
 
-- Python benchmarks must be available at `../../drift-python-sdk/benchmarks2/`
+- Python 3 with Flask and requests (`pip install flask requests`)
 - Node dependencies installed (`npm install` in drift-node-sdk root)

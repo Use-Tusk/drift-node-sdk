@@ -7,7 +7,6 @@ set -e
 
 DURATION=${1:-5}
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON_BENCH_DIR="$SCRIPT_DIR/../../drift-python-sdk/benchmarks2"
 
 cd "$SCRIPT_DIR"
 
@@ -18,9 +17,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Start delay server (from Python benchmarks)
+# Start delay server
 echo "Starting delay server..."
-python "$PYTHON_BENCH_DIR/delay_server.py" &
+python3 delay_server.py &
 DELAY_PID=$!
 sleep 1
 
@@ -34,7 +33,7 @@ TUSK_DRIFT_MODE=DISABLED npx tsx app.ts &
 APP_PID=$!
 sleep 2
 
-python "$PYTHON_BENCH_DIR/benchmark.py" --url=http://localhost:8080 --duration="$DURATION" | tee /tmp/baseline.txt
+python3 benchmark.py --url=http://localhost:8080 --duration="$DURATION" | tee /tmp/baseline.txt
 
 kill $APP_PID 2>/dev/null || true
 wait $APP_PID 2>/dev/null || true
@@ -50,4 +49,4 @@ TUSK_DRIFT_MODE=RECORD npx tsx app.ts &
 APP_PID=$!
 sleep 2
 
-python "$PYTHON_BENCH_DIR/benchmark.py" --url=http://localhost:8080 --duration="$DURATION" --baseline=/tmp/baseline.txt
+python3 benchmark.py --url=http://localhost:8080 --duration="$DURATION" --baseline=/tmp/baseline.txt
