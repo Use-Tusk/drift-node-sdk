@@ -1,6 +1,6 @@
 {
   "name": "@use-tusk/drift-node-sdk",
-  "version": "0.1.28",
+  "version": "0.1.29",
   "description": "Node.js SDK for Tusk Drift instrumentation and replay",
   "homepage": "https://github.com/Use-Tusk/drift-node-sdk",
   "repository": {
