@@ -3,6 +3,8 @@ import * as path from "path";
 import { ExportResult, ExportResultCode } from "@opentelemetry/core";
 import type { SpanExportAdapter } from "../TdSpanExporter";
 import { CleanSpanData } from "../../types";
+import { mapOtToPb } from "../../utils/protobufUtils";
+import { SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { logger } from "../../utils/logger";
 
 export interface FilesystemSpanAdapterConfig {
@@ -40,7 +42,7 @@ export class FilesystemSpanAdapter implements SpanExportAdapter {
           this.traceFileMap.set(traceId, filePath);
         }
 
-        const jsonLine = JSON.stringify(span) + "\n";
+        const jsonLine = JSON.stringify({ ...span, kind: mapOtToPb(span.kind as OtSpanKind) }) + "\n";
         fs.appendFileSync(filePath, jsonLine, "utf8");
       }
 
