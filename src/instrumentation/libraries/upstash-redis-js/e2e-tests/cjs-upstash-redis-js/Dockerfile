@@ -15,4 +15,8 @@ RUN if [ "$TUSK_CLI_VERSION" = "latest" ]; then \
     fi
 
 EXPOSE 3000
-CMD ["tail", "-f", "/dev/null"]
+
+COPY src/instrumentation/libraries/upstash-redis-js/e2e-tests/cjs-upstash-redis-js/entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+RUN mkdir -p /app/.tusk/traces /app/.tusk/logs
+ENTRYPOINT ["./entrypoint.sh"]
