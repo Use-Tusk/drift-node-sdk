@@ -105,7 +105,7 @@ export class SpanUtils {
       const span = tracer.startSpan(
         options.name,
         {
-          kind: options.kind || SpanKind.CLIENT,
+          kind: options.kind ?? SpanKind.CLIENT,
           attributes: options.attributes || {},
         },
         parentContext,

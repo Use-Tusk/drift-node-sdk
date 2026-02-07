@@ -49,6 +49,18 @@ When setting `matchImportance` on input fields (e.g., to deprioritize certain fi
 
 If you only add it in one place, the schema hashes will differ between recording and replay, causing mock matching to fail. See the HTTP instrumentation (`src/instrumentation/libraries/http/mocks/TdMockClientRequest.ts`) for a reference implementation with `headers: { matchImportance: 0 }`.
 
+## Never use `||` for enum or numeric defaults
+
+Use `??` (nullish coalescing) instead of `||` (logical OR) when providing defaults for enums or numeric values. The `||` operator treats `0` as falsy, which silently corrupts valid enum values like `SpanKind.INTERNAL` (0) and `PackageType.UNSPECIFIED` (0).
+
+```typescript
+// BAD: 0 is falsy, so INTERNAL becomes CLIENT
+kind: options.kind || SpanKind.CLIENT
+
+// GOOD: ?? only falls back on null/undefined
+kind: options.kind ?? SpanKind.CLIENT
+```
+
 ## Instrumentation Self-Reference (POTENTIAL BUG)
 
 **Problem**: Using instrumented global functions within the SDK's own instrumentation code can cause:
