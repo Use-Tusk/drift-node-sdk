@@ -21,5 +21,7 @@ RUN if [ "$TUSK_CLI_VERSION" = "latest" ]; then \
 EXPOSE 3000
 EXPOSE 50051
 
-# Container stays running - CLI will control the app
-CMD ["tail", "-f", "/dev/null"]
+COPY src/instrumentation/libraries/grpc/e2e-tests/esm-grpc/entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+RUN mkdir -p /app/.tusk/traces /app/.tusk/logs
+ENTRYPOINT ["./entrypoint.sh"]

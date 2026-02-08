@@ -48,3 +48,5 @@ Thumbs.db
 # E2E test generated files
 **/e2e-tests/**/.tusk/logs/
 **/e2e-tests/**/.tusk/traces/
+
+.direnv

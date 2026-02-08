@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:13
@@ -25,16 +23,15 @@ services:
     environment:
       DATABASE_URL: "postgresql://testuser:testpass@postgres:5432/testdb?schema=public"
       PORT: 3000
-    ports:
-      - "${APP_PORT:-3000}:3000"
+      BENCHMARKS: ${BENCHMARKS:-}
+      BENCHMARK_DURATION: ${BENCHMARK_DURATION:-30}
     volumes:
       # Mount the SDK source code (read-only)
       - ../../../../../../:/sdk:ro
-      # Mount .tusk directory for persistence
-      - ./.tusk:/app/.tusk
+      # Mount .tusk config for read-only access
+      - ./.tusk/config.yaml:/app/.tusk/config.yaml:ro
       # Mount src for development
       - ./src:/app/src
     depends_on:
       postgres:
         condition: service_healthy
-    command: tail -f /dev/null
