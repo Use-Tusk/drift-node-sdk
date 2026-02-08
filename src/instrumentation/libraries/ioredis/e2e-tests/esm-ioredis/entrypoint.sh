@@ -13,9 +13,10 @@ log() { echo -e "${2:-$NC}$1${NC}"; }
 
 cleanup() {
   log "Stopping server..." "$YELLOW"
-  pkill -f "node" 2>/dev/null || true
+  [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null || true
 }
 trap cleanup EXIT
+SERVER_PID=""
 
 log "================================================" "$BLUE"
 log "Phase 1: Setup" "$BLUE"
@@ -62,9 +63,11 @@ if [ -n "$BENCHMARKS" ]; then
   log "================================================" "$BLUE"
 
   TUSK_DRIFT_MODE=DISABLED npm run dev &
+  SERVER_PID=$!
   sleep 8
   run_benchmarks "baseline"
-  pkill -f "node" || true
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true
   sleep 2
 
   log ""
@@ -74,9 +77,11 @@ if [ -n "$BENCHMARKS" ]; then
 
   rm -rf .tusk/traces/* .tusk/logs/* 2>/dev/null || true
   TUSK_DRIFT_MODE=RECORD npm run dev &
+  SERVER_PID=$!
   sleep 8
   run_benchmarks "sdk"
-  pkill -f "node" || true
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true
 
   log ""
   log "Benchmark complete" "$GREEN"
@@ -89,52 +94,54 @@ log "================================================" "$BLUE"
 
 log "Starting server in RECORD mode..."
 TUSK_DRIFT_MODE=RECORD npm run dev &
+SERVER_PID=$!
 sleep 8
 
 log "Executing test requests..."
-curl -s http://localhost:3000/health > /dev/null
-curl -s http://localhost:3000/test/get > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:newkey", "value": "newvalue"}' http://localhost:3000/test/set > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:newkey"}' http://localhost:3000/test/del > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:key1"}' http://localhost:3000/test/exists > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:key1", "seconds": 100}' http://localhost:3000/test/expire > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:key1"}' http://localhost:3000/test/ttl > /dev/null
-curl -s http://localhost:3000/test/incr > /dev/null
-curl -s http://localhost:3000/test/decr > /dev/null
-curl -s http://localhost:3000/test/mget > /dev/null
-curl -s -X POST http://localhost:3000/test/mset > /dev/null
-curl -s http://localhost:3000/test/hget > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:user:2", "field": "name", "value": "Jane Doe"}' http://localhost:3000/test/hset > /dev/null
-curl -s http://localhost:3000/test/hgetall > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:user:1", "field": "age"}' http://localhost:3000/test/hdel > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:list", "value": "item0"}' http://localhost:3000/test/lpush > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:list", "value": "item4"}' http://localhost:3000/test/rpush > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:list"}' http://localhost:3000/test/lpop > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:list"}' http://localhost:3000/test/rpop > /dev/null
-curl -s http://localhost:3000/test/lrange > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:list"}' http://localhost:3000/test/llen > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:set", "member": "member4"}' http://localhost:3000/test/sadd > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:set", "member": "member4"}' http://localhost:3000/test/srem > /dev/null
-curl -s http://localhost:3000/test/smembers > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:set", "member": "member1"}' http://localhost:3000/test/sismember > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:zset", "score": 4, "member": "score4"}' http://localhost:3000/test/zadd > /dev/null
-curl -s http://localhost:3000/test/zrange > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:zset", "member": "score4"}' http://localhost:3000/test/zrem > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key": "test:zset", "member": "score1"}' http://localhost:3000/test/zscore > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"pattern": "test:*"}' http://localhost:3000/test/keys > /dev/null
-curl -s -X POST http://localhost:3000/test/flushdb > /dev/null
-curl -s http://localhost:3000/test/ping > /dev/null
-curl -s http://localhost:3000/test/pipeline > /dev/null
-curl -s http://localhost:3000/test/multi > /dev/null
-curl -s http://localhost:3000/test/new-client > /dev/null
-curl -s http://localhost:3000/test/getbuffer > /dev/null
-curl -s http://localhost:3000/test/mgetbuffer > /dev/null
+curl -sSf http://localhost:3000/health > /dev/null
+curl -sSf http://localhost:3000/test/get > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:newkey", "value": "newvalue"}' http://localhost:3000/test/set > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:newkey"}' http://localhost:3000/test/del > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:key1"}' http://localhost:3000/test/exists > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:key1", "seconds": 100}' http://localhost:3000/test/expire > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:key1"}' http://localhost:3000/test/ttl > /dev/null
+curl -sSf http://localhost:3000/test/incr > /dev/null
+curl -sSf http://localhost:3000/test/decr > /dev/null
+curl -sSf http://localhost:3000/test/mget > /dev/null
+curl -sSf -X POST http://localhost:3000/test/mset > /dev/null
+curl -sSf http://localhost:3000/test/hget > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:user:2", "field": "name", "value": "Jane Doe"}' http://localhost:3000/test/hset > /dev/null
+curl -sSf http://localhost:3000/test/hgetall > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:user:1", "field": "age"}' http://localhost:3000/test/hdel > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:list", "value": "item0"}' http://localhost:3000/test/lpush > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:list", "value": "item4"}' http://localhost:3000/test/rpush > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:list"}' http://localhost:3000/test/lpop > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:list"}' http://localhost:3000/test/rpop > /dev/null
+curl -sSf http://localhost:3000/test/lrange > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:list"}' http://localhost:3000/test/llen > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:set", "member": "member4"}' http://localhost:3000/test/sadd > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:set", "member": "member4"}' http://localhost:3000/test/srem > /dev/null
+curl -sSf http://localhost:3000/test/smembers > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:set", "member": "member1"}' http://localhost:3000/test/sismember > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:zset", "score": 4, "member": "score4"}' http://localhost:3000/test/zadd > /dev/null
+curl -sSf http://localhost:3000/test/zrange > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:zset", "member": "score4"}' http://localhost:3000/test/zrem > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key": "test:zset", "member": "score1"}' http://localhost:3000/test/zscore > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"pattern": "test:*"}' http://localhost:3000/test/keys > /dev/null
+curl -sSf -X POST http://localhost:3000/test/flushdb > /dev/null
+curl -sSf http://localhost:3000/test/ping > /dev/null
+curl -sSf http://localhost:3000/test/pipeline > /dev/null
+curl -sSf http://localhost:3000/test/multi > /dev/null
+curl -sSf http://localhost:3000/test/new-client > /dev/null
+curl -sSf http://localhost:3000/test/getbuffer > /dev/null
+curl -sSf http://localhost:3000/test/mgetbuffer > /dev/null
 
 log "Waiting for traces to flush..."
 sleep 3
 
 log "Stopping server..."
-pkill -f "node" || true
+kill $SERVER_PID 2>/dev/null || true
+wait $SERVER_PID 2>/dev/null || true
 sleep 2
 
 TRACE_COUNT=$(ls -1 .tusk/traces/*.jsonl 2>/dev/null | wc -l)

@@ -16,9 +16,10 @@ log() { echo -e "${2:-$NC}$1${NC}"; }
 # Cleanup function
 cleanup() {
   log "Stopping server..." "$YELLOW"
-  pkill -f "node" 2>/dev/null || true
+  [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null || true
 }
 trap cleanup EXIT
+SERVER_PID=""
 
 # ============================================================
 # Phase 1: Setup
@@ -73,9 +74,11 @@ if [ -n "$BENCHMARKS" ]; then
   log "================================================" "$BLUE"
 
   TUSK_DRIFT_MODE=DISABLED npm run dev &
+  SERVER_PID=$!
   sleep 5
   run_benchmarks "baseline"
-  pkill -f "node" || true
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true
   sleep 2
 
   log ""
@@ -85,9 +88,11 @@ if [ -n "$BENCHMARKS" ]; then
 
   rm -rf .tusk/traces/* .tusk/logs/* 2>/dev/null || true
   TUSK_DRIFT_MODE=RECORD npm run dev &
+  SERVER_PID=$!
   sleep 5
   run_benchmarks "sdk"
-  pkill -f "node" || true
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true
 
   log ""
   log "Benchmark complete" "$GREEN"
@@ -101,23 +106,25 @@ log "================================================" "$BLUE"
 
 log "Starting server in RECORD mode..."
 TUSK_DRIFT_MODE=RECORD npm run dev &
+SERVER_PID=$!
 sleep 5
 
 log "Executing test requests..."
-curl -s http://localhost:3000/health > /dev/null
-curl -s http://localhost:3000/test-http-get > /dev/null
-curl -s -X POST http://localhost:3000/test-http-request > /dev/null
-curl -s http://localhost:3000/test-https-get > /dev/null
-curl -s http://localhost:3000/test-axios-get > /dev/null
-curl -s -X POST http://localhost:3000/test-axios-post > /dev/null
-curl -s http://localhost:3000/test-url-object-get > /dev/null
-curl -s -X POST http://localhost:3000/test-url-object-request > /dev/null
+curl -sSf http://localhost:3000/health > /dev/null
+curl -sSf http://localhost:3000/test-http-get > /dev/null
+curl -sSf -X POST http://localhost:3000/test-http-request > /dev/null
+curl -sSf http://localhost:3000/test-https-get > /dev/null
+curl -sSf http://localhost:3000/test-axios-get > /dev/null
+curl -sSf -X POST http://localhost:3000/test-axios-post > /dev/null
+curl -sSf http://localhost:3000/test-url-object-get > /dev/null
+curl -sSf -X POST http://localhost:3000/test-url-object-request > /dev/null
 
 log "Waiting for traces to flush..."
 sleep 3
 
 log "Stopping server..."
-pkill -f "node" || true
+kill $SERVER_PID 2>/dev/null || true
+wait $SERVER_PID 2>/dev/null || true
 sleep 2
 
 TRACE_COUNT=$(ls -1 .tusk/traces/*.jsonl 2>/dev/null | wc -l)

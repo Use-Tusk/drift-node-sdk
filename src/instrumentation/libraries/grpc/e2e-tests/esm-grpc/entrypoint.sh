@@ -13,9 +13,10 @@ log() { echo -e "${2:-$NC}$1${NC}"; }
 
 cleanup() {
   log "Stopping server..." "$YELLOW"
-  pkill -f "node" 2>/dev/null || true
+  [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null || true
 }
 trap cleanup EXIT
+SERVER_PID=""
 
 log "================================================" "$BLUE"
 log "Phase 1: Setup" "$BLUE"
@@ -62,9 +63,11 @@ if [ -n "$BENCHMARKS" ]; then
   log "================================================" "$BLUE"
 
   TUSK_DRIFT_MODE=DISABLED npm run dev &
+  SERVER_PID=$!
   sleep 10
   run_benchmarks "baseline"
-  pkill -f "node" || true
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true
   sleep 2
 
   log ""
@@ -74,9 +77,11 @@ if [ -n "$BENCHMARKS" ]; then
 
   rm -rf .tusk/traces/* .tusk/logs/* 2>/dev/null || true
   TUSK_DRIFT_MODE=RECORD npm run dev &
+  SERVER_PID=$!
   sleep 10
   run_benchmarks "sdk"
-  pkill -f "node" || true
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true
 
   log ""
   log "Benchmark complete" "$GREEN"
@@ -89,38 +94,40 @@ log "================================================" "$BLUE"
 
 log "Starting server in RECORD mode..."
 TUSK_DRIFT_MODE=RECORD npm run dev &
+SERVER_PID=$!
 sleep 10
 
 log "Executing test requests..."
-curl -s http://localhost:3000/health > /dev/null
-curl -s http://localhost:3000/greet/hello > /dev/null
-curl -s http://localhost:3000/greet/hello-with-metadata > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"name":"CustomUser","greeting_type":"casual"}' http://localhost:3000/greet/custom > /dev/null
-curl -s http://localhost:3000/greet/hello-again > /dev/null
-curl -s http://localhost:3000/greet/many-times > /dev/null
-curl -s http://localhost:3000/calc/add > /dev/null
-curl -s http://localhost:3000/calc/subtract > /dev/null
-curl -s http://localhost:3000/calc/multiply > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"num1":20,"num2":4}' http://localhost:3000/calc/divide > /dev/null
-curl -s http://localhost:3000/calc/divide-by-zero > /dev/null
-curl -s http://localhost:3000/users/1 > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"name":"Test User","email":"testuser@example.com","age":28,"roles":["user","tester"]}' http://localhost:3000/users > /dev/null
-curl -s -X PUT -H "Content-Type: application/json" -d '{"name":"Alice Updated","email":"alice.updated@example.com","age":31}' http://localhost:3000/users/1 > /dev/null
-curl -s "http://localhost:3000/users?limit=5&offset=0" > /dev/null
-curl -s -X DELETE http://localhost:3000/users/2 > /dev/null
-curl -s http://localhost:3000/test/user-not-found > /dev/null
-curl -s http://localhost:3000/test/sequential-calls > /dev/null
-curl -s -X POST http://localhost:3000/test/complex-data > /dev/null
-curl -s -X POST http://localhost:3000/files/upload > /dev/null
-curl -s http://localhost:3000/files/download/file_1 > /dev/null
-curl -s http://localhost:3000/test/unary-callback-only > /dev/null
-curl -s http://localhost:3000/test/unary-options-only > /dev/null
+curl -sSf http://localhost:3000/health > /dev/null
+curl -sSf http://localhost:3000/greet/hello > /dev/null
+curl -sSf http://localhost:3000/greet/hello-with-metadata > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"name":"CustomUser","greeting_type":"casual"}' http://localhost:3000/greet/custom > /dev/null
+curl -sSf http://localhost:3000/greet/hello-again > /dev/null
+curl -sSf http://localhost:3000/greet/many-times > /dev/null
+curl -sSf http://localhost:3000/calc/add > /dev/null
+curl -sSf http://localhost:3000/calc/subtract > /dev/null
+curl -sSf http://localhost:3000/calc/multiply > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"num1":20,"num2":4}' http://localhost:3000/calc/divide > /dev/null
+curl -sSf http://localhost:3000/calc/divide-by-zero > /dev/null
+curl -sSf http://localhost:3000/users/1 > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"name":"Test User","email":"testuser@example.com","age":28,"roles":["user","tester"]}' http://localhost:3000/users > /dev/null
+curl -sSf -X PUT -H "Content-Type: application/json" -d '{"name":"Alice Updated","email":"alice.updated@example.com","age":31}' http://localhost:3000/users/1 > /dev/null
+curl -sSf "http://localhost:3000/users?limit=5&offset=0" > /dev/null
+curl -sSf -X DELETE http://localhost:3000/users/2 > /dev/null
+curl -sSf http://localhost:3000/test/user-not-found > /dev/null
+curl -sSf http://localhost:3000/test/sequential-calls > /dev/null
+curl -sSf -X POST http://localhost:3000/test/complex-data > /dev/null
+curl -sSf -X POST http://localhost:3000/files/upload > /dev/null
+curl -sSf http://localhost:3000/files/download/file_1 > /dev/null
+curl -sSf http://localhost:3000/test/unary-callback-only > /dev/null
+curl -sSf http://localhost:3000/test/unary-options-only > /dev/null
 
 log "Waiting for traces to flush..."
 sleep 3
 
 log "Stopping server..."
-pkill -f "node" || true
+kill $SERVER_PID 2>/dev/null || true
+wait $SERVER_PID 2>/dev/null || true
 sleep 2
 
 TRACE_COUNT=$(ls -1 .tusk/traces/*.jsonl 2>/dev/null | wc -l)

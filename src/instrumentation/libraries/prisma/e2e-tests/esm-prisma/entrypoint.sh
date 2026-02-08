@@ -13,9 +13,10 @@ log() { echo -e "${2:-$NC}$1${NC}"; }
 
 cleanup() {
   log "Stopping server..." "$YELLOW"
-  pkill -f "node" 2>/dev/null || true
+  [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null || true
 }
 trap cleanup EXIT
+SERVER_PID=""
 
 log "================================================" "$BLUE"
 log "Phase 1: Setup" "$BLUE"
@@ -53,30 +54,30 @@ log "Health check..."
 curl -sf http://localhost:3000/health > /dev/null || { log "Health check failed" "$RED"; exit 1; }
 
 log "Hitting endpoints..."
-curl -s http://localhost:3000/health > /dev/null
-curl -s http://localhost:3000/users/all > /dev/null
-curl -s http://localhost:3000/users/active > /dev/null
-curl -s http://localhost:3000/users/1 > /dev/null
-curl -s http://localhost:3000/users/first-active > /dev/null
-curl -s http://localhost:3000/users/by-email/alice@example.com > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"email":"newuser@example.com","name":"New User","age":28}' http://localhost:3000/users/create > /dev/null
-curl -s -X POST http://localhost:3000/users/create-many > /dev/null
-curl -s -X PUT -H "Content-Type: application/json" -d '{"name":"Updated Alice","age":31}' http://localhost:3000/users/1 > /dev/null
-curl -s -X PUT http://localhost:3000/users/bulk-deactivate > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"email":"upsert@example.com","name":"Upsert User","age":29}' http://localhost:3000/users/upsert > /dev/null
-curl -s http://localhost:3000/users/count > /dev/null
-curl -s http://localhost:3000/orders/aggregate > /dev/null
-curl -s http://localhost:3000/users/1/with-posts > /dev/null
-curl -s http://localhost:3000/posts/published > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"title":"Nested Post","content":"Test content","authorEmail":"alice@example.com"}' http://localhost:3000/posts/create-with-author > /dev/null
-curl -s -X POST http://localhost:3000/transactions/sequential > /dev/null
-curl -s -X POST http://localhost:3000/transactions/interactive > /dev/null
-curl -s -X POST http://localhost:3000/raw/query > /dev/null
-curl -s -X POST http://localhost:3000/raw/execute > /dev/null
-curl -s -X POST http://localhost:3000/errors/unique-violation > /dev/null
-curl -s http://localhost:3000/errors/not-found > /dev/null
-curl -s -X POST http://localhost:3000/errors/validation > /dev/null
-curl -s -X DELETE http://localhost:3000/users/inactive > /dev/null
+curl -sSf http://localhost:3000/health > /dev/null
+curl -sSf http://localhost:3000/users/all > /dev/null
+curl -sSf http://localhost:3000/users/active > /dev/null
+curl -sSf http://localhost:3000/users/1 > /dev/null
+curl -sSf http://localhost:3000/users/first-active > /dev/null
+curl -sSf http://localhost:3000/users/by-email/alice@example.com > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"email":"newuser@example.com","name":"New User","age":28}' http://localhost:3000/users/create > /dev/null
+curl -sSf -X POST http://localhost:3000/users/create-many > /dev/null
+curl -sSf -X PUT -H "Content-Type: application/json" -d '{"name":"Updated Alice","age":31}' http://localhost:3000/users/1 > /dev/null
+curl -sSf -X PUT http://localhost:3000/users/bulk-deactivate > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"email":"upsert@example.com","name":"Upsert User","age":29}' http://localhost:3000/users/upsert > /dev/null
+curl -sSf http://localhost:3000/users/count > /dev/null
+curl -sSf http://localhost:3000/orders/aggregate > /dev/null
+curl -sSf http://localhost:3000/users/1/with-posts > /dev/null
+curl -sSf http://localhost:3000/posts/published > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"title":"Nested Post","content":"Test content","authorEmail":"alice@example.com"}' http://localhost:3000/posts/create-with-author > /dev/null
+curl -sSf -X POST http://localhost:3000/transactions/sequential > /dev/null
+curl -sSf -X POST http://localhost:3000/transactions/interactive > /dev/null
+curl -sSf -X POST http://localhost:3000/raw/query > /dev/null
+curl -sSf -X POST http://localhost:3000/raw/execute > /dev/null
+curl -sSf -X POST http://localhost:3000/errors/unique-violation > /dev/null
+curl -sSf http://localhost:3000/errors/not-found > /dev/null
+curl -sSf -X POST http://localhost:3000/errors/validation > /dev/null
+curl -sSf -X DELETE http://localhost:3000/users/inactive > /dev/null
 
 log "All endpoints hit successfully" "$GREEN"
 

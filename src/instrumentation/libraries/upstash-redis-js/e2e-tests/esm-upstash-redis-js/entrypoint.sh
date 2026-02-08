@@ -13,9 +13,10 @@ log() { echo -e "${2:-$NC}$1${NC}"; }
 
 cleanup() {
   log "Stopping server..." "$YELLOW"
-  pkill -f "node" 2>/dev/null || true
+  [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null || true
 }
 trap cleanup EXIT
+SERVER_PID=""
 
 log "================================================" "$BLUE"
 log "Phase 1: Setup" "$BLUE"
@@ -47,108 +48,108 @@ log "Health check..."
 curl -sf http://localhost:3000/health > /dev/null || { log "Health check failed" "$RED"; exit 1; }
 
 log "Hitting endpoints..."
-curl -s http://localhost:3000/health > /dev/null
-curl -s -X POST http://localhost:3000/test/string/set > /dev/null
-curl -s http://localhost:3000/test/string/get > /dev/null
-curl -s -X POST http://localhost:3000/test/string/mset > /dev/null
-curl -s http://localhost:3000/test/string/mget > /dev/null
-curl -s -X POST http://localhost:3000/test/string/setex > /dev/null
-curl -s -X POST http://localhost:3000/test/string/setnx > /dev/null
-curl -s -X POST http://localhost:3000/test/string/getdel > /dev/null
-curl -s -X POST http://localhost:3000/test/string/append > /dev/null
-curl -s -X POST http://localhost:3000/test/string/incr > /dev/null
-curl -s -X POST http://localhost:3000/test/string/incrby > /dev/null
-curl -s -X POST http://localhost:3000/test/string/incrbyfloat > /dev/null
-curl -s -X POST http://localhost:3000/test/string/decr > /dev/null
-curl -s -X POST http://localhost:3000/test/string/decrby > /dev/null
-curl -s http://localhost:3000/test/string/strlen > /dev/null
-curl -s http://localhost:3000/test/string/getrange > /dev/null
-curl -s -X POST http://localhost:3000/test/string/setrange > /dev/null
-curl -s -X POST http://localhost:3000/test/hash/hset > /dev/null
-curl -s http://localhost:3000/test/hash/hget > /dev/null
-curl -s http://localhost:3000/test/hash/hgetall > /dev/null
-curl -s -X POST http://localhost:3000/test/hash/hmset > /dev/null
-curl -s http://localhost:3000/test/hash/hmget > /dev/null
-curl -s -X POST http://localhost:3000/test/hash/hdel > /dev/null
-curl -s http://localhost:3000/test/hash/hexists > /dev/null
-curl -s http://localhost:3000/test/hash/hkeys > /dev/null
-curl -s http://localhost:3000/test/hash/hvals > /dev/null
-curl -s http://localhost:3000/test/hash/hlen > /dev/null
-curl -s -X POST http://localhost:3000/test/hash/hincrby > /dev/null
-curl -s -X POST http://localhost:3000/test/hash/hincrbyfloat > /dev/null
-curl -s -X POST http://localhost:3000/test/hash/hsetnx > /dev/null
-curl -s -X POST http://localhost:3000/test/list/lpush > /dev/null
-curl -s -X POST http://localhost:3000/test/list/rpush > /dev/null
-curl -s http://localhost:3000/test/list/lrange > /dev/null
-curl -s -X POST http://localhost:3000/test/list/lpop > /dev/null
-curl -s -X POST http://localhost:3000/test/list/rpop > /dev/null
-curl -s http://localhost:3000/test/list/llen > /dev/null
-curl -s http://localhost:3000/test/list/lindex > /dev/null
-curl -s -X POST http://localhost:3000/test/list/lset > /dev/null
-curl -s -X POST http://localhost:3000/test/list/linsert > /dev/null
-curl -s -X POST http://localhost:3000/test/list/lrem > /dev/null
-curl -s -X POST http://localhost:3000/test/list/ltrim > /dev/null
-curl -s -X POST http://localhost:3000/test/list/rpoplpush > /dev/null
-curl -s -X POST http://localhost:3000/test/list/lpos > /dev/null
-curl -s -X POST http://localhost:3000/test/list/lmove > /dev/null
-curl -s -X POST http://localhost:3000/test/set/sadd > /dev/null
-curl -s http://localhost:3000/test/set/smembers > /dev/null
-curl -s http://localhost:3000/test/set/sismember > /dev/null
-curl -s -X POST http://localhost:3000/test/set/srem > /dev/null
-curl -s http://localhost:3000/test/set/scard > /dev/null
-curl -s -X POST http://localhost:3000/test/set/spop > /dev/null
-curl -s http://localhost:3000/test/set/srandmember > /dev/null
-curl -s -X POST http://localhost:3000/test/set/sdiff > /dev/null
-curl -s -X POST http://localhost:3000/test/set/sinter > /dev/null
-curl -s -X POST http://localhost:3000/test/set/sunion > /dev/null
-curl -s -X POST http://localhost:3000/test/set/smove > /dev/null
-curl -s -X POST http://localhost:3000/test/zset/zadd > /dev/null
-curl -s http://localhost:3000/test/zset/zrange > /dev/null
-curl -s http://localhost:3000/test/zset/zrange-withscores > /dev/null
-curl -s http://localhost:3000/test/zset/zrevrange > /dev/null
-curl -s http://localhost:3000/test/zset/zscore > /dev/null
-curl -s -X POST http://localhost:3000/test/zset/zincrby > /dev/null
-curl -s http://localhost:3000/test/zset/zcard > /dev/null
-curl -s http://localhost:3000/test/zset/zcount > /dev/null
-curl -s http://localhost:3000/test/zset/zrank > /dev/null
-curl -s http://localhost:3000/test/zset/zrevrank > /dev/null
-curl -s -X POST http://localhost:3000/test/zset/zrem > /dev/null
-curl -s -X POST http://localhost:3000/test/zset/zpopmin > /dev/null
-curl -s -X POST http://localhost:3000/test/zset/zpopmax > /dev/null
-curl -s http://localhost:3000/test/zset/zrangebyscore > /dev/null
-curl -s http://localhost:3000/test/zset/zrevrangebyscore > /dev/null
-curl -s -X POST http://localhost:3000/test/zset/zremrangebyrank > /dev/null
-curl -s -X POST http://localhost:3000/test/zset/zremrangebyscore > /dev/null
-curl -s -X POST http://localhost:3000/test/key/del > /dev/null
-curl -s http://localhost:3000/test/key/exists > /dev/null
-curl -s -X POST http://localhost:3000/test/key/expire > /dev/null
-curl -s -X POST http://localhost:3000/test/key/expireat > /dev/null
-curl -s http://localhost:3000/test/key/ttl > /dev/null
-curl -s http://localhost:3000/test/key/pttl > /dev/null
-curl -s -X POST http://localhost:3000/test/key/persist > /dev/null
-curl -s http://localhost:3000/test/key/keys > /dev/null
-curl -s http://localhost:3000/test/key/randomkey > /dev/null
-curl -s -X POST http://localhost:3000/test/key/rename > /dev/null
-curl -s -X POST http://localhost:3000/test/key/renamenx > /dev/null
-curl -s http://localhost:3000/test/key/type > /dev/null
-curl -s -X POST http://localhost:3000/test/key/touch > /dev/null
-curl -s -X POST http://localhost:3000/test/key/unlink > /dev/null
-curl -s -X POST http://localhost:3000/test/bitmap/setbit > /dev/null
-curl -s http://localhost:3000/test/bitmap/getbit > /dev/null
-curl -s http://localhost:3000/test/bitmap/bitcount > /dev/null
-curl -s http://localhost:3000/test/bitmap/bitpos > /dev/null
-curl -s -X POST http://localhost:3000/test/bitmap/bitop > /dev/null
-curl -s http://localhost:3000/test/server/ping > /dev/null
-curl -s http://localhost:3000/test/server/dbsize > /dev/null
-curl -s -X POST http://localhost:3000/test/server/echo > /dev/null
-curl -s -X POST http://localhost:3000/test/hll/pfadd > /dev/null
-curl -s http://localhost:3000/test/hll/pfcount > /dev/null
-curl -s -X POST http://localhost:3000/test/hll/pfmerge > /dev/null
-curl -s -X POST http://localhost:3000/test/geo/geoadd > /dev/null
-curl -s http://localhost:3000/test/geo/geopos > /dev/null
-curl -s -X POST http://localhost:3000/test/geo/geodist > /dev/null
-curl -s http://localhost:3000/test/geo/geohash > /dev/null
-curl -s http://localhost:3000/cleanup > /dev/null
+curl -sSf http://localhost:3000/health > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/set > /dev/null
+curl -sSf http://localhost:3000/test/string/get > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/mset > /dev/null
+curl -sSf http://localhost:3000/test/string/mget > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/setex > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/setnx > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/getdel > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/append > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/incr > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/incrby > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/incrbyfloat > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/decr > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/decrby > /dev/null
+curl -sSf http://localhost:3000/test/string/strlen > /dev/null
+curl -sSf http://localhost:3000/test/string/getrange > /dev/null
+curl -sSf -X POST http://localhost:3000/test/string/setrange > /dev/null
+curl -sSf -X POST http://localhost:3000/test/hash/hset > /dev/null
+curl -sSf http://localhost:3000/test/hash/hget > /dev/null
+curl -sSf http://localhost:3000/test/hash/hgetall > /dev/null
+curl -sSf -X POST http://localhost:3000/test/hash/hmset > /dev/null
+curl -sSf http://localhost:3000/test/hash/hmget > /dev/null
+curl -sSf -X POST http://localhost:3000/test/hash/hdel > /dev/null
+curl -sSf http://localhost:3000/test/hash/hexists > /dev/null
+curl -sSf http://localhost:3000/test/hash/hkeys > /dev/null
+curl -sSf http://localhost:3000/test/hash/hvals > /dev/null
+curl -sSf http://localhost:3000/test/hash/hlen > /dev/null
+curl -sSf -X POST http://localhost:3000/test/hash/hincrby > /dev/null
+curl -sSf -X POST http://localhost:3000/test/hash/hincrbyfloat > /dev/null
+curl -sSf -X POST http://localhost:3000/test/hash/hsetnx > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/lpush > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/rpush > /dev/null
+curl -sSf http://localhost:3000/test/list/lrange > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/lpop > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/rpop > /dev/null
+curl -sSf http://localhost:3000/test/list/llen > /dev/null
+curl -sSf http://localhost:3000/test/list/lindex > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/lset > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/linsert > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/lrem > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/ltrim > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/rpoplpush > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/lpos > /dev/null
+curl -sSf -X POST http://localhost:3000/test/list/lmove > /dev/null
+curl -sSf -X POST http://localhost:3000/test/set/sadd > /dev/null
+curl -sSf http://localhost:3000/test/set/smembers > /dev/null
+curl -sSf http://localhost:3000/test/set/sismember > /dev/null
+curl -sSf -X POST http://localhost:3000/test/set/srem > /dev/null
+curl -sSf http://localhost:3000/test/set/scard > /dev/null
+curl -sSf -X POST http://localhost:3000/test/set/spop > /dev/null
+curl -sSf http://localhost:3000/test/set/srandmember > /dev/null
+curl -sSf -X POST http://localhost:3000/test/set/sdiff > /dev/null
+curl -sSf -X POST http://localhost:3000/test/set/sinter > /dev/null
+curl -sSf -X POST http://localhost:3000/test/set/sunion > /dev/null
+curl -sSf -X POST http://localhost:3000/test/set/smove > /dev/null
+curl -sSf -X POST http://localhost:3000/test/zset/zadd > /dev/null
+curl -sSf http://localhost:3000/test/zset/zrange > /dev/null
+curl -sSf http://localhost:3000/test/zset/zrange-withscores > /dev/null
+curl -sSf http://localhost:3000/test/zset/zrevrange > /dev/null
+curl -sSf http://localhost:3000/test/zset/zscore > /dev/null
+curl -sSf -X POST http://localhost:3000/test/zset/zincrby > /dev/null
+curl -sSf http://localhost:3000/test/zset/zcard > /dev/null
+curl -sSf http://localhost:3000/test/zset/zcount > /dev/null
+curl -sSf http://localhost:3000/test/zset/zrank > /dev/null
+curl -sSf http://localhost:3000/test/zset/zrevrank > /dev/null
+curl -sSf -X POST http://localhost:3000/test/zset/zrem > /dev/null
+curl -sSf -X POST http://localhost:3000/test/zset/zpopmin > /dev/null
+curl -sSf -X POST http://localhost:3000/test/zset/zpopmax > /dev/null
+curl -sSf http://localhost:3000/test/zset/zrangebyscore > /dev/null
+curl -sSf http://localhost:3000/test/zset/zrevrangebyscore > /dev/null
+curl -sSf -X POST http://localhost:3000/test/zset/zremrangebyrank > /dev/null
+curl -sSf -X POST http://localhost:3000/test/zset/zremrangebyscore > /dev/null
+curl -sSf -X POST http://localhost:3000/test/key/del > /dev/null
+curl -sSf http://localhost:3000/test/key/exists > /dev/null
+curl -sSf -X POST http://localhost:3000/test/key/expire > /dev/null
+curl -sSf -X POST http://localhost:3000/test/key/expireat > /dev/null
+curl -sSf http://localhost:3000/test/key/ttl > /dev/null
+curl -sSf http://localhost:3000/test/key/pttl > /dev/null
+curl -sSf -X POST http://localhost:3000/test/key/persist > /dev/null
+curl -sSf http://localhost:3000/test/key/keys > /dev/null
+curl -sSf http://localhost:3000/test/key/randomkey > /dev/null
+curl -sSf -X POST http://localhost:3000/test/key/rename > /dev/null
+curl -sSf -X POST http://localhost:3000/test/key/renamenx > /dev/null
+curl -sSf http://localhost:3000/test/key/type > /dev/null
+curl -sSf -X POST http://localhost:3000/test/key/touch > /dev/null
+curl -sSf -X POST http://localhost:3000/test/key/unlink > /dev/null
+curl -sSf -X POST http://localhost:3000/test/bitmap/setbit > /dev/null
+curl -sSf http://localhost:3000/test/bitmap/getbit > /dev/null
+curl -sSf http://localhost:3000/test/bitmap/bitcount > /dev/null
+curl -sSf http://localhost:3000/test/bitmap/bitpos > /dev/null
+curl -sSf -X POST http://localhost:3000/test/bitmap/bitop > /dev/null
+curl -sSf http://localhost:3000/test/server/ping > /dev/null
+curl -sSf http://localhost:3000/test/server/dbsize > /dev/null
+curl -sSf -X POST http://localhost:3000/test/server/echo > /dev/null
+curl -sSf -X POST http://localhost:3000/test/hll/pfadd > /dev/null
+curl -sSf http://localhost:3000/test/hll/pfcount > /dev/null
+curl -sSf -X POST http://localhost:3000/test/hll/pfmerge > /dev/null
+curl -sSf -X POST http://localhost:3000/test/geo/geoadd > /dev/null
+curl -sSf http://localhost:3000/test/geo/geopos > /dev/null
+curl -sSf -X POST http://localhost:3000/test/geo/geodist > /dev/null
+curl -sSf http://localhost:3000/test/geo/geohash > /dev/null
+curl -sSf http://localhost:3000/cleanup > /dev/null
 
 log "All endpoints hit successfully" "$GREEN"
 

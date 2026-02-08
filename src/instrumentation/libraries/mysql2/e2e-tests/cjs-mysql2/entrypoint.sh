@@ -57,7 +57,7 @@ if [ -n "$BENCHMARKS" ]; then
   END_TIME=$((SECONDS + ${BENCHMARK_DURATION:-60}))
   while [ $SECONDS -lt $END_TIME ]; do
     for endpoint in "${BENCHMARK_ENDPOINTS[@]}"; do
-      curl -s "$endpoint" > /dev/null || true
+      curl -sSf "$endpoint" > /dev/null || true
     done
   done
 
@@ -89,36 +89,36 @@ sleep 8
 # Hit all endpoints
 echo "Hitting all endpoints..."
 
-curl -s http://localhost:3000/health > /dev/null
-curl -s http://localhost:3000/test/connection-query > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/connection-parameterized > /dev/null
-curl -s http://localhost:3000/test/connection-execute > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/connection-execute-params > /dev/null
-curl -s http://localhost:3000/test/pool-query > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/pool-parameterized > /dev/null
-curl -s http://localhost:3000/test/pool-execute > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/pool-execute-params > /dev/null
-curl -s http://localhost:3000/test/pool-getConnection > /dev/null
-curl -s http://localhost:3000/test/connection-connect > /dev/null
-curl -s http://localhost:3000/test/connection-ping > /dev/null
-curl -s http://localhost:3000/test/stream-query > /dev/null
-curl -s http://localhost:3000/test/sequelize-authenticate > /dev/null
-curl -s http://localhost:3000/test/sequelize-findall > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/sequelize-findone > /dev/null
-curl -s http://localhost:3000/test/sequelize-complex > /dev/null
-curl -s http://localhost:3000/test/sequelize-raw > /dev/null
-curl -s -X POST http://localhost:3000/test/sequelize-transaction > /dev/null
-curl -s http://localhost:3000/test/promise-connection-query > /dev/null
-curl -s http://localhost:3000/test/promise-pool-query > /dev/null
-curl -s http://localhost:3000/test/promise-pool-getconnection > /dev/null
-curl -s http://localhost:3000/test/transaction-methods > /dev/null
-curl -s http://localhost:3000/test/prepare-statement > /dev/null
-curl -s http://localhost:3000/test/change-user > /dev/null
-curl -s http://localhost:3000/test/nested-null-values > /dev/null
-curl -s http://localhost:3000/test/binary-data > /dev/null
-curl -s http://localhost:3000/test/knex-raw-query > /dev/null
-curl -s -X POST http://localhost:3000/test/knex-savepoint > /dev/null
-curl -s http://localhost:3000/test/knex-streaming > /dev/null
+curl -sSf http://localhost:3000/health > /dev/null
+curl -sSf http://localhost:3000/test/connection-query > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/connection-parameterized > /dev/null
+curl -sSf http://localhost:3000/test/connection-execute > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/connection-execute-params > /dev/null
+curl -sSf http://localhost:3000/test/pool-query > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/pool-parameterized > /dev/null
+curl -sSf http://localhost:3000/test/pool-execute > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"userId": 2}' http://localhost:3000/test/pool-execute-params > /dev/null
+curl -sSf http://localhost:3000/test/pool-getConnection > /dev/null
+curl -sSf http://localhost:3000/test/connection-connect > /dev/null
+curl -sSf http://localhost:3000/test/connection-ping > /dev/null
+curl -sSf http://localhost:3000/test/stream-query > /dev/null
+curl -sSf http://localhost:3000/test/sequelize-authenticate > /dev/null
+curl -sSf http://localhost:3000/test/sequelize-findall > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"userId": 1}' http://localhost:3000/test/sequelize-findone > /dev/null
+curl -sSf http://localhost:3000/test/sequelize-complex > /dev/null
+curl -sSf http://localhost:3000/test/sequelize-raw > /dev/null
+curl -sSf -X POST http://localhost:3000/test/sequelize-transaction > /dev/null
+curl -sSf http://localhost:3000/test/promise-connection-query > /dev/null
+curl -sSf http://localhost:3000/test/promise-pool-query > /dev/null
+curl -sSf http://localhost:3000/test/promise-pool-getconnection > /dev/null
+curl -sSf http://localhost:3000/test/transaction-methods > /dev/null
+curl -sSf http://localhost:3000/test/prepare-statement > /dev/null
+curl -sSf http://localhost:3000/test/change-user > /dev/null
+curl -sSf http://localhost:3000/test/nested-null-values > /dev/null
+curl -sSf http://localhost:3000/test/binary-data > /dev/null
+curl -sSf http://localhost:3000/test/knex-raw-query > /dev/null
+curl -sSf -X POST http://localhost:3000/test/knex-savepoint > /dev/null
+curl -sSf http://localhost:3000/test/knex-streaming > /dev/null
 
 echo "All endpoints hit successfully."
 

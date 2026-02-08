@@ -11,9 +11,10 @@ log() { echo -e "${2:-$NC}$1${NC}"; }
 
 cleanup() {
   log "Stopping server..." "$YELLOW"
-  pkill -f "node" 2>/dev/null || true
+  [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null || true
 }
 trap cleanup EXIT
+SERVER_PID=""
 
 # Phase 1: Setup
 log "================================================" "$BLUE"
@@ -48,16 +49,20 @@ if [ -n "$BENCHMARKS" ]; then
   # Baseline
   log "BASELINE (SDK DISABLED)" "$BLUE"
   TUSK_DRIFT_MODE=DISABLED npm run dev &
+  SERVER_PID=$!
   sleep 10
   run_benchmarks "baseline"
-  pkill -f "node" || true; sleep 2
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true; sleep 2
   # SDK enabled
   log "WITH SDK (TUSK_DRIFT_MODE=RECORD)" "$BLUE"
   rm -rf .tusk/traces/* .tusk/logs/* 2>/dev/null || true
   TUSK_DRIFT_MODE=RECORD npm run dev &
+  SERVER_PID=$!
   sleep 10
   run_benchmarks "sdk"
-  pkill -f "node" || true
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true
   log "Benchmark complete" "$GREEN"
   exit 0
 fi
@@ -68,37 +73,39 @@ log "Phase 2: Recording Traces" "$BLUE"
 log "================================================" "$BLUE"
 log "Starting server in RECORD mode..."
 TUSK_DRIFT_MODE=RECORD npm run dev &
+SERVER_PID=$!
 sleep 10
 log "Executing test requests..."
-curl -s http://localhost:3000/health > /dev/null
-curl -s http://localhost:3000/cache/all > /dev/null
-curl -s http://localhost:3000/cache/sample > /dev/null
-curl -s http://localhost:3000/cache/raw > /dev/null
-curl -s -X POST http://localhost:3000/cache/execute-raw > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key":"test_insert","value":"test_value"}' http://localhost:3000/cache/insert > /dev/null
-curl -s -X PUT -H "Content-Type: application/json" -d '{"key":"test_key_1","value":"updated_value"}' http://localhost:3000/cache/update > /dev/null
-curl -s -X DELETE -H "Content-Type: application/json" -d '{"key":"test_insert"}' http://localhost:3000/cache/delete > /dev/null
-curl -s "http://localhost:3000/users/by-email?email=alice@example.com" > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"name":"Test User","email":"testuser@example.com"}' http://localhost:3000/users/insert > /dev/null
-curl -s http://localhost:3000/cache/dynamic-fragments > /dev/null
-curl -s -X POST http://localhost:3000/cache/update-with-fragments > /dev/null
-curl -s http://localhost:3000/cache/complex-fragments > /dev/null
-curl -s http://localhost:3000/test/execute-method > /dev/null
-curl -s http://localhost:3000/test/sql-file > /dev/null
-curl -s http://localhost:3000/test/pending-query-raw > /dev/null
-curl -s http://localhost:3000/test/sql-reserve > /dev/null
-curl -s http://localhost:3000/test/sql-cursor > /dev/null
-curl -s http://localhost:3000/test/sql-cursor-callback > /dev/null
-curl -s http://localhost:3000/test/sql-foreach > /dev/null
-curl -s http://localhost:3000/test/describe-method > /dev/null
-curl -s http://localhost:3000/test/savepoint > /dev/null
-curl -s http://localhost:3000/test/listen-notify > /dev/null
-curl -s http://localhost:3000/test/bytea-data > /dev/null
-curl -s http://localhost:3000/test/unsafe-cursor > /dev/null
-curl -s http://localhost:3000/test/unsafe-foreach > /dev/null
-curl -s http://localhost:3000/test/large-object > /dev/null
+curl -sSf http://localhost:3000/health > /dev/null
+curl -sSf http://localhost:3000/cache/all > /dev/null
+curl -sSf http://localhost:3000/cache/sample > /dev/null
+curl -sSf http://localhost:3000/cache/raw > /dev/null
+curl -sSf -X POST http://localhost:3000/cache/execute-raw > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key":"test_insert","value":"test_value"}' http://localhost:3000/cache/insert > /dev/null
+curl -sSf -X PUT -H "Content-Type: application/json" -d '{"key":"test_key_1","value":"updated_value"}' http://localhost:3000/cache/update > /dev/null
+curl -sSf -X DELETE -H "Content-Type: application/json" -d '{"key":"test_insert"}' http://localhost:3000/cache/delete > /dev/null
+curl -sSf "http://localhost:3000/users/by-email?email=alice@example.com" > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"name":"Test User","email":"testuser@example.com"}' http://localhost:3000/users/insert > /dev/null
+curl -sSf http://localhost:3000/cache/dynamic-fragments > /dev/null
+curl -sSf -X POST http://localhost:3000/cache/update-with-fragments > /dev/null
+curl -sSf http://localhost:3000/cache/complex-fragments > /dev/null
+curl -sSf http://localhost:3000/test/execute-method > /dev/null
+curl -sSf http://localhost:3000/test/sql-file > /dev/null
+curl -sSf http://localhost:3000/test/pending-query-raw > /dev/null
+curl -sSf http://localhost:3000/test/sql-reserve > /dev/null
+curl -sSf http://localhost:3000/test/sql-cursor > /dev/null
+curl -sSf http://localhost:3000/test/sql-cursor-callback > /dev/null
+curl -sSf http://localhost:3000/test/sql-foreach > /dev/null
+curl -sSf http://localhost:3000/test/describe-method > /dev/null
+curl -sSf http://localhost:3000/test/savepoint > /dev/null
+curl -sSf http://localhost:3000/test/listen-notify > /dev/null
+curl -sSf http://localhost:3000/test/bytea-data > /dev/null
+curl -sSf http://localhost:3000/test/unsafe-cursor > /dev/null
+curl -sSf http://localhost:3000/test/unsafe-foreach > /dev/null
+curl -sSf http://localhost:3000/test/large-object > /dev/null
 sleep 3
-pkill -f "node" || true; sleep 2
+kill $SERVER_PID 2>/dev/null || true
+wait $SERVER_PID 2>/dev/null || true; sleep 2
 TRACE_COUNT=$(ls -1 .tusk/traces/*.jsonl 2>/dev/null | wc -l)
 log "Recorded $TRACE_COUNT trace files" "$GREEN"
 if [ "$TRACE_COUNT" -eq 0 ]; then

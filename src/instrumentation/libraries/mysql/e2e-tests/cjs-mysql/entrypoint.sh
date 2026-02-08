@@ -57,7 +57,7 @@ if [ -n "$BENCHMARKS" ]; then
   END_TIME=$((SECONDS + ${BENCHMARK_DURATION:-60}))
   while [ $SECONDS -lt $END_TIME ]; do
     for endpoint in "${BENCHMARK_ENDPOINTS[@]}"; do
-      curl -s "$endpoint" > /dev/null || true
+      curl -sSf "$endpoint" > /dev/null || true
     done
   done
 
@@ -89,41 +89,41 @@ sleep 10
 # Hit all endpoints
 echo "Hitting all endpoints..."
 
-curl -s http://localhost:3000/health > /dev/null
-curl -s http://localhost:3000/connection/query-callback > /dev/null
-curl -s "http://localhost:3000/connection/query-params?key=test_key_1" > /dev/null
-curl -s http://localhost:3000/connection/query-options > /dev/null
-curl -s http://localhost:3000/connection/query-stream > /dev/null
-curl -s http://localhost:3000/connection/multi-statement > /dev/null
-curl -s http://localhost:3000/pool/query > /dev/null
-curl -s http://localhost:3000/pool/get-connection > /dev/null
-curl -s -X POST http://localhost:3000/transaction/commit > /dev/null
-curl -s -X POST http://localhost:3000/transaction/rollback > /dev/null
-curl -s -X POST http://localhost:3000/test/transaction-with-options > /dev/null
-curl -s -X POST -H "Content-Type: application/json" -d '{"key":"crud_test_insert","value":"test_value"}' http://localhost:3000/crud/insert > /dev/null
-curl -s -X PUT -H "Content-Type: application/json" -d '{"key":"test_key_1","value":"updated_value"}' http://localhost:3000/crud/update > /dev/null
-curl -s -X DELETE -H "Content-Type: application/json" -d '{"key":"crud_test_insert"}' http://localhost:3000/crud/delete > /dev/null
-curl -s http://localhost:3000/advanced/join > /dev/null
-curl -s http://localhost:3000/advanced/aggregate > /dev/null
-curl -s http://localhost:3000/advanced/subquery > /dev/null
-curl -s http://localhost:3000/advanced/prepared > /dev/null
-curl -s http://localhost:3000/lifecycle/ping > /dev/null
-curl -s http://localhost:3000/lifecycle/end-and-reconnect > /dev/null
-curl -s -X POST http://localhost:3000/lifecycle/change-user > /dev/null
-curl -s http://localhost:3000/lifecycle/pause-resume > /dev/null
-curl -s http://localhost:3000/pool/end-and-recreate > /dev/null
-curl -s http://localhost:3000/test/pool-events > /dev/null
-curl -s http://localhost:3000/test/pool-namespace-query > /dev/null
-curl -s http://localhost:3000/events/connect > /dev/null
-curl -s http://localhost:3000/stream/query-stream-method > /dev/null
-curl -s http://localhost:3000/test/connection-destroy > /dev/null
-curl -s http://localhost:3000/test/query-object-reuse > /dev/null
-curl -s http://localhost:3000/test/pool-namespace-query-stream > /dev/null
-curl -s -X POST http://localhost:3000/test/pool-connection-transaction-options > /dev/null
-curl -s http://localhost:3000/test/pool-getconnection-query-with-internal-callback > /dev/null
-curl -s http://localhost:3000/test/pool-namespace-query-with-internal-callback > /dev/null
-curl -s http://localhost:3000/knex/basic-select > /dev/null
-curl -s http://localhost:3000/knex/raw-query > /dev/null
+curl -sSf http://localhost:3000/health > /dev/null
+curl -sSf http://localhost:3000/connection/query-callback > /dev/null
+curl -sSf "http://localhost:3000/connection/query-params?key=test_key_1" > /dev/null
+curl -sSf http://localhost:3000/connection/query-options > /dev/null
+curl -sSf http://localhost:3000/connection/query-stream > /dev/null
+curl -sSf http://localhost:3000/connection/multi-statement > /dev/null
+curl -sSf http://localhost:3000/pool/query > /dev/null
+curl -sSf http://localhost:3000/pool/get-connection > /dev/null
+curl -sSf -X POST http://localhost:3000/transaction/commit > /dev/null
+curl -sSf -X POST http://localhost:3000/transaction/rollback > /dev/null
+curl -sSf -X POST http://localhost:3000/test/transaction-with-options > /dev/null
+curl -sSf -X POST -H "Content-Type: application/json" -d '{"key":"crud_test_insert","value":"test_value"}' http://localhost:3000/crud/insert > /dev/null
+curl -sSf -X PUT -H "Content-Type: application/json" -d '{"key":"test_key_1","value":"updated_value"}' http://localhost:3000/crud/update > /dev/null
+curl -sSf -X DELETE -H "Content-Type: application/json" -d '{"key":"crud_test_insert"}' http://localhost:3000/crud/delete > /dev/null
+curl -sSf http://localhost:3000/advanced/join > /dev/null
+curl -sSf http://localhost:3000/advanced/aggregate > /dev/null
+curl -sSf http://localhost:3000/advanced/subquery > /dev/null
+curl -sSf http://localhost:3000/advanced/prepared > /dev/null
+curl -sSf http://localhost:3000/lifecycle/ping > /dev/null
+curl -sSf http://localhost:3000/lifecycle/end-and-reconnect > /dev/null
+curl -sSf -X POST http://localhost:3000/lifecycle/change-user > /dev/null
+curl -sSf http://localhost:3000/lifecycle/pause-resume > /dev/null
+curl -sSf http://localhost:3000/pool/end-and-recreate > /dev/null
+curl -sSf http://localhost:3000/test/pool-events > /dev/null
+curl -sSf http://localhost:3000/test/pool-namespace-query > /dev/null
+curl -sSf http://localhost:3000/events/connect > /dev/null
+curl -sSf http://localhost:3000/stream/query-stream-method > /dev/null
+curl -sSf http://localhost:3000/test/connection-destroy > /dev/null
+curl -sSf http://localhost:3000/test/query-object-reuse > /dev/null
+curl -sSf http://localhost:3000/test/pool-namespace-query-stream > /dev/null
+curl -sSf -X POST http://localhost:3000/test/pool-connection-transaction-options > /dev/null
+curl -sSf http://localhost:3000/test/pool-getconnection-query-with-internal-callback > /dev/null
+curl -sSf http://localhost:3000/test/pool-namespace-query-with-internal-callback > /dev/null
+curl -sSf http://localhost:3000/knex/basic-select > /dev/null
+curl -sSf http://localhost:3000/knex/raw-query > /dev/null
 
 echo "All endpoints hit successfully."
 
