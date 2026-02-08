@@ -96,7 +96,7 @@ export class SpanTransformer {
       instrumentationName,
       submoduleName: submoduleName || "",
 
-      packageType: (attributes[TdSpanAttributes.PACKAGE_TYPE] as PackageType) || undefined,
+      packageType: (attributes[TdSpanAttributes.PACKAGE_TYPE] as PackageType) ?? undefined,
       environment,
 
       inputValue: inputData,

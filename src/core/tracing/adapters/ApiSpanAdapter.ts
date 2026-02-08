@@ -88,7 +88,7 @@ export class ApiSpanAdapter implements SpanExportAdapter {
       packageName: cleanSpan.packageName,
       instrumentationName: cleanSpan.instrumentationName,
       submoduleName: cleanSpan.submoduleName,
-      packageType: cleanSpan.packageType || PackageType.UNSPECIFIED,
+      packageType: cleanSpan.packageType ?? PackageType.UNSPECIFIED,
       environment: this.environment,
       inputValue: toStruct(cleanSpan.inputValue),
       outputValue: toStruct(cleanSpan.outputValue),
