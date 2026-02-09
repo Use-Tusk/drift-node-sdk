@@ -101,8 +101,10 @@ fi
 # Get the directory where this script is located (SDK root)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Discover all e2e test run-all.sh scripts (one per library)
-ALL_SCRIPTS=($(find "$SCRIPT_DIR/src/instrumentation/libraries" -path "*/e2e-tests/run-all.sh" -type f | sort))
+# Discover CJS variant run.sh scripts (one per library).
+# Benchmarks only run the CJS variant to avoid CJS+ESM running in parallel
+# and skewing results - the module system doesn't affect benchmark numbers.
+ALL_SCRIPTS=($(find "$SCRIPT_DIR/src/instrumentation/libraries" -path "*/e2e-tests/cjs-*/run.sh" -type f | sort))
 
 if [ ${#ALL_SCRIPTS[@]} -eq 0 ]; then
   echo -e "${RED}No e2e test scripts found!${NC}"
@@ -113,8 +115,8 @@ fi
 RUN_SCRIPTS=()
 RUN_NAMES=()
 for script in "${ALL_SCRIPTS[@]}"; do
-  # Extract library name from path: .../libraries/{name}/e2e-tests/run-all.sh
-  NAME=$(echo "$script" | sed -E 's|.*/libraries/([^/]+)/e2e-tests/run-all.sh|\1|')
+  # Extract library name from path: .../libraries/{name}/e2e-tests/cjs-{name}/run.sh
+  NAME=$(echo "$script" | sed -E 's|.*/libraries/([^/]+)/e2e-tests/cjs-[^/]+/run.sh|\1|')
   if [ -n "$FILTER" ]; then
     # Check if NAME is in the comma-separated filter list
     if echo ",$FILTER," | grep -q ",$NAME,"; then
@@ -131,7 +133,7 @@ NUM_TESTS=${#RUN_SCRIPTS[@]}
 
 if [ $NUM_TESTS -eq 0 ]; then
   echo -e "${RED}No matching instrumentations found for filter: $FILTER${NC}"
-  echo "Available: $(printf '%s\n' "${ALL_SCRIPTS[@]}" | sed -E 's|.*/libraries/([^/]+)/e2e-tests/run-all.sh|\1|' | tr '\n' ' ')"
+  echo "Available: $(printf '%s\n' "${ALL_SCRIPTS[@]}" | sed -E 's|.*/libraries/([^/]+)/e2e-tests/cjs-[^/]+/run.sh|\1|' | tr '\n' ' ')"
   exit 1
 fi
 
@@ -167,7 +169,7 @@ for i in "${!RUN_SCRIPTS[@]}"; do
   echo ""
 
   # Check if this library has been migrated to entrypoint pattern
-  if [ ! -f "$TEST_DIR/cjs-${NAME}/entrypoint.sh" ] && [ ! -f "$TEST_DIR/esm-${NAME}/entrypoint.sh" ]; then
+  if [ ! -f "$TEST_DIR/entrypoint.sh" ]; then
     echo -e "${YELLOW}⚠ Skipping $NAME - not yet migrated to benchmark-compatible pattern${NC}"
     echo -e "${YELLOW}  (Only libraries with entrypoint.sh support benchmarks)${NC}"
     EXIT_CODES+=("0")
@@ -177,7 +179,7 @@ for i in "${!RUN_SCRIPTS[@]}"; do
   chmod +x "$SCRIPT"
 
   set +e
-  (cd "$TEST_DIR" && ./run-all.sh)
+  (cd "$TEST_DIR" && ./run.sh)
   EXIT_CODE=$?
   set -e
 

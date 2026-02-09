@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -e -m
 
 # Shared E2E Test Entrypoint for Node SDK
 # Mirrors Python SDK's base_runner.py pattern.
@@ -35,10 +35,17 @@ NC='\033[0m'
 
 log() { echo -e "${2:-$NC}$1${NC}"; }
 
-# Cleanup function
+# Stop the server and all its child processes (npm spawns node underneath)
+stop_server() {
+  if [ -n "$SERVER_PID" ]; then
+    kill -- -$SERVER_PID 2>/dev/null || kill $SERVER_PID 2>/dev/null || true
+    wait $SERVER_PID 2>/dev/null || true
+    SERVER_PID=""
+  fi
+}
 cleanup() {
   log "Stopping server..." "$YELLOW"
-  [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null || true
+  stop_server
 }
 trap cleanup EXIT
 SERVER_PID=""
@@ -87,8 +94,7 @@ if [ -n "$BENCHMARKS" ]; then
   BENCHMARKS="$BENCHMARKS" BENCHMARK_DURATION="$DURATION" BENCHMARK_WARMUP="$WARMUP" \
     node /app/src/test_requests.mjs
 
-  kill $SERVER_PID 2>/dev/null || true
-  wait $SERVER_PID 2>/dev/null || true
+  stop_server
   sleep 2
 
   log ""
@@ -104,8 +110,7 @@ if [ -n "$BENCHMARKS" ]; then
   BENCHMARKS="$BENCHMARKS" BENCHMARK_DURATION="$DURATION" BENCHMARK_WARMUP="$WARMUP" \
     node /app/src/test_requests.mjs
 
-  kill $SERVER_PID 2>/dev/null || true
-  wait $SERVER_PID 2>/dev/null || true
+  stop_server
 
   log ""
   log "Benchmark complete" "$GREEN"
@@ -129,8 +134,7 @@ log "Waiting for traces to flush..."
 sleep 3
 
 log "Stopping server..."
-kill $SERVER_PID 2>/dev/null || true
-wait $SERVER_PID 2>/dev/null || true
+stop_server
 sleep 2
 
 TRACE_COUNT=$(ls -1 .tusk/traces/*.jsonl 2>/dev/null | wc -l)
