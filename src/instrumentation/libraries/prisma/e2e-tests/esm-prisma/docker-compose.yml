@@ -25,6 +25,7 @@ services:
       PORT: 3000
       BENCHMARKS: ${BENCHMARKS:-}
       BENCHMARK_DURATION: ${BENCHMARK_DURATION:-30}
+      BENCHMARK_WARMUP: ${BENCHMARK_WARMUP:-3}
     volumes:
       # Mount the SDK source code (read-only)
       - ../../../../../../:/sdk:ro

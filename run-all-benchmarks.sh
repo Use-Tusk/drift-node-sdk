@@ -7,6 +7,7 @@
 # Usage:
 #   ./run-all-benchmarks.sh                     # Run all, 5s per endpoint
 #   ./run-all-benchmarks.sh -d 20               # Run all, 20s per endpoint
+#   ./run-all-benchmarks.sh -w 5                # 5s warmup per endpoint
 #   ./run-all-benchmarks.sh -f http,pg          # Run only http and pg
 #   ./run-all-benchmarks.sh -h                  # Show help
 
@@ -14,6 +15,7 @@ set -e
 
 # Default values
 BENCHMARK_DURATION=${BENCHMARK_DURATION:-5}
+BENCHMARK_WARMUP=${BENCHMARK_WARMUP:-3}
 FILTER=""
 
 # Colors for output
@@ -30,12 +32,14 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -d, --duration N       Seconds per endpoint for timed loop (default: 5)"
+  echo "  -w, --warmup N         Seconds of warmup per endpoint before timing (default: 3)"
   echo "  -f, --filter LIST      Comma-separated list of instrumentations to benchmark"
   echo "                         e.g. http,pg,ioredis"
   echo "  -h, --help             Show this help message"
   echo ""
   echo "Environment variables:"
   echo "  BENCHMARK_DURATION     Same as --duration"
+  echo "  BENCHMARK_WARMUP       Same as --warmup"
   echo "  TUSK_CLI_VERSION       CLI version to use in Docker builds"
   echo ""
   echo "Examples:"
@@ -53,6 +57,14 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       BENCHMARK_DURATION="$2"
+      shift 2
+      ;;
+    -w|--warmup)
+      if [[ -z "$2" ]] || [[ "$2" == -* ]]; then
+        echo "Error: --warmup requires a number argument"
+        exit 1
+      fi
+      BENCHMARK_WARMUP="$2"
       shift 2
       ;;
     -f|--filter)
@@ -78,6 +90,11 @@ done
 # Validate numbers
 if ! [[ "$BENCHMARK_DURATION" =~ ^[0-9]+$ ]]; then
   echo "Error: --duration must be a positive integer"
+  exit 1
+fi
+
+if ! [[ "$BENCHMARK_WARMUP" =~ ^[0-9]+$ ]]; then
+  echo "Error: --warmup must be a positive integer"
   exit 1
 fi
 
@@ -124,6 +141,7 @@ echo -e "${BLUE}Node SDK Benchmarks${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo "Instrumentations: ${RUN_NAMES[*]}"
 echo "Duration per endpoint: ${BENCHMARK_DURATION}s"
+echo "Warmup per endpoint: ${BENCHMARK_WARMUP}s"
 echo "Total instrumentations: $NUM_TESTS"
 echo -e "${BLUE}========================================${NC}"
 echo ""
@@ -131,6 +149,7 @@ echo ""
 # Export benchmark env vars so they pass through to run.sh scripts
 export BENCHMARKS=1
 export BENCHMARK_DURATION
+export BENCHMARK_WARMUP
 
 # Track results
 OVERALL_EXIT_CODE=0

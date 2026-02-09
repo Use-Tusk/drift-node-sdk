@@ -1,0 +1,34 @@
+import { makeRequest, printRequestSummary } from '/app/test-utils.mjs';
+
+await makeRequest('GET', '/health');
+await makeRequest('GET', '/test/connection-query');
+await makeRequest('POST', '/test/connection-parameterized', { body: { userId: 1 } });
+await makeRequest('GET', '/test/connection-execute');
+await makeRequest('POST', '/test/connection-execute-params', { body: { userId: 2 } });
+await makeRequest('GET', '/test/pool-query');
+await makeRequest('POST', '/test/pool-parameterized', { body: { userId: 1 } });
+await makeRequest('GET', '/test/pool-execute');
+await makeRequest('POST', '/test/pool-execute-params', { body: { userId: 2 } });
+await makeRequest('GET', '/test/pool-getConnection');
+await makeRequest('GET', '/test/connection-connect');
+await makeRequest('GET', '/test/connection-ping');
+await makeRequest('GET', '/test/stream-query');
+await makeRequest('GET', '/test/sequelize-authenticate');
+await makeRequest('GET', '/test/sequelize-findall');
+await makeRequest('POST', '/test/sequelize-findone', { body: { userId: 1 } });
+await makeRequest('GET', '/test/sequelize-complex');
+await makeRequest('GET', '/test/sequelize-raw');
+await makeRequest('POST', '/test/sequelize-transaction');
+await makeRequest('GET', '/test/promise-connection-query');
+await makeRequest('GET', '/test/promise-pool-query');
+await makeRequest('GET', '/test/promise-pool-getconnection');
+await makeRequest('GET', '/test/transaction-methods');
+await makeRequest('GET', '/test/prepare-statement');
+await makeRequest('GET', '/test/change-user');
+await makeRequest('GET', '/test/nested-null-values');
+await makeRequest('GET', '/test/binary-data');
+await makeRequest('GET', '/test/knex-raw-query');
+await makeRequest('POST', '/test/knex-savepoint');
+await makeRequest('GET', '/test/knex-streaming');
+
+printRequestSummary();

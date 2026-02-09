@@ -1,0 +1,197 @@
+#!/bin/bash
+set -e
+
+# Shared E2E Test Entrypoint for Node SDK
+# Mirrors Python SDK's base_runner.py pattern.
+#
+# Usage: Set config vars then source this file from each variant's entrypoint.sh:
+#
+#   #!/bin/bash
+#   SERVER_WAIT_TIME=5
+#   source /app/base-entrypoint.sh
+#
+# For libraries with custom setup (e.g. prisma):
+#
+#   #!/bin/bash
+#   SERVER_WAIT_TIME=10
+#   setup_library() {
+#     npx prisma generate
+#     npx prisma db push --force-reset --skip-generate
+#   }
+#   source /app/base-entrypoint.sh
+#
+# Configuration (set before sourcing):
+#   SERVER_WAIT_TIME  - Seconds to wait after starting server (default: 5)
+#   setup_library()   - Optional hook for library-specific setup
+
+SERVER_WAIT_TIME=${SERVER_WAIT_TIME:-5}
+
+# Colors
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log() { echo -e "${2:-$NC}$1${NC}"; }
+
+# Cleanup function
+cleanup() {
+  log "Stopping server..." "$YELLOW"
+  [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null || true
+}
+trap cleanup EXIT
+SERVER_PID=""
+
+# ============================================================
+# Phase 1: Setup
+# ============================================================
+log "================================================" "$BLUE"
+log "Phase 1: Setup" "$BLUE"
+log "================================================" "$BLUE"
+
+log "Installing dependencies..."
+npm install --silent
+
+# Call library-specific setup hook if defined
+if type setup_library &>/dev/null; then
+  log "Running library-specific setup..."
+  setup_library
+fi
+
+log "Building TypeScript..."
+npm run build --silent
+
+# Clean traces/logs
+rm -rf .tusk/traces/* .tusk/logs/* 2>/dev/null || true
+mkdir -p .tusk/traces .tusk/logs
+
+log "Setup complete" "$GREEN"
+
+# ============================================================
+# Phase 2: Record Traces (or run benchmarks)
+# ============================================================
+if [ -n "$BENCHMARKS" ]; then
+  DURATION=${BENCHMARK_DURATION:-5}
+  WARMUP=${BENCHMARK_WARMUP:-3}
+
+  log "================================================" "$BLUE"
+  log "BASELINE (SDK DISABLED)" "$BLUE"
+  log "Duration per endpoint: ${DURATION}s, Warmup: ${WARMUP}s" "$BLUE"
+  log "================================================" "$BLUE"
+
+  TUSK_DRIFT_MODE=DISABLED npm run dev &
+  SERVER_PID=$!
+  sleep "$SERVER_WAIT_TIME"
+
+  BENCHMARKS="$BENCHMARKS" BENCHMARK_DURATION="$DURATION" BENCHMARK_WARMUP="$WARMUP" \
+    node /app/src/test_requests.mjs
+
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true
+  sleep 2
+
+  log ""
+  log "================================================" "$BLUE"
+  log "WITH SDK (TUSK_DRIFT_MODE=RECORD)" "$BLUE"
+  log "================================================" "$BLUE"
+
+  rm -rf .tusk/traces/* .tusk/logs/* 2>/dev/null || true
+  TUSK_DRIFT_MODE=RECORD npm run dev &
+  SERVER_PID=$!
+  sleep "$SERVER_WAIT_TIME"
+
+  BENCHMARKS="$BENCHMARKS" BENCHMARK_DURATION="$DURATION" BENCHMARK_WARMUP="$WARMUP" \
+    node /app/src/test_requests.mjs
+
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true
+
+  log ""
+  log "Benchmark complete" "$GREEN"
+  exit 0
+fi
+
+# Normal E2E test mode
+log "================================================" "$BLUE"
+log "Phase 2: Recording Traces" "$BLUE"
+log "================================================" "$BLUE"
+
+log "Starting server in RECORD mode..."
+TUSK_DRIFT_MODE=RECORD npm run dev &
+SERVER_PID=$!
+sleep "$SERVER_WAIT_TIME"
+
+log "Executing test requests..."
+node /app/src/test_requests.mjs
+
+log "Waiting for traces to flush..."
+sleep 3
+
+log "Stopping server..."
+kill $SERVER_PID 2>/dev/null || true
+wait $SERVER_PID 2>/dev/null || true
+sleep 2
+
+TRACE_COUNT=$(ls -1 .tusk/traces/*.jsonl 2>/dev/null | wc -l)
+log "Recorded $TRACE_COUNT trace files" "$GREEN"
+
+if [ "$TRACE_COUNT" -eq 0 ]; then
+  log "ERROR: No traces recorded!" "$RED"
+  exit 1
+fi
+
+# ============================================================
+# Phase 3: Run Tusk Tests
+# ============================================================
+log "================================================" "$BLUE"
+log "Phase 3: Running Tusk Tests" "$BLUE"
+log "================================================" "$BLUE"
+
+set +e
+TEST_OUTPUT=$(TUSK_ANALYTICS_DISABLED=1 tusk run --print --output-format json --enable-service-logs 2>&1)
+TUSK_EXIT=$?
+set -e
+
+echo "$TEST_OUTPUT"
+
+# Check tusk exit code
+if [ $TUSK_EXIT -ne 0 ]; then
+  log "Tusk tests failed with exit code $TUSK_EXIT" "$RED"
+  exit 1
+fi
+
+# Parse results - count passed/failed
+ALL_PASSED=$(echo "$TEST_OUTPUT" | grep -c '"passed":true' || true)
+ANY_FAILED=$(echo "$TEST_OUTPUT" | grep -c '"passed":false' || true)
+
+log "================================================"
+if [ "$ANY_FAILED" -gt 0 ]; then
+  log "Some tests failed!" "$RED"
+  exit 1
+elif [ "$ALL_PASSED" -gt 0 ]; then
+  log "All $ALL_PASSED tests passed!" "$GREEN"
+else
+  log "No test results found" "$YELLOW"
+  exit 1
+fi
+
+# ============================================================
+# Phase 4: Check for warnings
+# ============================================================
+log "================================================" "$BLUE"
+log "Phase 4: Checking for Instrumentation Warnings" "$BLUE"
+log "================================================" "$BLUE"
+
+if grep -r "TCP called from inbound request context" .tusk/logs/ 2>/dev/null; then
+  log "ERROR: Found TCP instrumentation warning!" "$RED"
+  exit 1
+else
+  log "No instrumentation warnings found" "$GREEN"
+fi
+
+log "================================================" "$BLUE"
+log "E2E Test Complete" "$GREEN"
+log "================================================" "$BLUE"
+
+exit 0

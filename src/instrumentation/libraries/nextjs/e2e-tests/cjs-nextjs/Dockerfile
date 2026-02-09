@@ -24,4 +24,10 @@ EXPOSE 3000
 COPY src/instrumentation/libraries/nextjs/e2e-tests/cjs-nextjs/entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 RUN mkdir -p /app/.tusk/traces /app/.tusk/logs
+
+# Copy shared test infrastructure
+COPY src/instrumentation/libraries/e2e-common/base-entrypoint.sh /app/base-entrypoint.sh
+COPY src/instrumentation/libraries/e2e-common/test-utils.mjs /app/test-utils.mjs
+RUN chmod +x /app/base-entrypoint.sh
+
 ENTRYPOINT ["./entrypoint.sh"]

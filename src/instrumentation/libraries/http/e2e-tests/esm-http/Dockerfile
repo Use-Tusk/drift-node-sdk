@@ -27,5 +27,10 @@ RUN if [ "$TUSK_CLI_VERSION" = "latest" ]; then \
 # Expose the server port
 EXPOSE 3000
 
+# Copy shared test infrastructure
+COPY src/instrumentation/libraries/e2e-common/base-entrypoint.sh /app/base-entrypoint.sh
+COPY src/instrumentation/libraries/e2e-common/test-utils.mjs /app/test-utils.mjs
+RUN chmod +x /app/base-entrypoint.sh
+
 # Run entrypoint (like Python SDK)
 ENTRYPOINT ["./entrypoint.sh"]

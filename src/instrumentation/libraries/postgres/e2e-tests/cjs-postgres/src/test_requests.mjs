@@ -1,0 +1,31 @@
+import { makeRequest, printRequestSummary } from '/app/test-utils.mjs';
+
+await makeRequest('GET', '/health');
+await makeRequest('GET', '/cache/all');
+await makeRequest('GET', '/cache/sample');
+await makeRequest('GET', '/cache/raw');
+await makeRequest('POST', '/cache/execute-raw');
+await makeRequest('POST', '/cache/insert', { body: { key: 'test_insert', value: 'test_value' } });
+await makeRequest('PUT', '/cache/update', { body: { key: 'test_key_1', value: 'updated_value' } });
+await makeRequest('DELETE', '/cache/delete', { body: { key: 'test_insert' } });
+await makeRequest('GET', '/users/by-email?email=alice@example.com');
+await makeRequest('POST', '/users/insert', { body: { name: 'Test User', email: 'testuser@example.com' } });
+await makeRequest('GET', '/cache/dynamic-fragments');
+await makeRequest('POST', '/cache/update-with-fragments');
+await makeRequest('GET', '/cache/complex-fragments');
+await makeRequest('GET', '/test/execute-method');
+await makeRequest('GET', '/test/sql-file');
+await makeRequest('GET', '/test/pending-query-raw');
+await makeRequest('GET', '/test/sql-reserve');
+await makeRequest('GET', '/test/sql-cursor');
+await makeRequest('GET', '/test/sql-cursor-callback');
+await makeRequest('GET', '/test/sql-foreach');
+await makeRequest('GET', '/test/describe-method');
+await makeRequest('GET', '/test/savepoint');
+await makeRequest('GET', '/test/listen-notify');
+await makeRequest('GET', '/test/bytea-data');
+await makeRequest('GET', '/test/unsafe-cursor');
+await makeRequest('GET', '/test/unsafe-foreach');
+await makeRequest('GET', '/test/large-object');
+
+printRequestSummary();

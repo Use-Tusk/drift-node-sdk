@@ -21,6 +21,7 @@ services:
     environment:
       - BENCHMARKS=${BENCHMARKS:-}
       - BENCHMARK_DURATION=${BENCHMARK_DURATION:-5}
+      - BENCHMARK_WARMUP=${BENCHMARK_WARMUP:-3}
       - PORT=3000
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432

@@ -12,6 +12,7 @@ services:
       - TUSK_ANALYTICS_DISABLED=1
       - BENCHMARKS=${BENCHMARKS:-}
       - BENCHMARK_DURATION=${BENCHMARK_DURATION:-5}
+      - BENCHMARK_WARMUP=${BENCHMARK_WARMUP:-3}
     volumes:
       # Mount SDK source for hot reload (this is what package.json expects)
       - ../../../../../..:/sdk:ro
