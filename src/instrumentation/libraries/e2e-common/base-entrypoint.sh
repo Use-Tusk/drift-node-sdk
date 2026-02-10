@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e -m
+set -e -m -o pipefail
 
 # Shared E2E Test Entrypoint for Node SDK
 # Mirrors Python SDK's base_runner.py pattern.
