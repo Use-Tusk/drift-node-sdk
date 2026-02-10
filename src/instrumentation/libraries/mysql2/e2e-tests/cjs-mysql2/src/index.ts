@@ -130,8 +130,6 @@ const server = http.createServer(async (req, res) => {
   const url = req.url || "/";
   const method = req.method || "GET";
 
-  console.log(`Received request: ${method} ${url}`);
-
   try {
     // Health check endpoint
     if (url === "/health" && method === "GET") {

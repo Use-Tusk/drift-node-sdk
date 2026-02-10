@@ -86,7 +86,6 @@ userIdCounter = 3;
 
 // Greeter service implementation
 function sayHello(call: any, callback: any) {
-  console.log("[gRPC Server] SayHello called with:", call.request);
   const name = call.request.name || "World";
   const greetingType = call.request.greeting_type || "formal";
 
@@ -107,7 +106,6 @@ function sayHello(call: any, callback: any) {
 }
 
 function sayHelloAgain(call: any, callback: any) {
-  console.log("[gRPC Server] SayHelloAgain called with:", call.request);
   const name = call.request.name || "World";
   callback(null, {
     message: `Hello again, ${name}!`,
@@ -117,7 +115,6 @@ function sayHelloAgain(call: any, callback: any) {
 }
 
 function greetManyTimes(call: any, callback: any) {
-  console.log("[gRPC Server] GreetManyTimes called with:", call.request);
   const name = call.request.name || "World";
   callback(null, {
     message: `Greetings, ${name}! Nice to see you multiple times!`,
@@ -128,7 +125,6 @@ function greetManyTimes(call: any, callback: any) {
 
 // Calculator service implementation
 function add(call: any, callback: any) {
-  console.log("[gRPC Server] Add called with:", call.request);
   const { num1, num2 } = call.request;
   const result = num1 + num2;
   callback(null, {
@@ -140,7 +136,6 @@ function add(call: any, callback: any) {
 }
 
 function subtract(call: any, callback: any) {
-  console.log("[gRPC Server] Subtract called with:", call.request);
   const { num1, num2 } = call.request;
   const result = num1 - num2;
   callback(null, {
@@ -152,7 +147,6 @@ function subtract(call: any, callback: any) {
 }
 
 function multiply(call: any, callback: any) {
-  console.log("[gRPC Server] Multiply called with:", call.request);
   const { num1, num2 } = call.request;
   const result = num1 * num2;
   callback(null, {
@@ -164,7 +158,6 @@ function multiply(call: any, callback: any) {
 }
 
 function divide(call: any, callback: any) {
-  console.log("[gRPC Server] Divide called with:", call.request);
   const { num1, num2 } = call.request;
 
   if (num2 === 0) {
@@ -187,7 +180,6 @@ function divide(call: any, callback: any) {
 
 // User service implementation
 function getUser(call: any, callback: any) {
-  console.log("[gRPC Server] GetUser called with:", call.request);
   const userId = call.request.id;
   const user = users.get(userId);
 
@@ -204,7 +196,6 @@ function getUser(call: any, callback: any) {
 }
 
 function createUser(call: any, callback: any) {
-  console.log("[gRPC Server] CreateUser called with:", call.request);
   const newUser = {
     id: userIdCounter++,
     name: call.request.name,
@@ -223,7 +214,6 @@ function createUser(call: any, callback: any) {
 }
 
 function updateUser(call: any, callback: any) {
-  console.log("[gRPC Server] UpdateUser called with:", call.request);
   const userId = call.request.id;
   const user = users.get(userId);
 
@@ -253,7 +243,6 @@ function updateUser(call: any, callback: any) {
 }
 
 function deleteUser(call: any, callback: any) {
-  console.log("[gRPC Server] DeleteUser called with:", call.request);
   const userId = call.request.id;
   const user = users.get(userId);
 
@@ -274,7 +263,6 @@ function deleteUser(call: any, callback: any) {
 }
 
 function listUsers(call: any, callback: any) {
-  console.log("[gRPC Server] ListUsers called with:", call.request);
   const limit = call.request.limit || 10;
   const offset = call.request.offset || 0;
 
@@ -293,14 +281,7 @@ const files = new Map<string, { filename: string; content: Buffer; content_type:
 let fileIdCounter = 1;
 
 function uploadFile(call: any, callback: any) {
-  console.log("[gRPC Server] UploadFile called");
   const { filename, content, content_type } = call.request;
-
-  // Content is a Buffer when using bytes in proto
-  console.log("[gRPC Server] UploadFile - filename:", filename);
-  console.log("[gRPC Server] UploadFile - content type:", content_type);
-  console.log("[gRPC Server] UploadFile - content is Buffer:", Buffer.isBuffer(content));
-  console.log("[gRPC Server] UploadFile - content length:", content?.length);
 
   const fileId = `file_${fileIdCounter++}`;
 
@@ -319,9 +300,6 @@ function uploadFile(call: any, callback: any) {
     content.slice(0, 10),
   ]);
 
-  console.log("[gRPC Server] UploadFile - thumbnail is Buffer:", Buffer.isBuffer(thumbnailData));
-  console.log("[gRPC Server] UploadFile - thumbnail length:", thumbnailData.length);
-
   callback(null, {
     file_id: fileId,
     size: content.length,
@@ -331,7 +309,6 @@ function uploadFile(call: any, callback: any) {
 }
 
 function downloadFile(call: any, callback: any) {
-  console.log("[gRPC Server] DownloadFile called with:", call.request);
   const { file_id } = call.request;
 
   const file = files.get(file_id);
@@ -343,9 +320,6 @@ function downloadFile(call: any, callback: any) {
     callback(error);
     return;
   }
-
-  console.log("[gRPC Server] DownloadFile - content is Buffer:", Buffer.isBuffer(file.content));
-  console.log("[gRPC Server] DownloadFile - content length:", file.content.length);
 
   callback(null, {
     filename: file.filename,

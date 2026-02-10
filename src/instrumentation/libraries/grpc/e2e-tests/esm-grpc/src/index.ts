@@ -27,7 +27,6 @@ app.get("/health", (req: Request, res: Response) => {
 // Simple hello with basic request
 app.get("/greet/hello", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /greet/hello called");
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.greeterClient,
       "SayHello",
@@ -54,7 +53,6 @@ app.get("/greet/hello", async (req: Request, res: Response) => {
 // Hello with metadata
 app.get("/greet/hello-with-metadata", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /greet/hello-with-metadata called");
     const metadata = new grpc.Metadata();
     metadata.add("user-id", "test-user-123");
     metadata.add("request-id", "req-456");
@@ -92,7 +90,6 @@ app.get("/greet/hello-with-metadata", async (req: Request, res: Response) => {
 // Custom greeting
 app.post("/greet/custom", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /greet/custom called with body:", req.body);
     const { name, greeting_type } = req.body;
 
     const response: any = await clients.grpcCallPromise(
@@ -121,7 +118,6 @@ app.post("/greet/custom", async (req: Request, res: Response) => {
 // Say hello again
 app.get("/greet/hello-again", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /greet/hello-again called");
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.greeterClient,
       "SayHelloAgain",
@@ -148,7 +144,6 @@ app.get("/greet/hello-again", async (req: Request, res: Response) => {
 // Greet many times
 app.get("/greet/many-times", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /greet/many-times called");
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.greeterClient,
       "GreetManyTimes",
@@ -175,7 +170,6 @@ app.get("/greet/many-times", async (req: Request, res: Response) => {
 // Add operation
 app.get("/calc/add", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /calc/add called");
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.calculatorClient,
       "Add",
@@ -203,7 +197,6 @@ app.get("/calc/add", async (req: Request, res: Response) => {
 // Subtract operation
 app.get("/calc/subtract", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /calc/subtract called");
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.calculatorClient,
       "Subtract",
@@ -231,7 +224,6 @@ app.get("/calc/subtract", async (req: Request, res: Response) => {
 // Multiply operation
 app.get("/calc/multiply", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /calc/multiply called");
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.calculatorClient,
       "Multiply",
@@ -259,7 +251,6 @@ app.get("/calc/multiply", async (req: Request, res: Response) => {
 // Divide operation (with error handling)
 app.post("/calc/divide", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /calc/divide called with body:", req.body);
     const { num1, num2 } = req.body;
 
     const response: any = await clients.grpcCallPromise(
@@ -291,7 +282,6 @@ app.post("/calc/divide", async (req: Request, res: Response) => {
 // Test division by zero error
 app.get("/calc/divide-by-zero", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /calc/divide-by-zero called");
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.calculatorClient,
       "Divide",
@@ -324,7 +314,6 @@ app.get("/calc/divide-by-zero", async (req: Request, res: Response) => {
 app.get("/users/:id", async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
-    console.log("[Express] /users/:id called with id:", userId);
 
     const response: any = await clients.grpcCallPromise(clients.clientsObj.userClient, "GetUser", {
       id: userId,
@@ -348,7 +337,6 @@ app.get("/users/:id", async (req: Request, res: Response) => {
 // Create user
 app.post("/users", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] POST /users called with body:", req.body);
     const { name, email, age, roles } = req.body;
 
     const response: any = await clients.grpcCallPromise(
@@ -380,7 +368,6 @@ app.post("/users", async (req: Request, res: Response) => {
 app.put("/users/:id", async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
-    console.log("[Express] PUT /users/:id called with id:", userId, "body:", req.body);
     const { name, email, age, roles } = req.body;
 
     const response: any = await clients.grpcCallPromise(
@@ -414,7 +401,6 @@ app.put("/users/:id", async (req: Request, res: Response) => {
 app.delete("/users/:id", async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id);
-    console.log("[Express] DELETE /users/:id called with id:", userId);
 
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.userClient,
@@ -444,7 +430,6 @@ app.get("/users", async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = parseInt(req.query.offset as string) || 0;
-    console.log("[Express] GET /users called with limit:", limit, "offset:", offset);
 
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.userClient,
@@ -474,7 +459,6 @@ app.get("/users", async (req: Request, res: Response) => {
 // Test user not found error
 app.get("/test/user-not-found", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /test/user-not-found called");
     const response: any = await clients.grpcCallPromise(clients.clientsObj.userClient, "GetUser", {
       id: 99999,
     });
@@ -498,8 +482,6 @@ app.get("/test/user-not-found", async (req: Request, res: Response) => {
 // Test multiple sequential calls
 app.get("/test/sequential-calls", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /test/sequential-calls called");
-
     // Make multiple gRPC calls sequentially
     const greeting: any = await clients.grpcCallPromise(
       clients.clientsObj.greeterClient,
@@ -545,8 +527,6 @@ app.get("/test/sequential-calls", async (req: Request, res: Response) => {
 // Test with complex nested data
 app.post("/test/complex-data", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] /test/complex-data called");
-
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.userClient,
       "CreateUser",
@@ -575,8 +555,6 @@ app.post("/test/complex-data", async (req: Request, res: Response) => {
 // Upload file with binary content
 app.post("/files/upload", async (req: Request, res: Response) => {
   try {
-    console.log("[Express] POST /files/upload called");
-
     // Create binary data to upload
     const binaryContent = Buffer.from([
       0x89,
@@ -645,8 +623,6 @@ app.post("/files/upload", async (req: Request, res: Response) => {
 app.get("/files/download/:fileId", async (req: Request, res: Response) => {
   try {
     const fileId = req.params.fileId;
-    console.log("[Express] GET /files/download/:fileId called with:", fileId);
-
     const response: any = await clients.grpcCallPromise(
       clients.clientsObj.fileClient,
       "DownloadFile",

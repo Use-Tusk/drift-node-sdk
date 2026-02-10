@@ -81,6 +81,8 @@ log "Setup complete" "$GREEN"
 if [ -n "$BENCHMARKS" ]; then
   DURATION=${BENCHMARK_DURATION:-5}
   WARMUP=${BENCHMARK_WARMUP:-3}
+  BASELINE_OUTPUT=$(mktemp)
+  SDK_OUTPUT=$(mktemp)
 
   log "================================================" "$BLUE"
   log "BASELINE (SDK DISABLED)" "$BLUE"
@@ -92,7 +94,7 @@ if [ -n "$BENCHMARKS" ]; then
   sleep "$SERVER_WAIT_TIME"
 
   BENCHMARKS="$BENCHMARKS" BENCHMARK_DURATION="$DURATION" BENCHMARK_WARMUP="$WARMUP" \
-    node /app/src/test_requests.mjs
+    node /app/src/test_requests.mjs | tee "$BASELINE_OUTPUT"
 
   stop_server
   sleep 2
@@ -108,10 +110,85 @@ if [ -n "$BENCHMARKS" ]; then
   sleep "$SERVER_WAIT_TIME"
 
   BENCHMARKS="$BENCHMARKS" BENCHMARK_DURATION="$DURATION" BENCHMARK_WARMUP="$WARMUP" \
-    node /app/src/test_requests.mjs
+    node /app/src/test_requests.mjs | tee "$SDK_OUTPUT"
 
   stop_server
 
+  # Print comparison table
+  log ""
+  log "==============================================================================" "$BLUE"
+  log "COMPARISON (negative = slower with SDK)" "$BLUE"
+  log "==============================================================================" "$BLUE"
+  printf "%-40s %12s %12s %10s\n" "Benchmark" "Baseline" "With SDK" "Diff"
+  log "------------------------------------------------------------------------------"
+
+  # Parse baseline results into parallel arrays
+  BENCH_NAMES=()
+  BENCH_BASELINE=()
+  while IFS= read -r line; do
+    name=$(echo "$line" | grep -oE '^Benchmark_\S+' || true)
+    ops=$(echo "$line" | grep -oE '[0-9.]+\s+ops/s' | awk '{print $1}' || true)
+    if [ -n "$name" ] && [ -n "$ops" ]; then
+      BENCH_NAMES+=("$name")
+      BENCH_BASELINE+=("$ops")
+    fi
+  done < "$BASELINE_OUTPUT"
+
+  # Parse SDK results into associative-style lookup (using parallel array)
+  SDK_NAMES=()
+  SDK_OPS=()
+  while IFS= read -r line; do
+    name=$(echo "$line" | grep -oE '^Benchmark_\S+' || true)
+    ops=$(echo "$line" | grep -oE '[0-9.]+\s+ops/s' | awk '{print $1}' || true)
+    if [ -n "$name" ] && [ -n "$ops" ]; then
+      SDK_NAMES+=("$name")
+      SDK_OPS+=("$ops")
+    fi
+  done < "$SDK_OUTPUT"
+
+  # Display comparison for each benchmark
+  for i in "${!BENCH_NAMES[@]}"; do
+    name="${BENCH_NAMES[$i]}"
+    base_ops="${BENCH_BASELINE[$i]}"
+
+    # Find matching SDK result
+    sdk_ops=""
+    for j in "${!SDK_NAMES[@]}"; do
+      if [ "${SDK_NAMES[$j]}" = "$name" ]; then
+        sdk_ops="${SDK_OPS[$j]}"
+        break
+      fi
+    done
+
+    if [ -z "$sdk_ops" ]; then
+      printf "%-40s %10s/s %12s %10s\n" "$name" "$base_ops" "N/A" ""
+      continue
+    fi
+
+    # Calculate percentage difference using awk
+    diff_str=$(awk "BEGIN {
+      diff = (($sdk_ops - $base_ops) / $base_ops) * 100;
+      printf \"%+.1f%%\", diff
+    }")
+
+    diff_val=$(awk "BEGIN {
+      print (($sdk_ops - $base_ops) / $base_ops) * 100
+    }")
+
+    # Color: red if >5% slower, yellow if slower, green if faster
+    color="$GREEN"
+    if awk "BEGIN { exit !($diff_val < -5) }"; then
+      color="$RED"
+    elif awk "BEGIN { exit !($diff_val < 0) }"; then
+      color="$YELLOW"
+    fi
+
+    echo -e "${color}$(printf "%-40s %10s/s %10s/s %10s" "$name" "$base_ops" "$sdk_ops" "$diff_str")${NC}"
+  done
+
+  log "==============================================================================" "$BLUE"
+
+  rm -f "$BASELINE_OUTPUT" "$SDK_OUTPUT"
   log ""
   log "Benchmark complete" "$GREEN"
   exit 0

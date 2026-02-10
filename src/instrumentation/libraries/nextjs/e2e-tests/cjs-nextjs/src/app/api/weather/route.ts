@@ -14,10 +14,6 @@ export async function GET(request: NextRequest) {
       `http://wttr.in/${encodeURIComponent(weatherLocation)}?format=j1`,
     );
 
-    console.log("Weather API call successful", {
-      location: weatherLocation,
-    });
-
     // Extract only the requested fields from current conditions
     const currentCondition = response.data.current_condition[0];
     const current = {
@@ -34,14 +30,17 @@ export async function GET(request: NextRequest) {
       source: "wttr.in",
     });
   } catch (error) {
-    console.error("Error getting weather data", { error, location: request.nextUrl.searchParams.get("location") });
+    console.error("Error getting weather data", {
+      error,
+      location: request.nextUrl.searchParams.get("location"),
+    });
 
     return NextResponse.json(
       {
         error: "Failed to fetch weather data",
         message: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -54,19 +53,10 @@ export async function POST(request: NextRequest) {
 
     // Validate that location is provided
     if (!location) {
-      return NextResponse.json(
-        { error: "Location is required in request body" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Location is required in request body" }, { status: 400 });
     }
 
-    const response = await axios.get(
-      `http://wttr.in/${encodeURIComponent(location)}?format=j1`,
-    );
-
-    console.log("Weather API call successful (POST)", {
-      location: location,
-    });
+    const response = await axios.get(`http://wttr.in/${encodeURIComponent(location)}?format=j1`);
 
     // Extract only the requested fields from current conditions
     const currentCondition = response.data.current_condition[0];
@@ -91,7 +81,7 @@ export async function POST(request: NextRequest) {
         error: "Failed to fetch weather data",
         message: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

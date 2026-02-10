@@ -8,8 +8,6 @@ const server = http.createServer(async (req, res) => {
   const url = req.url || "/";
   const method = req.method || "GET";
 
-  console.log(`Received request: ${method} ${url}`);
-
   try {
     // Test raw http.get
     if (url === "/test-http-get" && method === "GET") {
