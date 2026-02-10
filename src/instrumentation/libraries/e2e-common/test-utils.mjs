@@ -104,9 +104,6 @@ export async function makeRequest(method, endpoint, options) {
   const fetchOptions = buildFetchOptions(method, options);
 
   const resp = await fetch(url, fetchOptions);
-  if (!resp.ok) {
-    throw new Error(`${method} ${endpoint} failed with status ${resp.status}`);
-  }
   await resp.text();
   totalRequestsSent++;
 }
