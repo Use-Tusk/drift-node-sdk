@@ -18,10 +18,25 @@ const BENCHMARK_WARMUP = parseInt(process.env.BENCHMARK_WARMUP || '3', 10);
 let totalRequestsSent = 0;
 
 /**
- * Sleep for the given number of milliseconds.
+ * Build fetch options for a request.
+ * Always sets Connection: close to match curl behavior (one TCP connection
+ * per request). This prevents HTTP keep-alive from confusing the SDK's
+ * TCP instrumentation, which can cause unpatched dependency alerts and
+ * trace mismatches.
  */
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function buildFetchOptions(method, options) {
+  const fetchOptions = {
+    method,
+    headers: { 'Connection': 'close' },
+  };
+  if (options?.body) {
+    fetchOptions.headers['Content-Type'] = 'application/json';
+    fetchOptions.body = JSON.stringify(options.body);
+  }
+  if (options?.headers) {
+    Object.assign(fetchOptions.headers, options.headers);
+  }
+  return fetchOptions;
 }
 
 /**
@@ -31,15 +46,7 @@ function sleep(ms) {
 async function _benchmarkRequest(method, endpoint, options) {
   const benchName = `Benchmark_${method}${endpoint.replace(/\//g, '_')}`;
   const url = `${BASE_URL}${endpoint}`;
-
-  const fetchOptions = { method };
-  if (options?.body) {
-    fetchOptions.headers = { 'Content-Type': 'application/json' };
-    fetchOptions.body = JSON.stringify(options.body);
-  }
-  if (options?.headers) {
-    fetchOptions.headers = { ...fetchOptions.headers, ...options.headers };
-  }
+  const fetchOptions = buildFetchOptions(method, options);
 
   // Warmup phase
   const warmupEnd = Date.now() + BENCHMARK_WARMUP * 1000;
@@ -64,7 +71,6 @@ async function _benchmarkRequest(method, endpoint, options) {
       await resp.text();
       count++;
     } catch {
-      // count failures too to keep timing accurate
       count++;
     }
   }
@@ -85,7 +91,7 @@ async function _benchmarkRequest(method, endpoint, options) {
 
 /**
  * Make a request to the test server.
- * In normal mode: single request with 0.5s delay.
+ * In normal mode: single request.
  * In benchmark mode: timed loop with warmup.
  */
 export async function makeRequest(method, endpoint, options) {
@@ -94,16 +100,8 @@ export async function makeRequest(method, endpoint, options) {
     return;
   }
 
-  // Normal mode - single request
   const url = `${BASE_URL}${endpoint}`;
-  const fetchOptions = { method };
-  if (options?.body) {
-    fetchOptions.headers = { 'Content-Type': 'application/json' };
-    fetchOptions.body = JSON.stringify(options.body);
-  }
-  if (options?.headers) {
-    fetchOptions.headers = { ...fetchOptions.headers, ...options.headers };
-  }
+  const fetchOptions = buildFetchOptions(method, options);
 
   const resp = await fetch(url, fetchOptions);
   if (!resp.ok) {
@@ -111,9 +109,6 @@ export async function makeRequest(method, endpoint, options) {
   }
   await resp.text();
   totalRequestsSent++;
-
-  // Small delay between requests to avoid overwhelming the server
-  await sleep(500);
 }
 
 /**
