@@ -243,7 +243,7 @@ if [ $TUSK_EXIT -ne 0 ]; then
 fi
 
 # Parse results - count passed/failed
-ALL_PASSED=$(echo "$TEST_OUTPUT" | grep -c '"passed":\s*true' || true)
+ALL_PASSED=$(echo "$TEST_OUTPUT" | grep -c -E '"passed":[[:space:]]*true' || true)
 ANY_FAILED=$(echo "$TEST_OUTPUT" | grep -c '"passed":\s*false' || true)
 
 log "================================================"
