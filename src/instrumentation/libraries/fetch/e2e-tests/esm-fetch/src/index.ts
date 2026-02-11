@@ -1,5 +1,5 @@
-import { TuskDrift } from './tdInit.js';
-import express, { Request, Response } from 'express';
+import { TuskDrift } from "./tdInit.js";
+import express, { Request, Response } from "express";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,9 +11,6 @@ app.get("/test/fetch-get", async (req: Request, res: Response) => {
   try {
     const response = await fetch("https://jsonplaceholder.typicode.com/posts/1");
     const data = await response.json();
-
-    console.log("data", data);
-    console.log("response", response);
 
     res.json({
       success: true,
@@ -148,13 +145,13 @@ app.listen(PORT, () => {
   TuskDrift.markAppAsReady();
   console.log(`Fetch integration test server running on port ${PORT}`);
   console.log(`Test mode: ${process.env.TUSK_DRIFT_MODE || "record"}`);
-  console.log('Available endpoints:');
-  console.log('  GET  /health - Health check');
-  console.log('  GET  /test/fetch-get - Test fetch GET');
-  console.log('  POST /test/fetch-post - Test fetch POST');
-  console.log('  GET  /test/fetch-headers - Test fetch with custom headers');
-  console.log('  GET  /test/fetch-json - Test fetch with JSON response');
-  console.log('  GET  /test/fetch-url-object - Test fetch with URL object');
+  console.log("Available endpoints:");
+  console.log("  GET  /health - Health check");
+  console.log("  GET  /test/fetch-get - Test fetch GET");
+  console.log("  POST /test/fetch-post - Test fetch POST");
+  console.log("  GET  /test/fetch-headers - Test fetch with custom headers");
+  console.log("  GET  /test/fetch-json - Test fetch with JSON response");
+  console.log("  GET  /test/fetch-url-object - Test fetch with URL object");
 });
 
 // Graceful shutdown

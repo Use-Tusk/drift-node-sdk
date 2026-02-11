@@ -20,5 +20,10 @@ RUN if [ "$TUSK_CLI_VERSION" = "latest" ]; then \
 # Expose the server port
 EXPOSE 3000
 
-# Container stays running - CLI will control the app
-CMD ["tail", "-f", "/dev/null"]
+COPY src/instrumentation/libraries/mysql/e2e-tests/esm-mysql/entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+RUN mkdir -p /app/.tusk/traces /app/.tusk/logs
+COPY src/instrumentation/libraries/e2e-common/base-entrypoint.sh /app/base-entrypoint.sh
+COPY src/instrumentation/libraries/e2e-common/test-utils.mjs /app/test-utils.mjs
+RUN chmod +x /app/base-entrypoint.sh
+ENTRYPOINT ["./entrypoint.sh"]

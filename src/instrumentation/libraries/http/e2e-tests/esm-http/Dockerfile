@@ -6,6 +6,13 @@ WORKDIR /app
 COPY src/instrumentation/libraries/http/e2e-tests/esm-http/package*.json ./
 COPY src/instrumentation/libraries/http/e2e-tests/esm-http/tsconfig.json ./
 
+# Copy entrypoint script
+COPY src/instrumentation/libraries/http/e2e-tests/esm-http/entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
+# Create .tusk directories
+RUN mkdir -p /app/.tusk/traces /app/.tusk/logs
+
 # Add cache-busting argument to force fresh CLI download
 ARG CACHEBUST=1
 ARG TUSK_CLI_VERSION=latest
@@ -20,5 +27,10 @@ RUN if [ "$TUSK_CLI_VERSION" = "latest" ]; then \
 # Expose the server port
 EXPOSE 3000
 
-# Container stays running - CLI will control the app
-CMD ["tail", "-f", "/dev/null"]
+# Copy shared test infrastructure
+COPY src/instrumentation/libraries/e2e-common/base-entrypoint.sh /app/base-entrypoint.sh
+COPY src/instrumentation/libraries/e2e-common/test-utils.mjs /app/test-utils.mjs
+RUN chmod +x /app/base-entrypoint.sh
+
+# Run entrypoint (like Python SDK)
+ENTRYPOINT ["./entrypoint.sh"]

@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   app:
     build:
@@ -8,19 +6,17 @@ services:
       args:
         - CACHEBUST=${CACHEBUST:-1}
         - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
-    ports:
-      - "${APP_PORT:-3000}:3000"
     environment:
       - PORT=3000
       - TUSK_ANALYTICS_DISABLED=1
+      - BENCHMARKS=${BENCHMARKS:-}
+      - BENCHMARK_DURATION=${BENCHMARK_DURATION:-5}
+      - BENCHMARK_WARMUP=${BENCHMARK_WARMUP:-3}
     volumes:
-      # Mount SDK source for hot reload (this is what package.json expects)
+      # Mount SDK source for the SDK dependency
       - ../../../../../..:/sdk:ro
-      # Mount .tusk folder to persist traces
-      - ./.tusk:/app/.tusk
-      # Mount app source for development
+      # Mount app source
       - ./src:/app/src
+      # Mount .tusk config (but traces/logs are created inside container)
+      - ./.tusk/config.yaml:/app/.tusk/config.yaml:ro
     working_dir: /app
-    # Keep container running without starting the app
-    # The CLI will control starting/stopping the app
-    command: tail -f /dev/null

@@ -97,12 +97,9 @@ app.get("/health", (req: Request, res: Response) => {
 // Drizzle query builder - select all from cache
 app.get("/cache/all", async (req: Request, res: Response) => {
   try {
-    console.log("Fetching all cache entries using Drizzle query builder...");
     const db = getDb();
 
     const result = await db.select().from(cacheTable);
-
-    console.log("Cache entries:", result);
 
     res.json({
       message: "All cache entries retrieved",
@@ -118,7 +115,6 @@ app.get("/cache/all", async (req: Request, res: Response) => {
 // Drizzle query builder - select with limit
 app.get("/cache/sample", async (req: Request, res: Response) => {
   try {
-    console.log("Fetching cache sample...");
     const db = getDb();
 
     // Original Drizzle query builder approach
@@ -131,9 +127,6 @@ app.get("/cache/sample", async (req: Request, res: Response) => {
       ORDER BY created_at DESC
       LIMIT 3
     `);
-
-    console.log("Cache sample drizzle result:", drizzleResult);
-    console.log("Cache sample raw SQL result:", rawResult);
 
     res.json({
       message: "Cache sample retrieved",
@@ -149,8 +142,6 @@ app.get("/cache/sample", async (req: Request, res: Response) => {
 // Raw postgres template string query
 app.get("/cache/raw", async (req: Request, res: Response) => {
   try {
-    console.log("Fetching cache data using raw postgres template string...");
-
     // Create a postgres client instance
     const connectionString =
       process.env.DATABASE_URL ||
@@ -163,8 +154,6 @@ app.get("/cache/raw", async (req: Request, res: Response) => {
       SELECT * FROM cache
       LIMIT 2
     `;
-
-    console.log("Raw postgres query result:", result);
 
     await pgClient.end();
 
@@ -182,7 +171,6 @@ app.get("/cache/raw", async (req: Request, res: Response) => {
 // Execute raw SQL using drizzle session.execute
 app.post("/cache/execute-raw", async (req: Request, res: Response) => {
   try {
-    console.log("Executing raw SQL using drizzle session.execute...");
     const db = getDb();
 
     // This uses db.execute() similar to your setTransaction example
@@ -192,8 +180,6 @@ app.post("/cache/execute-raw", async (req: Request, res: Response) => {
       ORDER BY created_at DESC
       LIMIT 3
     `);
-
-    console.log("Execute result:", result);
 
     res.json({
       message: "Raw SQL executed using drizzle session.execute",
@@ -209,7 +195,6 @@ app.post("/cache/execute-raw", async (req: Request, res: Response) => {
 // Drizzle insert
 app.post("/cache/insert", async (req: Request, res: Response) => {
   try {
-    console.log("Inserting cache entry using Drizzle...");
     const db = getDb();
 
     const { key, value } = req.body;
@@ -224,8 +209,6 @@ app.post("/cache/insert", async (req: Request, res: Response) => {
       })
       .returning();
 
-    console.log("Insert result:", result);
-
     res.json({
       message: "Cache entry inserted",
       data: result,
@@ -239,7 +222,6 @@ app.post("/cache/insert", async (req: Request, res: Response) => {
 // Drizzle update
 app.put("/cache/update", async (req: Request, res: Response) => {
   try {
-    console.log("Updating cache entry using Drizzle...");
     const db = getDb();
 
     const { key, value } = req.body;
@@ -249,8 +231,6 @@ app.put("/cache/update", async (req: Request, res: Response) => {
       .set({ value, updatedAt: new Date() })
       .where(eq(cacheTable.key, key))
       .returning();
-
-    console.log("Update result:", result);
 
     res.json({
       message: "Cache entry updated",
@@ -265,14 +245,11 @@ app.put("/cache/update", async (req: Request, res: Response) => {
 // Drizzle delete
 app.delete("/cache/delete", async (req: Request, res: Response) => {
   try {
-    console.log("Deleting cache entry using Drizzle...");
     const db = getDb();
 
     const { key } = req.body;
 
     const result = await db.delete(cacheTable).where(eq(cacheTable.key, key)).returning();
-
-    console.log("Delete result:", result);
 
     res.json({
       message: "Cache entry deleted",
@@ -287,14 +264,11 @@ app.delete("/cache/delete", async (req: Request, res: Response) => {
 // Users - Drizzle select with where
 app.get("/users/by-email", async (req: Request, res: Response) => {
   try {
-    console.log("Fetching user by email using Drizzle...");
     const db = getDb();
 
     const email = (req.query.email as string) || "alice@example.com";
 
     const result = await db.select().from(usersTable).where(eq(usersTable.email, email));
-
-    console.log("User result:", result);
 
     res.json({
       message: "User retrieved by email",
@@ -309,7 +283,6 @@ app.get("/users/by-email", async (req: Request, res: Response) => {
 // Users - Insert using Drizzle
 app.post("/users/insert", async (req: Request, res: Response) => {
   try {
-    console.log("Inserting user using Drizzle...");
     const db = getDb();
 
     const { name, email } = req.body;
@@ -322,8 +295,6 @@ app.post("/users/insert", async (req: Request, res: Response) => {
         email: email || `user${timestamp}@example.com`,
       })
       .returning();
-
-    console.log("Insert user result:", result);
 
     res.json({
       message: "User inserted",
@@ -338,7 +309,6 @@ app.post("/users/insert", async (req: Request, res: Response) => {
 // Test dynamic query building with sql() fragment helpers
 app.get("/cache/dynamic-fragments", async (req: Request, res: Response) => {
   try {
-    console.log("Testing dynamic query building with sql() fragment helpers...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -348,8 +318,6 @@ app.get("/cache/dynamic-fragments", async (req: Request, res: Response) => {
     // Test 1: Dynamic column selection using sql() helper
     const columns = ["key", "value"];
     const result1 = await pgClient`SELECT ${pgClient(columns)} FROM cache LIMIT 2`;
-
-    console.log("Dynamic columns result:", result1);
 
     // Test 2: Conditional WHERE clause using fragment
     const minId = 1;
@@ -361,8 +329,6 @@ app.get("/cache/dynamic-fragments", async (req: Request, res: Response) => {
       ${whereClause}
       LIMIT 2
     `;
-
-    console.log("Conditional WHERE result:", result2);
 
     // Test 3: Helper function that returns sql fragment (similar to customer's where() helper)
     const buildWhereClause = (conditions: { field: string; value: any }[]) => {
@@ -387,8 +353,6 @@ app.get("/cache/dynamic-fragments", async (req: Request, res: Response) => {
       ${dynamicWhere}
     `;
 
-    console.log("Dynamic WHERE helper result:", result3);
-
     await pgClient.end();
 
     res.json({
@@ -408,7 +372,6 @@ app.get("/cache/dynamic-fragments", async (req: Request, res: Response) => {
 // Test UPDATE with dynamic fragments (mimics customer's exact pattern)
 app.post("/cache/update-with-fragments", async (req: Request, res: Response) => {
   try {
-    console.log("Testing UPDATE with dynamic sql() fragments...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -440,8 +403,6 @@ app.post("/cache/update-with-fragments", async (req: Request, res: Response) => 
       WHERE ${where(selectors)} AND value IS NOT NULL
     `;
 
-    console.log("UPDATE with fragments result:", result);
-
     await pgClient.end();
 
     res.json({
@@ -459,7 +420,6 @@ app.post("/cache/update-with-fragments", async (req: Request, res: Response) => 
 // Test complex nested fragments (advanced pattern)
 app.get("/cache/complex-fragments", async (req: Request, res: Response) => {
   try {
-    console.log("Testing complex nested sql() fragments...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -509,8 +469,6 @@ app.get("/cache/complex-fragments", async (req: Request, res: Response) => {
       LIMIT 3
     `;
 
-    console.log("Complex fragments result:", result);
-
     await pgClient.end();
 
     res.json({
@@ -527,7 +485,6 @@ app.get("/cache/complex-fragments", async (req: Request, res: Response) => {
 // Test sql.file() method
 app.get("/test/sql-file", async (req: Request, res: Response) => {
   try {
-    console.log("Testing sql.file() method...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -536,8 +493,6 @@ app.get("/test/sql-file", async (req: Request, res: Response) => {
 
     // Execute query from file
     const result = await pgClient.file("/app/src/test-query.sql");
-
-    console.log("SQL file result:", result);
 
     await pgClient.end();
 
@@ -555,7 +510,6 @@ app.get("/test/sql-file", async (req: Request, res: Response) => {
 // Test .execute() method for immediate execution
 app.get("/test/execute-method", async (req: Request, res: Response) => {
   try {
-    console.log("Testing .execute() method for immediate query execution...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -564,8 +518,6 @@ app.get("/test/execute-method", async (req: Request, res: Response) => {
 
     // Using .execute() forces the query to run immediately
     const result = await pgClient`SELECT * FROM cache LIMIT 1`.execute();
-
-    console.log("Execute method result:", result);
 
     await pgClient.end();
 
@@ -583,7 +535,6 @@ app.get("/test/execute-method", async (req: Request, res: Response) => {
 // Test PendingQuery.raw() for raw buffer results
 app.get("/test/pending-query-raw", async (req: Request, res: Response) => {
   try {
-    console.log("Testing PendingQuery.raw() for raw buffer results...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -592,8 +543,6 @@ app.get("/test/pending-query-raw", async (req: Request, res: Response) => {
 
     // .raw() returns raw Buffer arrays instead of parsed objects
     const result = await pgClient`SELECT * FROM cache LIMIT 2`.raw();
-
-    console.log("Raw buffer query result:", result);
 
     await pgClient.end();
 
@@ -612,7 +561,6 @@ app.get("/test/pending-query-raw", async (req: Request, res: Response) => {
 // Test sql.reserve() for reserved connections
 app.get("/test/sql-reserve", async (req: Request, res: Response) => {
   try {
-    console.log("Testing sql.reserve() for reserved connections...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -624,8 +572,6 @@ app.get("/test/sql-reserve", async (req: Request, res: Response) => {
 
     // Execute a query on the reserved connection
     const result = await reserved`SELECT * FROM cache LIMIT 2`;
-
-    console.log("Reserved connection query result:", result);
 
     // Release the connection back to the pool
     reserved.release();
@@ -646,7 +592,6 @@ app.get("/test/sql-reserve", async (req: Request, res: Response) => {
 // Test sql.cursor() for cursor-based streaming
 app.get("/test/sql-cursor", async (req: Request, res: Response) => {
   try {
-    console.log("Testing sql.cursor() for cursor-based streaming...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -658,11 +603,8 @@ app.get("/test/sql-cursor", async (req: Request, res: Response) => {
     const cursor = pgClient`SELECT * FROM cache`.cursor(2);
 
     for await (const rows of cursor) {
-      console.log("Cursor batch:", rows);
       cursorResults.push(...rows);
     }
-
-    console.log("Cursor complete, total rows:", cursorResults.length);
 
     await pgClient.end();
 
@@ -680,7 +622,6 @@ app.get("/test/sql-cursor", async (req: Request, res: Response) => {
 // Test sql.cursor() with callback function
 app.get("/test/sql-cursor-callback", async (req: Request, res: Response) => {
   try {
-    console.log("Testing sql.cursor() with callback function...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -690,11 +631,8 @@ app.get("/test/sql-cursor-callback", async (req: Request, res: Response) => {
     // cursor(rows, fn) with callback - this delegates to original and goes through .then()
     const cursorResults: any[] = [];
     await pgClient`SELECT * FROM cache`.cursor(2, (rows) => {
-      console.log("Cursor callback batch:", rows);
       cursorResults.push(...rows);
     });
-
-    console.log("Cursor with callback complete, total rows:", cursorResults.length);
 
     await pgClient.end();
 
@@ -712,7 +650,6 @@ app.get("/test/sql-cursor-callback", async (req: Request, res: Response) => {
 // Test sql.forEach() for row-by-row processing
 app.get("/test/sql-foreach", async (req: Request, res: Response) => {
   try {
-    console.log("Testing sql.forEach() for row-by-row processing...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -722,11 +659,8 @@ app.get("/test/sql-foreach", async (req: Request, res: Response) => {
     // forEach processes rows one at a time with a callback
     const forEachResults: any[] = [];
     await pgClient`SELECT * FROM cache LIMIT 3`.forEach((row) => {
-      console.log("forEach row:", row);
       forEachResults.push(row);
     });
-
-    console.log("forEach complete, total rows:", forEachResults.length);
 
     await pgClient.end();
 
@@ -743,7 +677,6 @@ app.get("/test/sql-foreach", async (req: Request, res: Response) => {
 
 app.get("/test/describe-method", async (req: Request, res: Response) => {
   try {
-    console.log("Testing describe() method...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -752,8 +685,6 @@ app.get("/test/describe-method", async (req: Request, res: Response) => {
 
     // describe() returns statement metadata without executing the query
     const result = await pgClient`SELECT id, key, value FROM cache WHERE id = ${1}`.describe();
-
-    console.log("describe() result:", result);
 
     await pgClient.end();
 
@@ -771,7 +702,6 @@ app.get("/test/describe-method", async (req: Request, res: Response) => {
 
 app.get("/test/savepoint", async (req: Request, res: Response) => {
   try {
-    console.log("Testing savepoint() nested transactions...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -798,8 +728,6 @@ app.get("/test/savepoint", async (req: Request, res: Response) => {
       return allUsers;
     });
 
-    console.log("savepoint() result:", result);
-
     // Cleanup
     await pgClient`DELETE FROM users WHERE email LIKE '%@test.com'`;
     await pgClient.end();
@@ -818,7 +746,6 @@ app.get("/test/savepoint", async (req: Request, res: Response) => {
 
 app.get("/test/listen-notify", async (req: Request, res: Response) => {
   try {
-    console.log("Testing listen() / notify()...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -829,7 +756,6 @@ app.get("/test/listen-notify", async (req: Request, res: Response) => {
 
     // Set up listener
     const { unlisten } = await pgClient.listen("test_channel", (payload) => {
-      console.log("Received notification:", payload);
       receivedPayload = payload;
     });
 
@@ -855,7 +781,6 @@ app.get("/test/listen-notify", async (req: Request, res: Response) => {
 
 app.get("/test/bytea-data", async (req: Request, res: Response) => {
   try {
-    console.log("Testing bytea/binary data handling...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -867,8 +792,6 @@ app.get("/test/bytea-data", async (req: Request, res: Response) => {
     const result = await pgClient`
       SELECT ${binaryData}::bytea as binary_col
     `;
-
-    console.log("Bytea result:", result);
 
     await pgClient.end();
 
@@ -885,7 +808,6 @@ app.get("/test/bytea-data", async (req: Request, res: Response) => {
 
 app.get("/test/unsafe-cursor", async (req: Request, res: Response) => {
   try {
-    console.log("Testing unsafe.cursor() for cursor on unsafe queries...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -897,11 +819,8 @@ app.get("/test/unsafe-cursor", async (req: Request, res: Response) => {
     const cursor = pgClient.unsafe("SELECT * FROM cache").cursor(2);
 
     for await (const rows of cursor) {
-      console.log("Unsafe cursor batch:", rows);
       cursorResults.push(...rows);
     }
-
-    console.log("Unsafe cursor complete, total rows:", cursorResults.length);
 
     await pgClient.end();
 
@@ -918,7 +837,6 @@ app.get("/test/unsafe-cursor", async (req: Request, res: Response) => {
 
 app.get("/test/unsafe-foreach", async (req: Request, res: Response) => {
   try {
-    console.log("Testing unsafe.forEach() for row-by-row processing on unsafe queries...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;
@@ -928,11 +846,8 @@ app.get("/test/unsafe-foreach", async (req: Request, res: Response) => {
     // Use forEach on an unsafe query
     const forEachResults: any[] = [];
     await pgClient.unsafe("SELECT * FROM cache LIMIT 3").forEach((row) => {
-      console.log("Unsafe forEach row:", row);
       forEachResults.push(row);
     });
-
-    console.log("Unsafe forEach complete, total rows:", forEachResults.length);
 
     await pgClient.end();
 
@@ -949,7 +864,6 @@ app.get("/test/unsafe-foreach", async (req: Request, res: Response) => {
 
 app.get("/test/large-object", async (req: Request, res: Response) => {
   try {
-    console.log("Testing largeObject() API...");
     const connectionString =
       process.env.DATABASE_URL ||
       `postgres://${process.env.POSTGRES_USER || "testuser"}:${process.env.POSTGRES_PASSWORD || "testpass"}@${process.env.POSTGRES_HOST || "postgres"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "testdb"}`;

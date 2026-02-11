@@ -71,7 +71,6 @@ app.get("/health", (req: Request, res: Response) => {
 // Test basic query with callback
 app.get("/connection/query-callback", async (req: Request, res: Response) => {
   try {
-    console.log("Testing connection.query with callback...");
     const connection = getConnection();
 
     connection.query("SELECT * FROM cache LIMIT 3", (error, results, fields) => {
@@ -80,7 +79,6 @@ app.get("/connection/query-callback", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("Query results:", results);
       res.json({
         message: "Query executed with callback",
         count: results.length,
@@ -96,7 +94,6 @@ app.get("/connection/query-callback", async (req: Request, res: Response) => {
 // Test query with parameters and callback
 app.get("/connection/query-params", async (req: Request, res: Response) => {
   try {
-    console.log("Testing connection.query with parameters...");
     const connection = getConnection();
     const key = (req.query.key as string) || "test_key_1";
 
@@ -106,7 +103,6 @@ app.get("/connection/query-params", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("Query results:", results);
       res.json({
         message: "Query executed with parameters",
         data: results,
@@ -121,7 +117,6 @@ app.get("/connection/query-params", async (req: Request, res: Response) => {
 // Test query with options object
 app.get("/connection/query-options", async (req: Request, res: Response) => {
   try {
-    console.log("Testing connection.query with options object...");
     const connection = getConnection();
 
     const options = {
@@ -135,7 +130,6 @@ app.get("/connection/query-options", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("Query results:", results);
       res.json({
         message: "Query executed with options object",
         data: results,
@@ -150,7 +144,6 @@ app.get("/connection/query-options", async (req: Request, res: Response) => {
 // Test query using event emitter mode
 app.get("/connection/query-stream", async (req: Request, res: Response) => {
   try {
-    console.log("Testing connection.query with event emitter...");
     const connection = getConnection();
 
     const results: any[] = [];
@@ -161,18 +154,10 @@ app.get("/connection/query-stream", async (req: Request, res: Response) => {
         console.error("Query error:", err);
         res.status(500).json({ error: err.message });
       })
-      .on("fields", (fields) => {
-        console.log(
-          "Received fields:",
-          fields.map((f: any) => f.name),
-        );
-      })
       .on("result", (row) => {
-        console.log("Received row:", row);
         results.push(row);
       })
       .on("end", () => {
-        console.log("Query completed");
         res.json({
           message: "Query executed with event emitter",
           count: results.length,
@@ -188,7 +173,6 @@ app.get("/connection/query-stream", async (req: Request, res: Response) => {
 // Test multi-statement queries
 app.get("/connection/multi-statement", async (req: Request, res: Response) => {
   try {
-    console.log("Testing multi-statement query...");
     const connection = getConnection();
 
     const multiQuery = `
@@ -203,7 +187,6 @@ app.get("/connection/multi-statement", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("Multi-statement results:", results);
       res.json({
         message: "Multi-statement query executed",
         results: results,
@@ -220,7 +203,6 @@ app.get("/connection/multi-statement", async (req: Request, res: Response) => {
 // Test pool query
 app.get("/pool/query", async (req: Request, res: Response) => {
   try {
-    console.log("Testing pool.query...");
     const pool = getPool();
 
     pool.query("SELECT * FROM cache ORDER BY created_at DESC LIMIT 2", (error, results, fields) => {
@@ -229,7 +211,6 @@ app.get("/pool/query", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("Pool query results:", results);
       res.json({
         message: "Pool query executed",
         count: results.length,
@@ -245,7 +226,6 @@ app.get("/pool/query", async (req: Request, res: Response) => {
 // Test pool getConnection
 app.get("/pool/get-connection", async (req: Request, res: Response) => {
   try {
-    console.log("Testing pool.getConnection...");
     const pool = getPool();
 
     pool.getConnection((error, connection) => {
@@ -264,7 +244,6 @@ app.get("/pool/get-connection", async (req: Request, res: Response) => {
           return res.status(500).json({ error: queryError.message });
         }
 
-        console.log("Pooled connection query results:", results);
         res.json({
           message: "Query executed on pooled connection",
           data: results,
@@ -279,8 +258,6 @@ app.get("/pool/get-connection", async (req: Request, res: Response) => {
 
 app.get("/test/pool-events", async (req: Request, res: Response) => {
   try {
-    console.log("Testing pool events...");
-
     const events: string[] = [];
 
     // Create a new pool to track events
@@ -294,22 +271,18 @@ app.get("/test/pool-events", async (req: Request, res: Response) => {
     });
 
     eventPool.on("connection", (connection: any) => {
-      console.log("Pool event: connection");
       events.push("connection");
     });
 
     eventPool.on("acquire", (connection: any) => {
-      console.log("Pool event: acquire");
       events.push("acquire");
     });
 
     eventPool.on("release", (connection: any) => {
-      console.log("Pool event: release");
       events.push("release");
     });
 
     eventPool.on("enqueue", () => {
-      console.log("Pool event: enqueue");
       events.push("enqueue");
     });
 
@@ -343,8 +316,6 @@ app.get("/test/pool-events", async (req: Request, res: Response) => {
 
 app.get("/test/pool-namespace-query", async (req: Request, res: Response) => {
   try {
-    console.log("Testing PoolNamespace.query()...");
-
     // Create a pool cluster
     const poolCluster = mysql.createPoolCluster();
 
@@ -381,7 +352,6 @@ app.get("/test/pool-namespace-query", async (req: Request, res: Response) => {
 // Test beginTransaction(callback) signature
 app.post("/transaction/commit", async (req: Request, res: Response) => {
   try {
-    console.log("Testing transaction with commit...");
     const connection = getConnection();
 
     connection.beginTransaction((beginError) => {
@@ -413,7 +383,6 @@ app.post("/transaction/commit", async (req: Request, res: Response) => {
               });
             }
 
-            console.log("Transaction committed successfully");
             res.json({
               message: "Transaction committed",
             });
@@ -430,8 +399,6 @@ app.post("/transaction/commit", async (req: Request, res: Response) => {
 // Test beginTransaction(options, callback) signature
 app.post("/test/transaction-with-options", async (req: Request, res: Response) => {
   try {
-    console.log("Testing transaction with options object...");
-
     // Create a temporary connection for this test
     const tempConnection = mysql.createConnection({
       host: process.env.MYSQL_HOST || "mysql",
@@ -493,7 +460,6 @@ app.post("/test/transaction-with-options", async (req: Request, res: Response) =
 // Test transaction with rollback
 app.post("/transaction/rollback", async (req: Request, res: Response) => {
   try {
-    console.log("Testing transaction with rollback...");
     const connection = getConnection();
 
     connection.beginTransaction((beginError) => {
@@ -524,7 +490,6 @@ app.post("/transaction/rollback", async (req: Request, res: Response) => {
               return res.status(500).json({ error: rollbackError.message });
             }
 
-            console.log("Transaction rolled back successfully");
             res.json({
               message: "Transaction rolled back intentionally",
             });
@@ -543,7 +508,6 @@ app.post("/transaction/rollback", async (req: Request, res: Response) => {
 // Test INSERT
 app.post("/crud/insert", async (req: Request, res: Response) => {
   try {
-    console.log("Testing INSERT query...");
     const connection = getConnection();
 
     const timestamp = Date.now();
@@ -560,7 +524,6 @@ app.post("/crud/insert", async (req: Request, res: Response) => {
           return res.status(500).json({ error: error.message });
         }
 
-        console.log("INSERT results:", results);
         res.json({
           message: "INSERT executed",
           insertId: results.insertId,
@@ -578,7 +541,6 @@ app.post("/crud/insert", async (req: Request, res: Response) => {
 // Test UPDATE
 app.put("/crud/update", async (req: Request, res: Response) => {
   try {
-    console.log("Testing UPDATE query...");
     const connection = getConnection();
 
     const { key, value } = req.body;
@@ -594,7 +556,6 @@ app.put("/crud/update", async (req: Request, res: Response) => {
           return res.status(500).json({ error: error.message });
         }
 
-        console.log("UPDATE results:", results);
         res.json({
           message: "UPDATE executed",
           affectedRows: results.affectedRows,
@@ -612,7 +573,6 @@ app.put("/crud/update", async (req: Request, res: Response) => {
 // Test DELETE
 app.delete("/crud/delete", async (req: Request, res: Response) => {
   try {
-    console.log("Testing DELETE query...");
     const connection = getConnection();
 
     const { key } = req.body;
@@ -626,7 +586,6 @@ app.delete("/crud/delete", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("DELETE results:", results);
       res.json({
         message: "DELETE executed",
         affectedRows: results.affectedRows,
@@ -644,7 +603,6 @@ app.delete("/crud/delete", async (req: Request, res: Response) => {
 // Test JOIN query
 app.get("/advanced/join", async (req: Request, res: Response) => {
   try {
-    console.log("Testing JOIN query...");
     const connection = getConnection();
 
     const query = `
@@ -661,7 +619,6 @@ app.get("/advanced/join", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("JOIN results:", results);
       res.json({
         message: "JOIN query executed",
         count: results.length,
@@ -677,7 +634,6 @@ app.get("/advanced/join", async (req: Request, res: Response) => {
 // Test aggregate functions
 app.get("/advanced/aggregate", async (req: Request, res: Response) => {
   try {
-    console.log("Testing aggregate query...");
     const connection = getConnection();
 
     const query = `
@@ -695,7 +651,6 @@ app.get("/advanced/aggregate", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("Aggregate results:", results);
       res.json({
         message: "Aggregate query executed",
         data: results[0],
@@ -710,7 +665,6 @@ app.get("/advanced/aggregate", async (req: Request, res: Response) => {
 // Test subquery
 app.get("/advanced/subquery", async (req: Request, res: Response) => {
   try {
-    console.log("Testing subquery...");
     const connection = getConnection();
 
     const query = `
@@ -730,7 +684,6 @@ app.get("/advanced/subquery", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("Subquery results:", results);
       res.json({
         message: "Subquery executed",
         count: results.length,
@@ -746,7 +699,6 @@ app.get("/advanced/subquery", async (req: Request, res: Response) => {
 // Test prepared statement-like behavior
 app.get("/advanced/prepared", async (req: Request, res: Response) => {
   try {
-    console.log("Testing prepared statement-like query...");
     const connection = getConnection();
 
     const params = ["test_key_%", "alice@example.com"];
@@ -764,7 +716,6 @@ app.get("/advanced/prepared", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("Prepared query results:", results);
       res.json({
         message: "Prepared-like query executed",
         count: results.length,
@@ -782,7 +733,6 @@ app.get("/advanced/prepared", async (req: Request, res: Response) => {
 // Test connection.ping()
 app.get("/lifecycle/ping", async (req: Request, res: Response) => {
   try {
-    console.log("Testing connection.ping()...");
     const connection = getConnection();
 
     connection.ping((error) => {
@@ -791,7 +741,6 @@ app.get("/lifecycle/ping", async (req: Request, res: Response) => {
         return res.status(500).json({ error: error.message });
       }
 
-      console.log("Ping successful");
       res.json({
         message: "Ping successful",
         status: "ok",
@@ -806,8 +755,6 @@ app.get("/lifecycle/ping", async (req: Request, res: Response) => {
 // Test connection.end() and reconnect
 app.get("/lifecycle/end-and-reconnect", async (req: Request, res: Response) => {
   try {
-    console.log("Testing connection.end()...");
-
     // Create a temporary connection for this test
     const tempConnection = mysql.createConnection({
       host: process.env.MYSQL_HOST || "mysql",
@@ -821,7 +768,6 @@ app.get("/lifecycle/end-and-reconnect", async (req: Request, res: Response) => {
 
     // Listen for end event
     tempConnection.on("end", () => {
-      console.log("'end' event received");
       endEventReceived = true;
     });
 
@@ -838,8 +784,6 @@ app.get("/lifecycle/end-and-reconnect", async (req: Request, res: Response) => {
           console.error("Error ending connection:", endError);
           return res.status(500).json({ error: endError.message });
         }
-
-        console.log("Connection ended successfully");
 
         // Give time for end event to fire
         setTimeout(() => {
@@ -860,8 +804,6 @@ app.get("/lifecycle/end-and-reconnect", async (req: Request, res: Response) => {
 // Test connection.changeUser()
 app.post("/lifecycle/change-user", async (req: Request, res: Response) => {
   try {
-    console.log("Testing connection.changeUser()...");
-
     // Create a temporary connection for this test
     const tempConnection = mysql.createConnection({
       host: process.env.MYSQL_HOST || "mysql",
@@ -892,7 +834,6 @@ app.post("/lifecycle/change-user", async (req: Request, res: Response) => {
             return res.status(500).json({ error: changeError.message });
           }
 
-          console.log("User changed successfully");
           res.json({
             message: "User changed successfully",
             status: "ok",
@@ -909,7 +850,6 @@ app.post("/lifecycle/change-user", async (req: Request, res: Response) => {
 // Test connection.pause() and resume()
 app.get("/lifecycle/pause-resume", async (req: Request, res: Response) => {
   try {
-    console.log("Testing connection.pause() and resume()...");
     const connection = getConnection();
 
     const results: any[] = [];
@@ -925,14 +865,12 @@ app.get("/lifecycle/pause-resume", async (req: Request, res: Response) => {
           // Pause after first result
           connection.pause();
           isPaused = true;
-          console.log("Connection paused");
 
           // Resume after a short delay
           resumePromise = new Promise((resolve) => {
             setTimeout(() => {
               connection.resume();
               isResumed = true;
-              console.log("Connection resumed");
               resolve();
             }, 50);
           });
@@ -949,7 +887,6 @@ app.get("/lifecycle/pause-resume", async (req: Request, res: Response) => {
           await resumePromise;
         }
 
-        console.log("Pause/Resume query completed");
         res.json({
           message: "Pause and resume executed",
           isPaused,
@@ -969,8 +906,6 @@ app.get("/lifecycle/pause-resume", async (req: Request, res: Response) => {
 // Test pool.end() and recreate
 app.get("/pool/end-and-recreate", async (req: Request, res: Response) => {
   try {
-    console.log("Testing pool.end()...");
-
     // Create a temporary pool for this test
     const tempPool = mysql.createPool({
       host: process.env.MYSQL_HOST || "mysql",
@@ -988,8 +923,6 @@ app.get("/pool/end-and-recreate", async (req: Request, res: Response) => {
         return res.status(500).json({ error: queryError.message });
       }
 
-      console.log("Test query executed on temp pool");
-
       // Now end the pool
       tempPool.end((endError) => {
         if (endError) {
@@ -997,7 +930,6 @@ app.get("/pool/end-and-recreate", async (req: Request, res: Response) => {
           return res.status(500).json({ error: endError.message });
         }
 
-        console.log("Pool ended successfully");
         res.json({
           message: "Pool ended successfully",
           status: "ok",
@@ -1015,8 +947,6 @@ app.get("/pool/end-and-recreate", async (req: Request, res: Response) => {
 // Test 'connect' event emission
 app.get("/events/connect", async (req: Request, res: Response) => {
   try {
-    console.log("Testing 'connect' event...");
-
     let connectEventReceived = false;
 
     // Create a new connection to test connect event
@@ -1030,7 +960,6 @@ app.get("/events/connect", async (req: Request, res: Response) => {
 
     // Listen for connect event
     testConnection.on("connect", () => {
-      console.log("'connect' event received");
       connectEventReceived = true;
     });
 
@@ -1043,7 +972,6 @@ app.get("/events/connect", async (req: Request, res: Response) => {
           return res.status(500).json({ error: error.message });
         }
 
-        console.log("Connect event test completed");
         res.json({
           message: "Connect event tested",
           connectEventReceived,
@@ -1060,8 +988,6 @@ app.get("/events/connect", async (req: Request, res: Response) => {
 // Test: Connection.destroy() - not patched
 app.get("/test/connection-destroy", async (req: Request, res: Response) => {
   try {
-    console.log("Testing connection.destroy()...");
-
     // Create a temporary connection for this test
     const tempConnection = mysql.createConnection({
       host: process.env.MYSQL_HOST || "mysql",
@@ -1103,7 +1029,6 @@ app.get("/test/connection-destroy", async (req: Request, res: Response) => {
 // Test Query.prototype.stream() method
 app.get("/stream/query-stream-method", async (req: Request, res: Response) => {
   try {
-    console.log("Testing query.stream() method...");
     const connection = getConnection();
 
     const results: any[] = [];
@@ -1118,11 +1043,9 @@ app.get("/stream/query-stream-method", async (req: Request, res: Response) => {
         res.status(500).json({ error: err.message });
       })
       .on("data", (row) => {
-        console.log("Received data from stream:", row);
         results.push(row);
       })
       .on("end", () => {
-        console.log("Stream ended");
         res.json({
           message: "Stream query executed",
           count: results.length,
@@ -1137,7 +1060,6 @@ app.get("/stream/query-stream-method", async (req: Request, res: Response) => {
 
 app.get("/test/query-object-reuse", async (req: Request, res: Response) => {
   try {
-    console.log("Testing query object passed directly...");
     const connection = getConnection();
 
     // Create a query object manually using Connection.createQuery
@@ -1167,8 +1089,6 @@ app.get("/test/query-object-reuse", async (req: Request, res: Response) => {
 // Test PoolNamespace.query().stream()
 app.get("/test/pool-namespace-query-stream", async (req: Request, res: Response) => {
   try {
-    console.log("Testing PoolNamespace.query().stream()...");
-
     // Create a pool cluster
     const poolCluster = mysql.createPoolCluster();
 
@@ -1196,11 +1116,9 @@ app.get("/test/pool-namespace-query-stream", async (req: Request, res: Response)
         res.status(500).json({ error: err.message });
       })
       .on("data", (row) => {
-        console.log("Received data from stream:", row);
         results.push(row);
       })
       .on("end", () => {
-        console.log("Stream ended");
         poolCluster.end(() => {});
         res.json({
           message: "PoolNamespace.query().stream() test completed",
@@ -1217,7 +1135,6 @@ app.get("/test/pool-namespace-query-stream", async (req: Request, res: Response)
 // Pool connection with beginTransaction(options, callback) signature
 app.post("/test/pool-connection-transaction-options", async (req: Request, res: Response) => {
   try {
-    console.log("Testing pool connection with beginTransaction(options, callback)...");
     const pool = getPool();
 
     pool.getConnection((err, connection) => {
@@ -1277,7 +1194,6 @@ app.get(
   "/test/pool-getconnection-query-with-internal-callback",
   async (req: Request, res: Response) => {
     try {
-      console.log("Testing pool.getConnection() then query with pre-created Query object...");
       const pool = getPool();
 
       pool.getConnection((err, connection) => {
@@ -1297,7 +1213,6 @@ app.get(
               return res.status(500).json({ error: queryErr.message });
             }
 
-            console.log("Query callback results:", results);
             res.json({
               message: "pool.getConnection().query with internal callback completed",
               count: results.length,
@@ -1321,10 +1236,6 @@ app.get(
   "/test/pool-namespace-query-with-internal-callback",
   async (req: Request, res: Response) => {
     try {
-      console.log(
-        "Testing PoolNamespace.query() with pre-created Query object having internal _callback...",
-      );
-
       // Create a pool cluster
       const poolCluster = mysql.createPoolCluster();
 
@@ -1348,7 +1259,6 @@ app.get(
             return res.status(500).json({ error: err.message });
           }
 
-          console.log("Query callback results:", results);
           res.json({
             message: "PoolNamespace.query with internal callback completed",
             count: results.length,
@@ -1384,9 +1294,7 @@ const knex = Knex({
 
 app.get("/knex/basic-select", async (req: Request, res: Response) => {
   try {
-    console.log("Testing knex basic select...");
     const results = await knex("cache").select("*").limit(3);
-    console.log("Knex basic select results:", results);
     res.json({
       message: "Knex basic select completed",
       count: results.length,
@@ -1400,9 +1308,7 @@ app.get("/knex/basic-select", async (req: Request, res: Response) => {
 
 app.get("/knex/raw-query", async (req: Request, res: Response) => {
   try {
-    console.log("Testing knex raw query...");
     const results = await knex.raw("SELECT COUNT(*) as count FROM cache");
-    console.log("Knex raw query results:", results);
     res.json({
       message: "Knex raw query completed",
       data: results[0],
