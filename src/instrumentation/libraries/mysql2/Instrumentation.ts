@@ -1549,6 +1549,9 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     callback: Function | undefined,
     context: Pool,
   ): any {
+    // Preserve request trace context across mysql2 callback/promise boundaries.
+    const parentContext = otelContext.active();
+
     if (callback) {
       // Callback-based getConnection
       const wrappedCallback = (error: Error | null, connection?: PoolConnection) => {
@@ -1580,45 +1583,49 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
             logger.error(`[Mysql2Instrumentation] error processing getConnection response:`, error);
           }
         }
-        return callback(error, connection);
+        return otelContext.with(parentContext, () => callback(error, connection));
       };
 
-      return originalGetConnection.call(context, wrappedCallback);
+      return otelContext.with(parentContext, () => originalGetConnection.call(context, wrappedCallback));
     } else {
       // Promise-based getConnection
-      const promise = originalGetConnection.call(context);
+      const promise = otelContext.with(parentContext, () => originalGetConnection.call(context));
 
       return promise
         .then((connection: PoolConnection) => {
-          logger.debug(
-            `[Mysql2Instrumentation] MySQL2 Pool getConnection completed successfully (${SpanUtils.getTraceInfo()})`,
-          );
-          try {
-            SpanUtils.addSpanAttributes(spanInfo.span, {
-              outputValue: {
-                connected: true,
-                hasConnection: !!connection,
-              },
-            });
-            SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-          } catch (error) {
-            logger.error(`[Mysql2Instrumentation] error processing getConnection response:`, error);
-          }
-          return connection;
+          return otelContext.with(parentContext, () => {
+            logger.debug(
+              `[Mysql2Instrumentation] MySQL2 Pool getConnection completed successfully (${SpanUtils.getTraceInfo()})`,
+            );
+            try {
+              SpanUtils.addSpanAttributes(spanInfo.span, {
+                outputValue: {
+                  connected: true,
+                  hasConnection: !!connection,
+                },
+              });
+              SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+            } catch (error) {
+              logger.error(`[Mysql2Instrumentation] error processing getConnection response:`, error);
+            }
+            return connection;
+          });
         })
         .catch((error: Error) => {
-          logger.debug(
-            `[Mysql2Instrumentation] MySQL2 Pool getConnection error: ${error.message} (${SpanUtils.getTraceInfo()})`,
-          );
-          try {
-            SpanUtils.endSpan(spanInfo.span, {
-              code: SpanStatusCode.ERROR,
-              message: error.message,
-            });
-          } catch (error) {
-            logger.error(`[Mysql2Instrumentation] error ending span:`, error);
-          }
-          throw error;
+          return otelContext.with(parentContext, () => {
+            logger.debug(
+              `[Mysql2Instrumentation] MySQL2 Pool getConnection error: ${error.message} (${SpanUtils.getTraceInfo()})`,
+            );
+            try {
+              SpanUtils.endSpan(spanInfo.span, {
+                code: SpanStatusCode.ERROR,
+                message: error.message,
+              });
+            } catch (error) {
+              logger.error(`[Mysql2Instrumentation] error ending span:`, error);
+            }
+            throw error;
+          });
         });
     }
   }

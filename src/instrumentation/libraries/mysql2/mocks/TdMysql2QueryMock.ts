@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { Readable } from "stream";
 import { SpanKind } from "@opentelemetry/api";
-import { SpanInfo } from "../../../../core/tracing/SpanUtils";
+import { SpanInfo, SpanUtils } from "../../../../core/tracing/SpanUtils";
 import { TuskDriftCore } from "../../../../core/TuskDrift";
 import { findMockResponseAsync } from "../../../core/utils/mockResponseUtils";
 import { logger } from "../../../../core/utils/logger";
@@ -142,6 +142,17 @@ export class TdMysql2QueryMock {
         if (!mockData) {
           const sql = queryConfig.sql || inputValue.sql || "UNKNOWN_QUERY";
           logger.warn(`[Mysql2Instrumentation] No mock data found for MySQL2 query: ${sql}`);
+          logger.warn(`[Mysql2Instrumentation] Replay mock miss diagnostics`, {
+            traceId: spanInfo.traceId,
+            spanId: spanInfo.spanId,
+            replayTraceId: SpanUtils.getCurrentReplayTraceId(),
+            spanName,
+            submoduleName,
+            clientType: inputValue.clientType,
+            querySql: sql,
+            normalizedQuerySql: this._normalizeSqlForDebug(sql),
+            valuesCount: Array.isArray(inputValue.values) ? inputValue.values.length : 0,
+          });
 
           throw new Error(`[Mysql2Instrumentation] No matching mock found for query: ${sql}`);
         }
@@ -321,5 +332,9 @@ export class TdMysql2QueryMock {
       rows: restoredResult,
       fields: [],
     };
+  }
+
+  private _normalizeSqlForDebug(sql: string): string {
+    return sql.replace(/\s+/g, " ").trim().toLowerCase();
   }
 }
