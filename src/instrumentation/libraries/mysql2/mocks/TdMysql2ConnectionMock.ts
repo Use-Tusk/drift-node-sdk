@@ -58,7 +58,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
 
     const rawInputValue = {
       sql: queryConfig.sql,
-      values: queryConfig.values || [],
+      values: queryConfig.values,
       clientType: this.clientType, // Use the stored clientType instead of hardcoded value
     };
 
@@ -101,7 +101,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
 
     const rawInputValue = {
       sql: queryConfig.sql,
-      values: queryConfig.values || [],
+      values: queryConfig.values,
       clientType: this.clientType, // Use the stored clientType instead of hardcoded value
     };
 
