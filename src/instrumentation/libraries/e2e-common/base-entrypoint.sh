@@ -50,11 +50,33 @@ print_replay_diagnostics() {
   local matched
   matched=$(grep -R --line-number -E "$patterns" .tusk/logs 2>/dev/null || true)
 
-  if [ -n "$matched" ]; then
-    echo "$matched"
-  else
+  if [ -z "$matched" ]; then
     log "No matching replay diagnostics found in .tusk/logs." "$YELLOW"
+    return
   fi
+
+  echo "$matched"
+  log ""
+  log "Expanded miss contexts:" "$YELLOW"
+
+  local miss_lines
+  miss_lines=$(grep -R --line-number "Replay mock miss diagnostics" .tusk/logs 2>/dev/null || true)
+  if [ -z "$miss_lines" ]; then
+    return
+  fi
+
+  # Print a focused context window around each miss diagnostics block.
+  while IFS= read -r hit; do
+    [ -z "$hit" ] && continue
+    local file
+    local line
+    file=$(echo "$hit" | cut -d: -f1)
+    line=$(echo "$hit" | cut -d: -f2)
+    local start=$((line > 3 ? line - 3 : 1))
+    local end=$((line + 20))
+    log "--- $file:$start-$end ---" "$YELLOW"
+    sed -n "${start},${end}p" "$file" 2>/dev/null || true
+  done <<< "$miss_lines"
 }
 
 # Stop the server and all its child processes (npm spawns node underneath)
