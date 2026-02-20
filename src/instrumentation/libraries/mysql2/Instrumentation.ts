@@ -32,6 +32,7 @@ const V3_11_5_TO_4_0 = ">=3.11.5 <4.0.0";
 
 export class Mysql2Instrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "Mysql2Instrumentation";
+  private readonly CONTEXT_BOUND_CONNECTION = Symbol("mysql2-context-bound-connection");
   private mode: TuskDriftMode;
   private queryMock: TdMysql2QueryMock;
 
@@ -1555,6 +1556,9 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     if (callback) {
       // Callback-based getConnection
       const wrappedCallback = (error: Error | null, connection?: PoolConnection) => {
+        const scopedConnection = connection
+          ? this._bindConnectionMethodsToContext(connection, parentContext)
+          : connection;
         if (error) {
           logger.debug(
             `[Mysql2Instrumentation] MySQL2 Pool getConnection error: ${error.message} (${SpanUtils.getTraceInfo()})`,
@@ -1575,7 +1579,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
             SpanUtils.addSpanAttributes(spanInfo.span, {
               outputValue: {
                 connected: true,
-                hasConnection: !!connection,
+                hasConnection: !!scopedConnection,
               },
             });
             SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
@@ -1583,7 +1587,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
             logger.error(`[Mysql2Instrumentation] error processing getConnection response:`, error);
           }
         }
-        return otelContext.with(parentContext, () => callback(error, connection));
+        return otelContext.with(parentContext, () => callback(error, scopedConnection));
       };
 
       return otelContext.with(parentContext, () => originalGetConnection.call(context, wrappedCallback));
@@ -1593,6 +1597,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
 
       return promise
         .then((connection: PoolConnection) => {
+          const scopedConnection = this._bindConnectionMethodsToContext(connection, parentContext);
           return otelContext.with(parentContext, () => {
             logger.debug(
               `[Mysql2Instrumentation] MySQL2 Pool getConnection completed successfully (${SpanUtils.getTraceInfo()})`,
@@ -1601,14 +1606,14 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
               SpanUtils.addSpanAttributes(spanInfo.span, {
                 outputValue: {
                   connected: true,
-                  hasConnection: !!connection,
+                  hasConnection: !!scopedConnection,
                 },
               });
               SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
             } catch (error) {
               logger.error(`[Mysql2Instrumentation] error processing getConnection response:`, error);
             }
-            return connection;
+            return scopedConnection;
           });
         })
         .catch((error: Error) => {
@@ -1628,6 +1633,28 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
           });
         });
     }
+  }
+
+  private _bindConnectionMethodsToContext(
+    connection: PoolConnection,
+    parentContext: ReturnType<typeof otelContext.active>,
+  ): PoolConnection {
+    const conn = connection as any;
+    if (!conn || conn[this.CONTEXT_BOUND_CONNECTION]) {
+      return connection;
+    }
+
+    const methods = ["query", "execute", "beginTransaction", "commit", "rollback"];
+    for (const method of methods) {
+      const original = conn[method];
+      if (typeof original !== "function") continue;
+      conn[method] = (...args: any[]) => {
+        return otelContext.with(parentContext, () => original.apply(conn, args));
+      };
+    }
+
+    conn[this.CONTEXT_BOUND_CONNECTION] = true;
+    return connection;
   }
 
   private handleNoOpReplayGetConnection(callback?: Function): any {
