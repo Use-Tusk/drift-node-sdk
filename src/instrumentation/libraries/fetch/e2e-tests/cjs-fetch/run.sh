@@ -34,7 +34,7 @@ echo -e "${BLUE}Starting test...${NC}"
 echo ""
 
 set +e
-docker compose -p "$PROJECT_NAME" run --rm app
+docker compose -p "$PROJECT_NAME" run --rm -e TUSK_USE_RUST_CORE="${TUSK_USE_RUST_CORE:-}" app
 EXIT_CODE=$?
 set -e
 

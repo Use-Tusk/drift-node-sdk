@@ -57,6 +57,7 @@ jobs:
       - name: Run E2E tests for ${{ matrix.library }}
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
+          TUSK_USE_RUST_CORE: "1"
           TUSK_CLI_VERSION: ${{ steps.tusk-version.outputs.version }}
           # Required for Firestore e2e tests
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}

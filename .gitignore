@@ -50,3 +50,5 @@ Thumbs.db
 **/e2e-tests/**/.tusk/traces/
 
 .direnv
+experimental/
+benchmarks/results/

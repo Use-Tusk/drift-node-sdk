@@ -1,14 +1,46 @@
 import { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 import { SpanKind as OtSpanKind } from "@opentelemetry/api";
-import { JsonSchemaHelper, JsonSchemaType, JsonSchema } from "./JsonSchemaHelper";
+import { JsonSchemaHelper, JsonSchemaType, JsonSchema, SchemaMerges } from "./JsonSchemaHelper";
 import { CleanSpanData, TdSpanAttributes } from "../types";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../utils";
+import { buildSpanProtoBytes, processExportPayloadJsonable } from "../rustCoreBinding";
 
 /**
  * Utility class for transforming OpenTelemetry spans to CleanSpanData
  */
 export class SpanTransformer {
+  private static processPayload(
+    data: unknown,
+    schemaMerges?: SchemaMerges,
+  ): {
+    normalizedValue: unknown;
+    schema: JsonSchema;
+    decodedValueHash: string;
+    decodedSchemaHash: string;
+  } {
+    const rustResult = processExportPayloadJsonable(data, schemaMerges);
+    if (rustResult) {
+      return {
+        normalizedValue: rustResult.normalizedValue,
+        schema: rustResult.decodedSchema as JsonSchema,
+        decodedValueHash: rustResult.decodedValueHash,
+        decodedSchemaHash: rustResult.decodedSchemaHash,
+      };
+    }
+
+    const { schema, decodedValueHash, decodedSchemaHash } = JsonSchemaHelper.generateSchemaAndHash(
+      data,
+      schemaMerges,
+    );
+    return {
+      normalizedValue: data,
+      schema,
+      decodedValueHash,
+      decodedSchemaHash,
+    };
+  }
+
   /**
    * Transform OpenTelemetry span to clean JSON format with compile-time type safety
    * Return type is derived from protobuf schema but uses clean JSON.
@@ -34,10 +66,11 @@ export class SpanTransformer {
       : undefined;
 
     const {
+      normalizedValue: normalizedInputData,
       schema: inputSchema,
       decodedValueHash: inputValueHash,
       decodedSchemaHash: inputSchemaHash,
-    } = JsonSchemaHelper.generateSchemaAndHash(inputData, inputSchemaMerges);
+    } = SpanTransformer.processPayload(inputData, inputSchemaMerges);
 
     // Process output data
     let outputData: unknown = {};
@@ -56,16 +89,18 @@ export class SpanTransformer {
         : undefined;
 
       ({
+        normalizedValue: outputData,
         schema: outputSchema,
         decodedValueHash: outputValueHash,
         decodedSchemaHash: outputSchemaHash,
-      } = JsonSchemaHelper.generateSchemaAndHash(outputData, outputSchemaMerges));
+      } = SpanTransformer.processPayload(outputData, outputSchemaMerges));
     } else {
       ({
+        normalizedValue: outputData,
         schema: outputSchema,
         decodedValueHash: outputValueHash,
         decodedSchemaHash: outputSchemaHash,
-      } = JsonSchemaHelper.generateSchemaAndHash(outputData));
+      } = SpanTransformer.processPayload(outputData));
     }
 
     let metadata: Record<string, unknown> | undefined = undefined;
@@ -85,6 +120,36 @@ export class SpanTransformer {
       }
     }
 
+    const protoSpanBytes = buildSpanProtoBytes({
+      traceId: span.spanContext().traceId,
+      spanId: span.spanContext().spanId,
+      parentSpanId: span.parentSpanId || "",
+      name: (attributes[TdSpanAttributes.NAME] as string) || "",
+      packageName,
+      instrumentationName,
+      submoduleName: submoduleName || "",
+      packageType: ((attributes[TdSpanAttributes.PACKAGE_TYPE] as PackageType) || PackageType.UNSPECIFIED) as number,
+      environment,
+      kind: span.kind as number,
+      inputSchema,
+      outputSchema,
+      inputSchemaHash,
+      outputSchemaHash,
+      inputValueHash,
+      outputValueHash,
+      statusCode: span.status.code === 1 ? StatusCode.OK : StatusCode.ERROR,
+      statusMessage: span.status.message || "",
+      isPreAppStart: attributes[TdSpanAttributes.IS_PRE_APP_START] === true,
+      isRootSpan,
+      timestampSeconds: span.startTime[0],
+      timestampNanos: span.startTime[1],
+      durationSeconds: span.duration[0],
+      durationNanos: span.duration[1],
+      metadata,
+      inputValue: normalizedInputData,
+      outputValue: outputData,
+    });
+
     return {
       traceId: span.spanContext().traceId,
       spanId: span.spanContext().spanId,
@@ -99,7 +164,7 @@ export class SpanTransformer {
       packageType: (attributes[TdSpanAttributes.PACKAGE_TYPE] as PackageType) ?? undefined,
       environment,
 
-      inputValue: inputData,
+      inputValue: normalizedInputData,
       outputValue: outputData,
       inputSchema,
       outputSchema,
@@ -130,6 +195,7 @@ export class SpanTransformer {
       isRootSpan,
       metadata,
       transformMetadata,
+      protoSpanBytes: protoSpanBytes ?? undefined,
     } satisfies CleanSpanData;
   }
 
