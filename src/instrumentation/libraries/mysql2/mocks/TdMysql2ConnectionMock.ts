@@ -69,6 +69,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
         queryConfig,
         inputValue,
         this.spanInfo,
+        "query",
         stackTrace,
       );
     } else {
@@ -111,6 +112,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
         queryConfig,
         inputValue,
         this.spanInfo,
+        "execute",
         stackTrace,
       );
     } else {
