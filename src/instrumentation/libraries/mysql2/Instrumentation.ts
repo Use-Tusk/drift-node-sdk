@@ -1635,7 +1635,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       `[Mysql2Instrumentation] Background getConnection detected, returning mock connection`,
     );
 
-    const mockConnection = new TdMysql2ConnectionMock(this, "pool");
+    const mockConnection = new TdMysql2ConnectionMock(this, "poolConnection");
 
     if (callback) {
       process.nextTick(() => callback(null, mockConnection));
@@ -1648,7 +1648,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     logger.debug(`[Mysql2Instrumentation] Replaying MySQL2 Pool getConnection`);
 
     // For pool getConnection operations, simulate returning a mock connection
-    const mockConnection = new TdMysql2ConnectionMock(this, "pool", spanInfo);
+    const mockConnection = new TdMysql2ConnectionMock(this, "poolConnection", spanInfo);
 
     if (callback) {
       process.nextTick(() => callback(null, mockConnection));
