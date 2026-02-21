@@ -33,6 +33,7 @@ const V3_11_5_TO_4_0 = ">=3.11.5 <4.0.0";
 export class Mysql2Instrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "Mysql2Instrumentation";
   private readonly CONTEXT_BOUND_CONNECTION = Symbol("mysql2-context-bound-connection");
+  private readonly CONTEXT_BOUND_PARENT_CONTEXT = Symbol("mysql2-bound-parent-context");
   private mode: TuskDriftMode;
   private queryMock: TdMysql2QueryMock;
 
@@ -1663,7 +1664,15 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     parentContext: ReturnType<typeof otelContext.active>,
   ): PoolConnection {
     const conn = connection as any;
-    if (!conn || conn[this.CONTEXT_BOUND_CONNECTION]) {
+    if (!conn) {
+      return connection;
+    }
+
+    // PoolConnection objects are reused by mysql2 pools. Always refresh the
+    // request context so wrappers use the current checkout context.
+    conn[this.CONTEXT_BOUND_PARENT_CONTEXT] = parentContext;
+
+    if (conn[this.CONTEXT_BOUND_CONNECTION]) {
       return connection;
     }
 
@@ -1672,7 +1681,8 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       const original = conn[method];
       if (typeof original !== "function") continue;
       conn[method] = (...args: any[]) => {
-        return otelContext.with(parentContext, () => original.apply(conn, args));
+        const boundContext = conn[this.CONTEXT_BOUND_PARENT_CONTEXT] ?? otelContext.active();
+        return otelContext.with(boundContext, () => original.apply(conn, args));
       };
     }
 
