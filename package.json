@@ -95,6 +95,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@use-tusk/drift-core-node": "0.1.6",
     "import-in-the-middle": "^1.14.4",
     "js-yaml": "^4.1.0",
     "jsonpath": "^1.1.1",

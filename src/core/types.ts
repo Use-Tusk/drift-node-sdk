@@ -107,6 +107,7 @@ export type CleanSpanData = {
   // sdk-specific
   isUsed?: boolean;
   stackTrace?: string;
+  protoSpanBytes?: Buffer;
 };
 
 export type MockRequestData = {

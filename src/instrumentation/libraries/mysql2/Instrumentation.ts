@@ -32,6 +32,8 @@ const V3_11_5_TO_4_0 = ">=3.11.5 <4.0.0";
 
 export class Mysql2Instrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "Mysql2Instrumentation";
+  private readonly CONTEXT_BOUND_CONNECTION = Symbol("mysql2-context-bound-connection");
+  private readonly CONTEXT_BOUND_PARENT_CONTEXT = Symbol("mysql2-bound-parent-context");
   private mode: TuskDriftMode;
   private queryMock: TdMysql2QueryMock;
 
@@ -373,7 +375,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         }
 
         const inputValue: Mysql2InputValue = {
-          sql: queryConfig.sql,
+          sql: self.normalizeSqlForMockMatching(queryConfig.sql),
           values: queryConfig.values || [],
           clientType,
         };
@@ -484,7 +486,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         }
 
         const inputValue: Mysql2InputValue = {
-          sql: queryConfig.sql,
+          sql: self.normalizeSqlForMockMatching(queryConfig.sql),
           values: queryConfig.values || [],
           clientType,
         };
@@ -1402,6 +1404,29 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     return null;
   }
 
+  normalizeSqlForMockMatching(sql: string): string {
+    if (!sql) return sql;
+
+    const trimmed = sql.trim();
+
+    // knex nested transactions: SAVEPOINT trx<digits>[;]
+    if (/^savepoint\s+trx\d+\s*;?$/i.test(trimmed)) {
+      return trimmed.replace(/^(savepoint\s+)trx\d+(\s*;?)$/i, "$1trx$2");
+    }
+
+    // knex savepoint release: RELEASE SAVEPOINT trx<digits>[;]
+    if (/^release\s+savepoint\s+trx\d+\s*;?$/i.test(trimmed)) {
+      return trimmed.replace(/^(release\s+savepoint\s+)trx\d+(\s*;?)$/i, "$1trx$2");
+    }
+
+    // knex rollback to savepoint: ROLLBACK TO SAVEPOINT trx<digits>[;]
+    if (/^rollback\s+to\s+savepoint\s+trx\d+\s*;?$/i.test(trimmed)) {
+      return trimmed.replace(/^(rollback\s+to\s+savepoint\s+)trx\d+(\s*;?)$/i, "$1trx$2");
+    }
+
+    return sql;
+  }
+
   private _handleRecordQueryInSpan(
     spanInfo: SpanInfo,
     originalQuery: Function,
@@ -1549,9 +1574,15 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     callback: Function | undefined,
     context: Pool,
   ): any {
+    // Preserve request trace context across mysql2 callback/promise boundaries.
+    const parentContext = otelContext.active();
+
     if (callback) {
       // Callback-based getConnection
       const wrappedCallback = (error: Error | null, connection?: PoolConnection) => {
+        const scopedConnection = connection
+          ? this._bindConnectionMethodsToContext(connection, parentContext)
+          : connection;
         if (error) {
           logger.debug(
             `[Mysql2Instrumentation] MySQL2 Pool getConnection error: ${error.message} (${SpanUtils.getTraceInfo()})`,
@@ -1572,7 +1603,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
             SpanUtils.addSpanAttributes(spanInfo.span, {
               outputValue: {
                 connected: true,
-                hasConnection: !!connection,
+                hasConnection: !!scopedConnection,
               },
             });
             SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
@@ -1580,47 +1611,83 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
             logger.error(`[Mysql2Instrumentation] error processing getConnection response:`, error);
           }
         }
-        return callback(error, connection);
+        return otelContext.with(parentContext, () => callback(error, scopedConnection));
       };
 
-      return originalGetConnection.call(context, wrappedCallback);
+      return otelContext.with(parentContext, () => originalGetConnection.call(context, wrappedCallback));
     } else {
       // Promise-based getConnection
-      const promise = originalGetConnection.call(context);
+      const promise = otelContext.with(parentContext, () => originalGetConnection.call(context));
 
       return promise
         .then((connection: PoolConnection) => {
-          logger.debug(
-            `[Mysql2Instrumentation] MySQL2 Pool getConnection completed successfully (${SpanUtils.getTraceInfo()})`,
-          );
-          try {
-            SpanUtils.addSpanAttributes(spanInfo.span, {
-              outputValue: {
-                connected: true,
-                hasConnection: !!connection,
-              },
-            });
-            SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-          } catch (error) {
-            logger.error(`[Mysql2Instrumentation] error processing getConnection response:`, error);
-          }
-          return connection;
+          const scopedConnection = this._bindConnectionMethodsToContext(connection, parentContext);
+          return otelContext.with(parentContext, () => {
+            logger.debug(
+              `[Mysql2Instrumentation] MySQL2 Pool getConnection completed successfully (${SpanUtils.getTraceInfo()})`,
+            );
+            try {
+              SpanUtils.addSpanAttributes(spanInfo.span, {
+                outputValue: {
+                  connected: true,
+                  hasConnection: !!scopedConnection,
+                },
+              });
+              SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+            } catch (error) {
+              logger.error(`[Mysql2Instrumentation] error processing getConnection response:`, error);
+            }
+            return scopedConnection;
+          });
         })
         .catch((error: Error) => {
-          logger.debug(
-            `[Mysql2Instrumentation] MySQL2 Pool getConnection error: ${error.message} (${SpanUtils.getTraceInfo()})`,
-          );
-          try {
-            SpanUtils.endSpan(spanInfo.span, {
-              code: SpanStatusCode.ERROR,
-              message: error.message,
-            });
-          } catch (error) {
-            logger.error(`[Mysql2Instrumentation] error ending span:`, error);
-          }
-          throw error;
+          return otelContext.with(parentContext, () => {
+            logger.debug(
+              `[Mysql2Instrumentation] MySQL2 Pool getConnection error: ${error.message} (${SpanUtils.getTraceInfo()})`,
+            );
+            try {
+              SpanUtils.endSpan(spanInfo.span, {
+                code: SpanStatusCode.ERROR,
+                message: error.message,
+              });
+            } catch (error) {
+              logger.error(`[Mysql2Instrumentation] error ending span:`, error);
+            }
+            throw error;
+          });
         });
     }
+  }
+
+  private _bindConnectionMethodsToContext(
+    connection: PoolConnection,
+    parentContext: ReturnType<typeof otelContext.active>,
+  ): PoolConnection {
+    const conn = connection as any;
+    if (!conn) {
+      return connection;
+    }
+
+    // PoolConnection objects are reused by mysql2 pools. Always refresh the
+    // request context so wrappers use the current checkout context.
+    conn[this.CONTEXT_BOUND_PARENT_CONTEXT] = parentContext;
+
+    if (conn[this.CONTEXT_BOUND_CONNECTION]) {
+      return connection;
+    }
+
+    const methods = ["query", "execute", "beginTransaction", "commit", "rollback"];
+    for (const method of methods) {
+      const original = conn[method];
+      if (typeof original !== "function") continue;
+      conn[method] = (...args: any[]) => {
+        const boundContext = conn[this.CONTEXT_BOUND_PARENT_CONTEXT] ?? otelContext.active();
+        return otelContext.with(boundContext, () => original.apply(conn, args));
+      };
+    }
+
+    conn[this.CONTEXT_BOUND_CONNECTION] = true;
+    return connection;
   }
 
   private handleNoOpReplayGetConnection(callback?: Function): any {
@@ -1628,7 +1695,8 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       `[Mysql2Instrumentation] Background getConnection detected, returning mock connection`,
     );
 
-    const mockConnection = new TdMysql2ConnectionMock(this, "pool");
+    // PoolConnection extends Connection; match record-mode naming/hashes.
+    const mockConnection = new TdMysql2ConnectionMock(this, "connection");
 
     if (callback) {
       process.nextTick(() => callback(null, mockConnection));
@@ -1641,7 +1709,8 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     logger.debug(`[Mysql2Instrumentation] Replaying MySQL2 Pool getConnection`);
 
     // For pool getConnection operations, simulate returning a mock connection
-    const mockConnection = new TdMysql2ConnectionMock(this, "pool", spanInfo);
+    // PoolConnection extends Connection; match record-mode naming/hashes.
+    const mockConnection = new TdMysql2ConnectionMock(this, "connection", spanInfo);
 
     if (callback) {
       process.nextTick(() => callback(null, mockConnection));

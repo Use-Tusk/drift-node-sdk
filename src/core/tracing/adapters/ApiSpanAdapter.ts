@@ -2,12 +2,13 @@ import { ExportResult, ExportResultCode } from "@opentelemetry/core";
 import type { SpanExportAdapter } from "../TdSpanExporter";
 import { CleanSpanData } from "../../types";
 import { SpanExportServiceClient } from "@use-tusk/drift-schemas/backend/span_export_service.client";
-import { ExportSpansRequest } from "@use-tusk/drift-schemas/backend/span_export_service";
+import { ExportSpansRequest, ExportSpansResponse } from "@use-tusk/drift-schemas/backend/span_export_service";
 import { TwirpFetchTransport } from "@protobuf-ts/twirp-transport";
 import { Span, PackageType, SpanKind as DriftSpanKind } from "@use-tusk/drift-schemas/core/span";
 import { SpanKind as OtelSpanKind } from "@opentelemetry/api";
 import { toStruct } from "../../utils/protobufUtils";
 import { logger } from "../../utils/logger";
+import { buildExportSpansRequestBytes } from "../../rustCoreBinding";
 
 export interface ApiSpanAdapterConfig {
   apiKey: string;
@@ -25,6 +26,8 @@ const DRIFT_API_PATH = "/api/drift";
  */
 export class ApiSpanAdapter implements SpanExportAdapter {
   readonly name = "api";
+  private apiKey: string;
+  private tuskBackendBaseUrl: string;
   private spanExportClient: SpanExportServiceClient;
   private observableServiceId: string;
   private environment?: string;
@@ -32,6 +35,8 @@ export class ApiSpanAdapter implements SpanExportAdapter {
   private sdkInstanceId: string;
 
   constructor(config: ApiSpanAdapterConfig) {
+    this.apiKey = config.apiKey;
+    this.tuskBackendBaseUrl = config.tuskBackendBaseUrl;
     this.observableServiceId = config.observableServiceId;
     this.environment = config.environment;
     this.sdkVersion = config.sdkVersion;
@@ -51,6 +56,45 @@ export class ApiSpanAdapter implements SpanExportAdapter {
 
   async exportSpans(spans: CleanSpanData[]): Promise<ExportResult> {
     try {
+      const rustRequestBytes = buildExportSpansRequestBytes(
+        this.observableServiceId,
+        this.environment || "",
+        this.sdkVersion,
+        this.sdkInstanceId,
+        spans
+          .map((s) => s.protoSpanBytes)
+          .filter((s): s is Buffer => Buffer.isBuffer(s)),
+      );
+      const allSpansHavePrebuiltBytes = spans.length > 0 && spans.every((s) => Buffer.isBuffer(s.protoSpanBytes));
+
+      if (allSpansHavePrebuiltBytes && rustRequestBytes) {
+        const response = await fetch(
+          `${this.tuskBackendBaseUrl}${DRIFT_API_PATH}/tusk.drift.backend.v1.SpanExportService/ExportSpans`,
+          {
+            method: "POST",
+            headers: {
+              "x-api-key": this.apiKey,
+              "x-td-skip-instrumentation": "true",
+              "Content-Type": "application/protobuf",
+            },
+            body: new Uint8Array(rustRequestBytes),
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(`Remote export failed with status ${response.status}`);
+        }
+
+        const responseBytes = new Uint8Array(await response.arrayBuffer());
+        const parsed = ExportSpansResponse.fromBinary(responseBytes);
+        if (!parsed.success) {
+          throw new Error(`Remote export failed: ${parsed.message}`);
+        }
+
+        logger.debug(`Successfully exported ${spans.length} spans to remote endpoint (rust binary path)`);
+        return { code: ExportResultCode.SUCCESS };
+      }
+
       // Transform spans to protobuf format
       const protoSpans: Span[] = spans.map((span) => this.transformSpanToProtobuf(span));
 

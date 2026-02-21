@@ -199,18 +199,29 @@ app.post("/cache/insert", async (req: Request, res: Response) => {
 
     const { key, value } = req.body;
     const timestamp = Date.now();
+    const insertKey = key || `test_key_${timestamp}`;
+    const insertValue = value || `test_value_${timestamp}`;
+    const expiresAt = new Date(Date.now() + 86400000); // 1 day from now
 
     const result = await db
       .insert(cacheTable)
       .values({
-        key: key || `test_key_${timestamp}`,
-        value: value || `test_value_${timestamp}`,
-        expiresAt: new Date(Date.now() + 86400000), // 1 day from now
+        key: insertKey,
+        value: insertValue,
+        expiresAt,
+      })
+      .onConflictDoUpdate({
+        target: cacheTable.key,
+        set: {
+          value: insertValue,
+          expiresAt,
+          updatedAt: new Date(),
+        },
       })
       .returning();
 
     res.json({
-      message: "Cache entry inserted",
+      message: "Cache entry inserted or updated",
       data: result,
     });
   } catch (error: any) {

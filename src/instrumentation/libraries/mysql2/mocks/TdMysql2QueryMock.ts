@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { Readable } from "stream";
 import { SpanKind } from "@opentelemetry/api";
-import { SpanInfo } from "../../../../core/tracing/SpanUtils";
+import { SpanInfo, SpanUtils } from "../../../../core/tracing/SpanUtils";
 import { TuskDriftCore } from "../../../../core/TuskDrift";
 import { findMockResponseAsync } from "../../../core/utils/mockResponseUtils";
 import { logger } from "../../../../core/utils/logger";

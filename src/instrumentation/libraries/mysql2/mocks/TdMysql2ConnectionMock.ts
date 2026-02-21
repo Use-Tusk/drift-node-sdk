@@ -39,7 +39,8 @@ export class TdMysql2ConnectionMock extends EventEmitter {
   query(...args: any[]) {
     logger.debug(`[TdMysql2ConnectionMock] Mock connection query intercepted in REPLAY mode`);
 
-    const stackTrace = captureStackTrace(["TdMysql2ConnectionMock"]);
+    // Align replay stack traces with record path by removing both wrapper layers.
+    const stackTrace = captureStackTrace(["TdMysql2ConnectionMock", "Mysql2Instrumentation"]);
 
     // Parse query arguments similar to the main query patch
     const queryConfig = this.mysql2Instrumentation.parseQueryArgs(args);
@@ -57,7 +58,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
     }
 
     const rawInputValue = {
-      sql: queryConfig.sql,
+      sql: this.mysql2Instrumentation.normalizeSqlForMockMatching(queryConfig.sql),
       values: queryConfig.values || [],
       clientType: this.clientType, // Use the stored clientType instead of hardcoded value
     };
@@ -69,6 +70,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
         queryConfig,
         inputValue,
         this.spanInfo,
+        "query",
         stackTrace,
       );
     } else {
@@ -81,7 +83,8 @@ export class TdMysql2ConnectionMock extends EventEmitter {
   execute(...args: any[]) {
     logger.debug(`[TdMysql2ConnectionMock] Mock connection execute intercepted in REPLAY mode`);
 
-    const stackTrace = captureStackTrace(["TdMysql2ConnectionMock"]);
+    // Align replay stack traces with record path by removing both wrapper layers.
+    const stackTrace = captureStackTrace(["TdMysql2ConnectionMock", "Mysql2Instrumentation"]);
 
     // Parse execute arguments similar to the main execute patch
     const queryConfig = this.mysql2Instrumentation.parseQueryArgs(args);
@@ -99,7 +102,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
     }
 
     const rawInputValue = {
-      sql: queryConfig.sql,
+      sql: this.mysql2Instrumentation.normalizeSqlForMockMatching(queryConfig.sql),
       values: queryConfig.values || [],
       clientType: this.clientType, // Use the stored clientType instead of hardcoded value
     };
@@ -111,6 +114,7 @@ export class TdMysql2ConnectionMock extends EventEmitter {
         queryConfig,
         inputValue,
         this.spanInfo,
+        "execute",
         stackTrace,
       );
     } else {
