@@ -35,50 +35,6 @@ NC='\033[0m'
 
 log() { echo -e "${2:-$NC}$1${NC}"; }
 
-# Print targeted replay diagnostics to make CI failures actionable.
-print_replay_diagnostics() {
-  log "================================================" "$YELLOW"
-  log "Replay diagnostics (from .tusk/logs)" "$YELLOW"
-  log "================================================" "$YELLOW"
-
-  if [ ! -d ".tusk/logs" ]; then
-    log "No .tusk/logs directory found." "$YELLOW"
-    return
-  fi
-
-  local patterns="Replay mock miss diagnostics|No matching mock found for query|Mysql2Instrumentation|ROLLBACK"
-  local matched
-  matched=$(grep -R --line-number -E "$patterns" .tusk/logs 2>/dev/null || true)
-
-  if [ -z "$matched" ]; then
-    log "No matching replay diagnostics found in .tusk/logs." "$YELLOW"
-    return
-  fi
-
-  echo "$matched"
-  log ""
-  log "Expanded miss contexts:" "$YELLOW"
-
-  local miss_lines
-  miss_lines=$(grep -R --line-number "Replay mock miss diagnostics" .tusk/logs 2>/dev/null || true)
-  if [ -z "$miss_lines" ]; then
-    return
-  fi
-
-  # Print a focused context window around each miss diagnostics block.
-  while IFS= read -r hit; do
-    [ -z "$hit" ] && continue
-    local file
-    local line
-    file=$(echo "$hit" | cut -d: -f1)
-    line=$(echo "$hit" | cut -d: -f2)
-    local start=$((line > 3 ? line - 3 : 1))
-    local end=$((line + 20))
-    log "--- $file:$start-$end ---" "$YELLOW"
-    sed -n "${start},${end}p" "$file" 2>/dev/null || true
-  done <<< "$miss_lines"
-}
-
 # Stop the server and all its child processes (npm spawns node underneath)
 stop_server() {
   if [ -n "$SERVER_PID" ]; then
@@ -283,7 +239,6 @@ echo "$TEST_OUTPUT"
 # Check tusk exit code
 if [ $TUSK_EXIT -ne 0 ]; then
   log "Tusk tests failed with exit code $TUSK_EXIT" "$RED"
-  print_replay_diagnostics
   exit 1
 fi
 
@@ -294,7 +249,6 @@ ANY_FAILED=$(echo "$TEST_OUTPUT" | grep -c '"passed":\s*false' || true)
 log "================================================"
 if [ "$ANY_FAILED" -gt 0 ]; then
   log "Some tests failed!" "$RED"
-  print_replay_diagnostics
   exit 1
 elif [ "$ALL_PASSED" -gt 0 ]; then
   log "All $ALL_PASSED tests passed!" "$GREEN"
