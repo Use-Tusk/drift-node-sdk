@@ -266,19 +266,6 @@ if [ "$TRACE_COUNT" -eq 0 ]; then
   exit 1
 fi
 
-# Print focused trace-presence diagnostics for flaky SQL replay mismatches.
-# This helps distinguish "not recorded" from "recorded but not matched in replay".
-log "Trace SQL presence checks (recorded traces):" "$BLUE"
-SQL_PATTERNS=(
-  "SELECT COUNT\\(\\*\\) as total FROM test_users"
-  "SAVEPOINT"
-  "ROLLBACK"
-)
-for pattern in "${SQL_PATTERNS[@]}"; do
-  count=$(grep -R -E -c "$pattern" .tusk/traces 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
-  log "  pattern='$pattern' count=$count" "$BLUE"
-done
-
 # ============================================================
 # Phase 3: Run Tusk Tests
 # ============================================================

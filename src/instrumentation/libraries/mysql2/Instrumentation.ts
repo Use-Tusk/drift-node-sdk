@@ -374,7 +374,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         }
 
         const inputValue: Mysql2InputValue = {
-          sql: queryConfig.sql,
+          sql: self.normalizeSqlForMockMatching(queryConfig.sql),
           values: queryConfig.values || [],
           clientType,
         };
@@ -485,7 +485,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
         }
 
         const inputValue: Mysql2InputValue = {
-          sql: queryConfig.sql,
+          sql: self.normalizeSqlForMockMatching(queryConfig.sql),
           values: queryConfig.values || [],
           clientType,
         };
@@ -1403,6 +1403,29 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     return null;
   }
 
+  normalizeSqlForMockMatching(sql: string): string {
+    if (!sql) return sql;
+
+    const trimmed = sql.trim();
+
+    // knex nested transactions: SAVEPOINT trx<digits>[;]
+    if (/^savepoint\s+trx\d+\s*;?$/i.test(trimmed)) {
+      return trimmed.replace(/^(savepoint\s+)trx\d+(\s*;?)$/i, "$1trx$2");
+    }
+
+    // knex savepoint release: RELEASE SAVEPOINT trx<digits>[;]
+    if (/^release\s+savepoint\s+trx\d+\s*;?$/i.test(trimmed)) {
+      return trimmed.replace(/^(release\s+savepoint\s+)trx\d+(\s*;?)$/i, "$1trx$2");
+    }
+
+    // knex rollback to savepoint: ROLLBACK TO SAVEPOINT trx<digits>[;]
+    if (/^rollback\s+to\s+savepoint\s+trx\d+\s*;?$/i.test(trimmed)) {
+      return trimmed.replace(/^(rollback\s+to\s+savepoint\s+)trx\d+(\s*;?)$/i, "$1trx$2");
+    }
+
+    return sql;
+  }
+
   private _handleRecordQueryInSpan(
     spanInfo: SpanInfo,
     originalQuery: Function,
@@ -1662,7 +1685,8 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       `[Mysql2Instrumentation] Background getConnection detected, returning mock connection`,
     );
 
-    const mockConnection = new TdMysql2ConnectionMock(this, "poolConnection");
+    // PoolConnection extends Connection; match record-mode naming/hashes.
+    const mockConnection = new TdMysql2ConnectionMock(this, "connection");
 
     if (callback) {
       process.nextTick(() => callback(null, mockConnection));
@@ -1675,7 +1699,8 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
     logger.debug(`[Mysql2Instrumentation] Replaying MySQL2 Pool getConnection`);
 
     // For pool getConnection operations, simulate returning a mock connection
-    const mockConnection = new TdMysql2ConnectionMock(this, "poolConnection", spanInfo);
+    // PoolConnection extends Connection; match record-mode naming/hashes.
+    const mockConnection = new TdMysql2ConnectionMock(this, "connection", spanInfo);
 
     if (callback) {
       process.nextTick(() => callback(null, mockConnection));
