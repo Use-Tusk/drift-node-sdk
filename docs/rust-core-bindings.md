@@ -14,13 +14,22 @@ At a high level:
 
 ## Enablement
 
-Set:
+Rust is enabled by default when `TUSK_USE_RUST_CORE` is unset.
+
+Use `TUSK_USE_RUST_CORE` to explicitly override behavior:
+
+- Truthy: `1`, `true`, `yes`, `on`
+- Falsy: `0`, `false`, `no`, `off`
+
+Examples:
 
 ```bash
+# Explicitly enable (same as unset)
 TUSK_USE_RUST_CORE=1
-```
 
-Truthy values are `1` and `true` (case-insensitive). Any other value is treated as disabled.
+# Explicitly disable
+TUSK_USE_RUST_CORE=0
+```
 
 ## Installation Requirements
 
@@ -29,34 +38,32 @@ The Node SDK currently includes `@use-tusk/drift-core-node` as a regular depende
 Notes:
 
 - There is no Node equivalent of Python extras like `[rust]`.
-- Rust acceleration is still runtime-gated by `TUSK_USE_RUST_CORE`.
+- Rust acceleration is still runtime-gated by `TUSK_USE_RUST_CORE`, now with default-on behavior.
 - If the native binding cannot be loaded on a machine, the SDK continues on JavaScript code paths.
 
-## Platform Coverage and Native Binary Concerns
+## Platform Compatibility
 
-Node native bindings depend on OS/arch/libc compatibility of published prebuilt artifacts.
+`drift-core` publishes native artifacts across a defined support matrix. See:
 
-Practical implications:
+- [`drift-core` compatibility matrix](https://github.com/Use-Tusk/drift-core/blob/main/docs/compatibility-matrix.md)
 
-- Some platforms may not have a matching native artifact.
-- On such platforms, direct use of `@use-tusk/drift-core-node` can fail at runtime.
-- Within `drift-node-sdk`, Rust helper loading is guarded and fails open to non-Rust paths.
-
-Unlike Python wheels, this concern appears as Node native addon compatibility rather than wheel tag compatibility.
+Node native bindings depend on OS/arch/libc compatibility of published prebuilt artifacts. On unsupported platforms, `drift-node-sdk` fails open to JavaScript paths.
 
 ## Fallback Behavior
 
 The bridge module is fail-open:
 
 - Rust calls are guarded behind a binding loader.
-- If `TUSK_USE_RUST_CORE` is unset/falsey, Rust is skipped.
+- If `TUSK_USE_RUST_CORE` is falsey, Rust is skipped.
 - If loading or a Rust call fails, helper functions return `null`.
 - Calling code then uses the existing JavaScript implementation.
+
+On startup, the SDK logs whether Rust is enabled/disabled and whether it had to fall back to JavaScript.
 
 This means users do not need Rust installed to run the SDK when Rust acceleration is disabled or unavailable.
 
 ## Practical Guidance
 
-- Default production-safe posture: keep Rust disabled unless your deployment matrix is tested.
+- Default production-safe posture: keep Rust enabled (default) only on tested deployment matrices.
 - Performance posture: enable Rust and benchmark on your workloads before broad rollout.
 - Reliability posture: keep parity/smoke tests in CI to detect drift between JS and Rust paths.

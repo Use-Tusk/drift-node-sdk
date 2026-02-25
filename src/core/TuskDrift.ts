@@ -42,6 +42,7 @@ import {
 import { TransformConfigs } from "../instrumentation/libraries/types";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { Resource } from "@opentelemetry/resources";
+import { getRustCoreStartupStatus } from "./rustCoreBinding";
 
 export interface InitParams {
   apiKey?: string;
@@ -154,6 +155,31 @@ export class TuskDriftCore {
         // If no mode specified, default to disabled
         return TuskDriftMode.DISABLED;
     }
+  }
+
+  private logRustCoreStartupStatus(): void {
+    const status = getRustCoreStartupStatus();
+    const envDisplay = status.rawEnv ?? "<unset>";
+
+    if (status.reason === "invalid_env_value_defaulted") {
+      logger.warn(
+        `Invalid TUSK_USE_RUST_CORE value '${envDisplay}'; defaulting to enabled rust core path.`,
+      );
+    }
+
+    if (!status.enabled) {
+      logger.info(`Rust core path disabled at startup (env=${envDisplay}, reason=${status.reason}).`);
+      return;
+    }
+
+    if (status.bindingLoaded) {
+      logger.info(`Rust core path enabled at startup (env=${envDisplay}, reason=${status.reason}).`);
+      return;
+    }
+
+    logger.warn(
+      `Rust core path requested but binding unavailable; falling back to JavaScript path (env=${envDisplay}, reason=${status.reason}, error=${status.bindingError}).`,
+    );
   }
 
   private validateSamplingRate(value: number, source: string): boolean {
@@ -425,6 +451,7 @@ export class TuskDriftCore {
       return;
     }
 
+    this.logRustCoreStartupStatus();
     logger.debug(`Initializing in ${this.mode} mode`);
 
     if (!this.initParams.env) {

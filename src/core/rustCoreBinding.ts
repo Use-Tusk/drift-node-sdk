@@ -48,13 +48,35 @@ export type BuildSpanProtoBytesInput = {
 
 let bindingLoadAttempted = false;
 let binding: RustCoreNodeBinding | null = null;
+let bindingLoadError: string | null = null;
 
-function isRustCoreEnabled(): boolean {
+type RustCoreEnvDecision = {
+  enabled: boolean;
+  reason: "default_on" | "env_enabled" | "env_disabled" | "invalid_env_value_defaulted";
+  rawEnv: string | null;
+};
+
+export type RustCoreStartupStatus = {
+  enabled: boolean;
+  reason: RustCoreEnvDecision["reason"];
+  rawEnv: string | null;
+  bindingLoaded: boolean;
+  bindingError: string | null;
+};
+
+function getRustCoreEnvDecision(): RustCoreEnvDecision {
   const raw = process.env.TUSK_USE_RUST_CORE;
   if (!raw) {
-    return false;
+    return { enabled: true, reason: "default_on", rawEnv: null };
   }
-  return raw === "1" || raw.toLowerCase() === "true";
+  const normalized = raw.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return { enabled: true, reason: "env_enabled", rawEnv: raw };
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return { enabled: false, reason: "env_disabled", rawEnv: raw };
+  }
+  return { enabled: true, reason: "invalid_env_value_defaulted", rawEnv: raw };
 }
 
 function loadBinding(): RustCoreNodeBinding | null {
@@ -63,17 +85,31 @@ function loadBinding(): RustCoreNodeBinding | null {
   }
   bindingLoadAttempted = true;
 
-  if (!isRustCoreEnabled()) {
+  if (!getRustCoreEnvDecision().enabled) {
     return null;
   }
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     binding = require("@use-tusk/drift-core-node") as RustCoreNodeBinding;
-  } catch {
+    bindingLoadError = null;
+  } catch (error) {
     binding = null;
+    bindingLoadError = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   }
   return binding;
+}
+
+export function getRustCoreStartupStatus(): RustCoreStartupStatus {
+  const decision = getRustCoreEnvDecision();
+  const loaded = decision.enabled ? loadBinding() : null;
+  return {
+    enabled: decision.enabled,
+    reason: decision.reason,
+    rawEnv: decision.rawEnv,
+    bindingLoaded: loaded !== null,
+    bindingError: bindingLoadError,
+  };
 }
 
 function toRustSchemaMerges(schemaMerges?: Record<string, any>): Record<string, any> | undefined {
