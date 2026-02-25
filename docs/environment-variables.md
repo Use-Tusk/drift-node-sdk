@@ -130,7 +130,24 @@ TUSK_SAMPLING_RATE=0.1 npm start
 
 For more details on sampling rate configuration methods and precedence, see the [Initialization Guide](./initialization.md#3-configure-sampling-rate).
 
----
+## TUSK_USE_RUST_CORE
+
+Control optional Rust-accelerated paths in the SDK. Truthy (`1`, `true`, `yes`, `on`) enables, falsy (`0`, `false`, `no`, `off`) disables. Enabled when unset.
+
+**Notes:**
+
+- The SDK is fail-open: if Rust bindings are unavailable or a Rust call fails, it falls back to JavaScript implementations.
+- If Rust is enabled but bindings cannot be loaded, the SDK logs startup fallback and continues on JavaScript paths.
+
+**Example usage:**
+
+```bash
+# Explicitly enable Rust path (also the default when unset)
+TUSK_USE_RUST_CORE=1 npm start
+
+# Explicitly disable Rust path
+TUSK_USE_RUST_CORE=0 npm start
+```
 
 ## Related Documentation
 

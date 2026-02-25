@@ -78,3 +78,64 @@ jobs:
           docker volume prune -f || true
           # Clean up networks
           docker network prune -f || true
+
+  non-rust-smoke:
+    name: E2E Non-Rust Smoke - http
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Install SDK dependencies
+        run: npm install
+
+      - name: Build SDK
+        run: npm run build
+
+      - name: Verify SDK build
+        run: |
+          ls -la dist/ || (echo "dist folder not found!" && exit 1)
+          test -f dist/index.js || (echo "SDK build incomplete!" && exit 1)
+
+      - name: Get latest Tusk CLI version
+        id: tusk-version
+        run: |
+          VERSION=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/Use-Tusk/tusk-drift-cli/releases/latest" \
+            | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Latest Tusk CLI version: $VERSION"
+
+      - name: Run non-rust smoke test
+        env:
+          DOCKER_DEFAULT_PLATFORM: linux/amd64
+          TUSK_USE_RUST_CORE: "0"
+          TUSK_CLI_VERSION: ${{ steps.tusk-version.outputs.version }}
+          # Required by shared e2e env even if this library does not use them
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          UPSTASH_REDIS_REST_URL: ${{ vars.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: ./src/instrumentation/libraries/http/e2e-tests/run-all.sh 3000
+
+      - name: Cleanup Docker resources
+        if: always()
+        run: |
+          # Stop all running containers
+          docker ps -aq | xargs -r docker stop || true
+          docker ps -aq | xargs -r docker rm || true
+          # Clean up volumes
+          docker volume prune -f || true
+          # Clean up networks
+          docker network prune -f || true
