@@ -230,7 +230,7 @@ log "Phase 3: Running Tusk Tests" "$BLUE"
 log "================================================" "$BLUE"
 
 set +e
-TEST_OUTPUT=$(TUSK_ANALYTICS_DISABLED=1 tusk run --print --output-format json --enable-service-logs 2>&1)
+TEST_OUTPUT=$(TUSK_ANALYTICS_DISABLED=1 TUSK_REQUIRE_INBOUND_REPLAY_SPAN=1 tusk run --print --output-format json --enable-service-logs 2>&1)
 TUSK_EXIT=$?
 set -e
 
