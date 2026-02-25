@@ -21,10 +21,17 @@ if [[ "$CURRENT_BRANCH" != "main" ]]; then
   exit 1
 fi
 
-# Ensure working directory is clean
-if [[ -n $(git status --porcelain) ]]; then
-  echo "Error: Working directory is not clean. Commit or stash changes first."
+# Check for uncommitted tracked changes
+if ! git diff --quiet || ! git diff --staged --quiet; then
+  echo "Error: Tracked files have uncommitted changes. Commit or stash changes first."
   exit 1
+fi
+
+# Check for untracked files (warning only)
+UNTRACKED=$(git ls-files --others --exclude-standard)
+if [[ -n "$UNTRACKED" ]]; then
+  echo "Warning: Untracked files present (continuing anyway):"
+  echo "$UNTRACKED" | sed -n '1,5p'
 fi
 
 # Pull latest changes
