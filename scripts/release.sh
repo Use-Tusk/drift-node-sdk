@@ -38,12 +38,70 @@ fi
 echo "Pulling latest changes..."
 git pull origin main
 
+# Check if there are commits since last tag (previous release)
+LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+if [[ -n "$LAST_TAG" ]]; then
+  COMMITS_SINCE_TAG=$(git rev-list "$LAST_TAG"..HEAD --count)
+  if [[ "$COMMITS_SINCE_TAG" -eq 0 ]]; then
+    echo "Error: No commits since last tag ($LAST_TAG). Nothing to release."
+    exit 1
+  fi
+  echo "Commits since $LAST_TAG: $COMMITS_SINCE_TAG"
+else
+  echo "No previous tags found; this appears to be the first release."
+fi
+
+# Calculate the next version without tagging/committing yet
+CURRENT_VERSION=$(node -p "require('./package.json').version")
+IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+if [[ -z "$MAJOR" || -z "$MINOR" || -z "$PATCH" ]]; then
+  echo "Error: Failed to parse current version: $CURRENT_VERSION"
+  exit 1
+fi
+
+case "$VERSION_TYPE" in
+  patch)
+    PATCH=$((PATCH + 1))
+    ;;
+  minor)
+    MINOR=$((MINOR + 1))
+    PATCH=0
+    ;;
+  major)
+    MAJOR=$((MAJOR + 1))
+    MINOR=0
+    PATCH=0
+    ;;
+esac
+
+NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+NEW_TAG="v$NEW_VERSION"
+
+# Check if tag already exists
+if git rev-parse "$NEW_TAG" &>/dev/null; then
+  echo "Error: Tag $NEW_TAG already exists!"
+  exit 1
+fi
+
+echo ""
+echo "Ready to release: $NEW_VERSION"
+echo "This will:"
+echo "  1. Bump version ($CURRENT_VERSION -> $NEW_VERSION)"
+echo "  2. Commit the version bump and create tag $NEW_TAG"
+echo "  3. Push commit and tag to origin"
+echo "  4. Create a GitHub release"
+echo ""
+read -p "Proceed? [y/N] " -n 1 -r
+echo ""
+
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  echo "Aborted."
+  exit 0
+fi
+
 # Bump version (this updates package.json, package-lock.json, commits, and tags)
 echo "Bumping $VERSION_TYPE version..."
 npm version "$VERSION_TYPE" -m "bump to v%s"
-
-# Get the new version
-NEW_VERSION=$(node -p "require('./package.json').version")
 
 # Push commit and tag
 echo "Pushing to origin..."
