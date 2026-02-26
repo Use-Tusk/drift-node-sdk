@@ -48,7 +48,14 @@ export async function GET(request: NextRequest) {
     console.error("Error getting weather data", { error, location: request.nextUrl.searchParams.get("location") });
 
     const fallbackLocation = request.nextUrl.searchParams.get("location") || "San Francisco";
-    return NextResponse.json(buildWeatherPayload(fallbackLocation, {}, true));
+    return NextResponse.json(
+      {
+        ...buildWeatherPayload(fallbackLocation, {}, true),
+        error: "Failed to fetch weather data",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 502 },
+    );
   }
 }
 
@@ -77,6 +84,13 @@ export async function POST(request: NextRequest) {
     console.error("Error getting weather data (POST)", { error });
 
     const fallbackLocation = (await request.clone().json().catch(() => ({}))).location || "San Francisco";
-    return NextResponse.json(buildWeatherPayload(fallbackLocation, {}, true));
+    return NextResponse.json(
+      {
+        ...buildWeatherPayload(fallbackLocation, {}, true),
+        error: "Failed to fetch weather data",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 502 },
+    );
   }
 }
