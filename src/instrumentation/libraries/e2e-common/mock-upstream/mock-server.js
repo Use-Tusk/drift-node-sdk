@@ -92,6 +92,21 @@ const server = http.createServer(async (req, res) => {
     return sendText(res, "User-agent: *\nDisallow: /deny\n");
   }
 
+  if (method === "GET" && url.searchParams.get("format") === "j1") {
+    const location = decodeURIComponent(path.replace(/^\/+/, "") || "San Francisco");
+    return sendJson(res, {
+      current_condition: [
+        {
+          temp_F: "72",
+          humidity: "55",
+          localObsDateTime: "2026-02-26 07:00 PM",
+          weatherDesc: [{ value: `Clear (${location})` }],
+          pressure: "1015",
+        },
+      ],
+    });
+  }
+
   return sendJson(res, { error: `No mock route for ${method} ${path}` }, 404);
 });
 
