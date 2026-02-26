@@ -15,10 +15,33 @@ function upstreamUrl(rawUrl) {
 }
 
 function withExternalTimeout(init = {}) {
+  if (init.signal) {
+    return init;
+  }
+
+  const timeoutSignal = createTimeoutSignal(EXTERNAL_HTTP_TIMEOUT_MS);
   return {
     ...init,
-    signal: init.signal ?? AbortSignal.timeout(EXTERNAL_HTTP_TIMEOUT_MS),
+    ...(timeoutSignal ? { signal: timeoutSignal } : {}),
   };
+}
+
+function createTimeoutSignal(timeoutMs) {
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    return AbortSignal.timeout(timeoutMs);
+  }
+
+  if (typeof AbortController === "undefined") {
+    return undefined;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (typeof timer.unref === "function") {
+    timer.unref();
+  }
+  controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+  return controller.signal;
 }
 
 function resolveClient(target) {
