@@ -1,4 +1,11 @@
 services:
+  mock-upstream:
+    image: node:18
+    command: ["node", "/mock/mock-server.js"]
+    working_dir: /mock
+    volumes:
+      - ../../../e2e-common/mock-upstream:/mock:ro
+
   app:
     build:
       context: ../../../../../..
@@ -13,6 +20,9 @@ services:
       - BENCHMARKS=${BENCHMARKS:-}
       - BENCHMARK_DURATION=${BENCHMARK_DURATION:-5}
       - BENCHMARK_WARMUP=${BENCHMARK_WARMUP:-3}
+      - USE_MOCK_EXTERNALS=${USE_MOCK_EXTERNALS:-1}
+      - MOCK_SERVER_BASE_URL=${MOCK_SERVER_BASE_URL:-http://mock-upstream:8081}
+      - EXTERNAL_HTTP_TIMEOUT_MS=${EXTERNAL_HTTP_TIMEOUT_MS:-3000}
     volumes:
       # Mount SDK source for hot reload (this is what package.json expects)
       - ../../../../../..:/sdk:ro
@@ -24,4 +34,6 @@ services:
       - ./src:/app/src
       # Mount Next.js config files
       - ./next.config.mjs:/app/next.config.mjs
+    depends_on:
+      - mock-upstream
     working_dir: /app

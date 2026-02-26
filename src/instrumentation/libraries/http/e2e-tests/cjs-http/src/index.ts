@@ -1,7 +1,9 @@
 import { TuskDrift } from "./tdInit";
 import http from "http";
-import https from "https";
 import axios from "axios";
+const { getExternalHttpTimeoutMs, getTextViaNode, requestTextViaNode, upstreamUrl } = require(
+  "/sdk/src/instrumentation/libraries/e2e-common/external-http.cjs",
+);
 
 // Create HTTP server with test endpoints
 const server = http.createServer(async (req, res) => {
@@ -11,19 +13,7 @@ const server = http.createServer(async (req, res) => {
   try {
     // Test raw http.get
     if (url === "/test-http-get" && method === "GET") {
-      const result = await new Promise<string>((resolve, reject) => {
-        https
-          .get("https://jsonplaceholder.typicode.com/posts/1", (response) => {
-            let data = "";
-            response.on("data", (chunk) => {
-              data += chunk;
-            });
-            response.on("end", () => {
-              resolve(data);
-            });
-          })
-          .on("error", reject);
-      });
+      const result = await getTextViaNode("https://jsonplaceholder.typicode.com/posts/1");
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -37,31 +27,11 @@ const server = http.createServer(async (req, res) => {
 
     // Test raw http.request
     if (url === "/test-http-request" && method === "POST") {
-      const result = await new Promise<string>((resolve, reject) => {
-        const options = {
-          hostname: "jsonplaceholder.typicode.com",
-          port: 443,
-          path: "/posts",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        };
-
-        const request = https.request(options, (response) => {
-          let data = "";
-          response.on("data", (chunk) => {
-            data += chunk;
-          });
-          response.on("end", () => {
-            resolve(data);
-          });
-        });
-
-        request.on("error", reject);
-        request.write(JSON.stringify({ test: "data" }));
-        request.end();
-      });
+      const result = await requestTextViaNode(
+        "https://jsonplaceholder.typicode.com/posts",
+        "POST",
+        JSON.stringify({ test: "data" }),
+      );
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -75,19 +45,7 @@ const server = http.createServer(async (req, res) => {
 
     // Test https.get
     if (url === "/test-https-get" && method === "GET") {
-      const result = await new Promise<string>((resolve, reject) => {
-        https
-          .get("https://jsonplaceholder.typicode.com/posts/1", (response) => {
-            let data = "";
-            response.on("data", (chunk) => {
-              data += chunk;
-            });
-            response.on("end", () => {
-              resolve(data);
-            });
-          })
-          .on("error", reject);
-      });
+      const result = await getTextViaNode("https://jsonplaceholder.typicode.com/posts/1");
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -101,7 +59,9 @@ const server = http.createServer(async (req, res) => {
 
     // Test axios GET
     if (url === "/test-axios-get" && method === "GET") {
-      const response = await axios.get("https://jsonplaceholder.typicode.com/posts/1");
+      const response = await axios.get(upstreamUrl("https://jsonplaceholder.typicode.com/posts/1"), {
+        timeout: getExternalHttpTimeoutMs(),
+      });
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -115,9 +75,13 @@ const server = http.createServer(async (req, res) => {
 
     // Test axios POST
     if (url === "/test-axios-post" && method === "POST") {
-      const response = await axios.post("https://jsonplaceholder.typicode.com/posts", {
-        test: "data from axios",
-      });
+      const response = await axios.post(
+        upstreamUrl("https://jsonplaceholder.typicode.com/posts"),
+        {
+          test: "data from axios",
+        },
+        { timeout: getExternalHttpTimeoutMs() },
+      );
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -137,20 +101,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url === "/test-url-object-get" && method === "GET") {
-      const result = await new Promise<string>((resolve, reject) => {
-        const urlObj = new URL("https://jsonplaceholder.typicode.com/posts/1");
-        https
-          .get(urlObj, (response) => {
-            let data = "";
-            response.on("data", (chunk) => {
-              data += chunk;
-            });
-            response.on("end", () => {
-              resolve(data);
-            });
-          })
-          .on("error", reject);
-      });
+      const result = await getTextViaNode(new URL("https://jsonplaceholder.typicode.com/posts/1"));
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -163,26 +114,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url === "/test-url-object-request" && method === "POST") {
-      const result = await new Promise<string>((resolve, reject) => {
-        const urlObj = new URL("https://jsonplaceholder.typicode.com/posts");
-        const request = https.request(
-          urlObj,
-          { method: "POST", headers: { "Content-Type": "application/json" } },
-          (response) => {
-            let data = "";
-            response.on("data", (chunk) => {
-              data += chunk;
-            });
-            response.on("end", () => {
-              resolve(data);
-            });
-          },
-        );
-
-        request.on("error", reject);
-        request.write(JSON.stringify({ test: "url-object-request" }));
-        request.end();
-      });
+      const result = await requestTextViaNode(
+        new URL("https://jsonplaceholder.typicode.com/posts"),
+        "POST",
+        JSON.stringify({ test: "url-object-request" }),
+      );
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(

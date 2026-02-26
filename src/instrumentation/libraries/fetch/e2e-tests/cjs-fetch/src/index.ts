@@ -1,5 +1,8 @@
 import { TuskDrift } from "./tdInit";
 import express, { Request, Response } from "express";
+const { upstreamUrl, withExternalTimeout } = require(
+  "/sdk/src/instrumentation/libraries/e2e-common/external-http.cjs",
+);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,7 +12,10 @@ app.use(express.json());
 // Test endpoint using fetch GET
 app.get("/test/fetch-get", async (req: Request, res: Response) => {
   try {
-    const response = await fetch("https://jsonplaceholder.typicode.com/posts/1");
+    const response = await fetch(
+      upstreamUrl("https://jsonplaceholder.typicode.com/posts/1"),
+      withExternalTimeout(),
+    );
     const data = await response.json();
 
     res.json({
@@ -31,13 +37,16 @@ app.get("/test/fetch-get", async (req: Request, res: Response) => {
 // Test endpoint using fetch POST
 app.post("/test/fetch-post", async (req: Request, res: Response) => {
   try {
-    const response = await fetch("https://jsonplaceholder.typicode.com/posts", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(req.body),
-    });
+    const response = await fetch(
+      upstreamUrl("https://jsonplaceholder.typicode.com/posts"),
+      withExternalTimeout({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(req.body),
+      }),
+    );
 
     const data = await response.json();
 
@@ -58,14 +67,17 @@ app.post("/test/fetch-post", async (req: Request, res: Response) => {
 // Test endpoint using fetch with custom headers
 app.get("/test/fetch-headers", async (req: Request, res: Response) => {
   try {
-    const response = await fetch("https://jsonplaceholder.typicode.com/posts/1", {
-      method: "GET",
-      headers: {
-        "User-Agent": "TuskDrift-Test/1.0",
-        "X-Custom-Header": "test-value",
-        Accept: "application/json",
-      },
-    });
+    const response = await fetch(
+      upstreamUrl("https://jsonplaceholder.typicode.com/posts/1"),
+      withExternalTimeout({
+        method: "GET",
+        headers: {
+          "User-Agent": "TuskDrift-Test/1.0",
+          "X-Custom-Header": "test-value",
+          Accept: "application/json",
+        },
+      }),
+    );
 
     const data = await response.json();
 
@@ -91,7 +103,10 @@ app.get("/test/fetch-headers", async (req: Request, res: Response) => {
 // Test endpoint using fetch with JSON response
 app.get("/test/fetch-json", async (req: Request, res: Response) => {
   try {
-    const response = await fetch("https://jsonplaceholder.typicode.com/users");
+    const response = await fetch(
+      upstreamUrl("https://jsonplaceholder.typicode.com/users"),
+      withExternalTimeout(),
+    );
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -116,10 +131,10 @@ app.get("/test/fetch-json", async (req: Request, res: Response) => {
 // Test endpoint using fetch with URL object
 app.get("/test/fetch-url-object", async (req: Request, res: Response) => {
   try {
-    const url = new URL("https://jsonplaceholder.typicode.com/posts");
+    const url = new URL(upstreamUrl("https://jsonplaceholder.typicode.com/posts"));
     url.searchParams.append("_limit", "5");
 
-    const response = await fetch(url);
+    const response = await fetch(url, withExternalTimeout());
     const data = await response.json();
 
     res.json({
