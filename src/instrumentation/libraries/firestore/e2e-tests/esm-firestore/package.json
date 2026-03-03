@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@use-tusk/drift-node-sdk": "file:/sdk",
-    "@google-cloud/firestore": "^7.0.0",
+    "@google-cloud/firestore": "8.3.0",
     "express": "^4.18.2"
   },
   "devDependencies": {

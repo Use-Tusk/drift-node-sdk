@@ -31,6 +31,9 @@ services:
       - ./src:/app/src
       # Mount .tusk config (but traces/logs are created inside container)
       - ./.tusk/config.yaml:/app/.tusk/config.yaml:ro
+      # Persist traces and logs on host
+      - ./.tusk/traces:/app/.tusk/traces
+      - ./.tusk/logs:/app/.tusk/logs
     depends_on:
       - mock-upstream
     working_dir: /app

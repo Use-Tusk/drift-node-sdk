@@ -31,6 +31,9 @@ services:
       - ../../../../../../:/sdk:ro
       # Mount .tusk config for read-only access
       - ./.tusk/config.yaml:/app/.tusk/config.yaml:ro
+      # Persist traces and logs on host
+      - ./.tusk/traces:/app/.tusk/traces
+      - ./.tusk/logs:/app/.tusk/logs
       # Mount src for development
       - ./src:/app/src
     depends_on:

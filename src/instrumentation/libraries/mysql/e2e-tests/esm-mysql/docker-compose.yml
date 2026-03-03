@@ -36,6 +36,9 @@ services:
       - ../../../../../..:/sdk:ro
       # Mount .tusk folder to persist traces
       - ./.tusk/config.yaml:/app/.tusk/config.yaml:ro
+      # Persist traces and logs on host
+      - ./.tusk/traces:/app/.tusk/traces
+      - ./.tusk/logs:/app/.tusk/logs
       # Mount app source for development
       - ./src:/app/src
     working_dir: /app
