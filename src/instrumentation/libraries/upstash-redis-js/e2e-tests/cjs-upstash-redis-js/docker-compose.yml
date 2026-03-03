@@ -17,5 +17,8 @@ services:
     volumes:
       - ../../../../../..:/sdk:ro
       - ./.tusk/config.yaml:/app/.tusk/config.yaml:ro
+      # Persist traces and logs on host
+      - ./.tusk/traces:/app/.tusk/traces
+      - ./.tusk/logs:/app/.tusk/logs
       - ./src:/app/src
     working_dir: /app

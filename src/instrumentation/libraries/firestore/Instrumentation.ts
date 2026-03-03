@@ -20,7 +20,7 @@ import { TdFirestoreWriteResultMock } from "./mocks/TdFirestoreWriteResultMock";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils/logger";
 
-const FIRESTORE_VERSION = "7.*";
+const FIRESTORE_VERSIONS = ["7.*", "8.*"];
 const PACKAGE_NAME = "@google-cloud/firestore";
 
 export class FirestoreInstrumentation extends TdInstrumentationBase {
@@ -39,24 +39,24 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
     return [
       new TdInstrumentationNodeModule({
         name: PACKAGE_NAME,
-        supportedVersions: [FIRESTORE_VERSION],
+        supportedVersions: FIRESTORE_VERSIONS,
         files: [
           // Patch DocumentReference methods
           new TdInstrumentationNodeModuleFile({
             name: "@google-cloud/firestore/build/src/reference/document-reference.js",
-            supportedVersions: [FIRESTORE_VERSION],
+            supportedVersions: FIRESTORE_VERSIONS,
             patch: (moduleExports: any) => this._patchDocumentReference(moduleExports),
           }),
           // Patch CollectionReference methods
           new TdInstrumentationNodeModuleFile({
             name: "@google-cloud/firestore/build/src/reference/collection-reference.js",
-            supportedVersions: [FIRESTORE_VERSION],
+            supportedVersions: FIRESTORE_VERSIONS,
             patch: (moduleExports: any) => this._patchCollectionReference(moduleExports),
           }),
           // Patch Query methods
           new TdInstrumentationNodeModuleFile({
             name: "@google-cloud/firestore/build/src/reference/query.js",
-            supportedVersions: [FIRESTORE_VERSION],
+            supportedVersions: FIRESTORE_VERSIONS,
             patch: (moduleExports: any) => this._patchQuery(moduleExports),
           }),
         ],
