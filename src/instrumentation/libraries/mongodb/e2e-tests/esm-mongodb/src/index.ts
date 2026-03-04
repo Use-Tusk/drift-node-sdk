@@ -594,6 +594,20 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // --- Mongoose: cursor close before exhaustion ---
+    if (url === "/test/mongoose-cursor-close" && method === "GET") {
+      const items: any[] = [];
+      const cursor = Post.find({}).lean().cursor();
+      // Read only first 2 items then close
+      const first = await cursor.next();
+      if (first) items.push({ title: (first as any).title });
+      const second = await cursor.next();
+      if (second) items.push({ title: (second as any).title });
+      await cursor.close();
+      sendJson(res, 200, { success: true, data: items, count: items.length });
+      return;
+    }
+
     // 404 for unknown routes
     sendJson(res, 404, { error: "Not found" });
   } catch (error) {

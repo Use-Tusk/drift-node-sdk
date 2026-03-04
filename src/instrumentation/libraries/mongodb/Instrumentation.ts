@@ -902,6 +902,15 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       };
     }
 
+    // --- Wrap close (for early cursor termination) ---
+    if (typeof cursor.close === "function") {
+      const originalClose = cursor.close.bind(cursor);
+      cursor.close = async (): Promise<void> => {
+        finalizeCursorSpan();
+        return originalClose();
+      };
+    }
+
     // --- Wrap [Symbol.asyncIterator] ---
     if (typeof cursor[Symbol.asyncIterator] === "function") {
       const originalAsyncIterator = cursor[Symbol.asyncIterator].bind(cursor);
