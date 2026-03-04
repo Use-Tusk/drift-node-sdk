@@ -350,9 +350,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             packageName: "mongodb",
             instrumentationName: this.INSTRUMENTATION_NAME,
             inputValue,
-            inputSchemaMerges: {
-              commandArgs: { matchImportance: 0 },
-            },
             isPreAppStart,
             stopRecordingChildSpans: true,
           },
@@ -414,7 +411,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
     methodName: string,
   ): any {
     const stackTrace = captureStackTrace(["MongodbInstrumentation"]);
-
     return handleReplayMode({
       noOpRequestHandler: () => {
         return Promise.resolve(this._getNoOpResult(methodName));
@@ -432,9 +428,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             packageName: "mongodb",
             instrumentationName: this.INSTRUMENTATION_NAME,
             inputValue,
-            inputSchemaMerges: {
-              commandArgs: { matchImportance: 0 },
-            },
             isPreAppStart: !this.tuskDrift.isAppReady(),
             stopRecordingChildSpans: true,
           },
@@ -702,9 +695,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
           [TdSpanAttributes.PACKAGE_TYPE]: PackageType.MONGODB,
           [TdSpanAttributes.INPUT_VALUE]: createSpanInputValue(inputValue),
           [TdSpanAttributes.IS_PRE_APP_START]: isPreAppStart,
-          [TdSpanAttributes.INPUT_SCHEMA_MERGES]: JSON.stringify({
-            commandArgs: { matchImportance: 0 },
-          }),
         },
       });
 
@@ -738,9 +728,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                   packageName: "mongodb",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue,
-                  inputSchemaMerges: {
-                    commandArgs: { matchImportance: 0 },
-                  },
                   isPreAppStart,
                   stopRecordingChildSpans: true,
                 },
@@ -862,9 +849,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                   packageName: "mongodb",
                   instrumentationName: self.INSTRUMENTATION_NAME,
                   inputValue,
-                  inputSchemaMerges: {
-                    commandArgs: { matchImportance: 0 },
-                  },
                   isPreAppStart,
                   stopRecordingChildSpans: true,
                 },
@@ -1011,9 +995,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                 packageName: "mongodb",
                 instrumentationName: self.INSTRUMENTATION_NAME,
                 inputValue,
-                inputSchemaMerges: {
-                  commandArgs: { matchImportance: 0 },
-                },
                 isPreAppStart: !self.tuskDrift.isAppReady(),
                 stopRecordingChildSpans: true,
               },
@@ -1126,14 +1107,26 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
   /**
    * Extract command-specific arguments from the method call args.
    * Strips session from options for all methods.
+   * Strips non-deterministic metadata from all operations so that mock
+   * matching uses only the stable, user-provided content.
    */
   private _extractCommandArgs(methodName: string, args: any[]): Record<string, any> {
+    // Strip non-deterministic metadata fields (_id, createdAt, updatedAt, __v)
+    // from objects so the value hash is stable across recording and replay.
+    // These fields change every run (client-generated ObjectIds, timestamps,
+    // Mongoose version keys) and would cause hash mismatches.
+    const stripMetadata = (obj: any) => {
+      if (!obj || typeof obj !== "object") return obj;
+      const { _id, createdAt, updatedAt, __v, ...rest } = obj;
+      return rest;
+    };
+
     switch (methodName) {
       case "findOne":
       case "countDocuments":
         // (filter?, options?)
         return {
-          filter: args[0],
+          filter: stripMetadata(args[0]),
           options: sanitizeOptions(args[1]),
         };
 
@@ -1146,14 +1139,14 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       case "insertOne":
         // (doc, options?)
         return {
-          document: args[0],
+          document: stripMetadata(args[0]),
           options: sanitizeOptions(args[1]),
         };
 
       case "insertMany":
         // (docs, options?)
         return {
-          documents: args[0],
+          documents: Array.isArray(args[0]) ? args[0].map(stripMetadata) : args[0],
           options: sanitizeOptions(args[1]),
         };
 
@@ -1162,7 +1155,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       case "findOneAndUpdate":
         // (filter, update, options?)
         return {
-          filter: args[0],
+          filter: stripMetadata(args[0]),
           update: args[1],
           options: sanitizeOptions(args[2]),
         };
@@ -1172,7 +1165,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       case "findOneAndDelete":
         // (filter, options?)
         return {
-          filter: args[0],
+          filter: stripMetadata(args[0]),
           options: sanitizeOptions(args[1]),
         };
 
@@ -1180,7 +1173,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       case "findOneAndReplace":
         // (filter, replacement, options?)
         return {
-          filter: args[0],
+          filter: stripMetadata(args[0]),
           replacement: args[1],
           options: sanitizeOptions(args[2]),
         };
@@ -1189,7 +1182,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
         // (key, filter?, options?)
         return {
           key: args[0],
-          filter: args[1],
+          filter: stripMetadata(args[1]),
           options: sanitizeOptions(args[2]),
         };
 
@@ -1273,9 +1266,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
         stackTrace,
       },
       tuskDrift: this.tuskDrift,
-      inputValueSchemaMerges: {
-        commandArgs: { matchImportance: 0 },
-      },
     });
   }
 
@@ -1463,9 +1453,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             packageName: "mongodb",
             instrumentationName: this.INSTRUMENTATION_NAME,
             inputValue,
-            inputSchemaMerges: {
-              commandArgs: { matchImportance: 0 },
-            },
             isPreAppStart,
             stopRecordingChildSpans: true,
           },
@@ -1545,9 +1532,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             packageName: "mongodb",
             instrumentationName: this.INSTRUMENTATION_NAME,
             inputValue,
-            inputSchemaMerges: {
-              commandArgs: { matchImportance: 0 },
-            },
             isPreAppStart: !this.tuskDrift.isAppReady(),
             stopRecordingChildSpans: true,
           },
@@ -1617,9 +1601,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             packageName: "mongodb",
             instrumentationName: this.INSTRUMENTATION_NAME,
             inputValue,
-            inputSchemaMerges: {
-              commandArgs: { matchImportance: 0 },
-            },
             isPreAppStart,
             stopRecordingChildSpans: true,
           },
@@ -1703,9 +1684,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             packageName: "mongodb",
             instrumentationName: this.INSTRUMENTATION_NAME,
             inputValue,
-            inputSchemaMerges: {
-              commandArgs: { matchImportance: 0 },
-            },
             isPreAppStart: !this.tuskDrift.isAppReady(),
             stopRecordingChildSpans: true,
           },
@@ -1841,9 +1819,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                 packageName: "mongodb",
                 instrumentationName: self.INSTRUMENTATION_NAME,
                 inputValue,
-                inputSchemaMerges: {
-                  commandArgs: { matchImportance: 0 },
-                },
                 isPreAppStart: !self.tuskDrift.isAppReady(),
                 stopRecordingChildSpans: true,
               },
@@ -2616,10 +2591,17 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
   private _makeReadableOperation(operation: any, batchType: number): Record<string, any> {
     const readableOp: Record<string, any> = {};
 
+    // Strip non-deterministic metadata from documents and filters
+    const stripMetadata = (obj: any) => {
+      if (!obj || typeof obj !== "object") return obj;
+      const { _id, createdAt, updatedAt, __v, ...rest } = obj;
+      return rest;
+    };
+
     if (batchType === 1) {
       // INSERT
       readableOp.operation = "Insert";
-      readableOp.document = { ...operation };
+      readableOp.document = stripMetadata(operation);
     } else if (batchType === 2) {
       // UPDATE / REPLACE
       if (!this._hasAtomicOperators(operation.u)) {
@@ -2629,12 +2611,12 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       } else {
         readableOp.operation = "UpdateOne";
       }
-      readableOp.query = operation.q;
+      readableOp.query = stripMetadata(operation.q);
       readableOp.document = { ...operation.u };
     } else if (batchType === 3) {
       // DELETE
       readableOp.operation = operation.limit === 1 ? "DeleteOne" : "Delete";
-      readableOp.query = operation.q;
+      readableOp.query = stripMetadata(operation.q);
     }
 
     if (operation.upsert) {
@@ -2698,9 +2680,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             packageName: "mongodb",
             instrumentationName: this.INSTRUMENTATION_NAME,
             inputValue,
-            inputSchemaMerges: {
-              commandArgs: { matchImportance: 0 },
-            },
             isPreAppStart,
             stopRecordingChildSpans: true,
           },
@@ -2788,9 +2767,6 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             packageName: "mongodb",
             instrumentationName: this.INSTRUMENTATION_NAME,
             inputValue,
-            inputSchemaMerges: {
-              commandArgs: { matchImportance: 0 },
-            },
             isPreAppStart: !this.tuskDrift.isAppReady(),
             stopRecordingChildSpans: true,
           },
