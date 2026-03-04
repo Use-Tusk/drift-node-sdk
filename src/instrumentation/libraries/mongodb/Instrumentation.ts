@@ -467,7 +467,11 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
               // so in-place mutation propagates back to the caller's model instance.
               if (methodName === "insertOne" && result?.insertedId != null && args[0]?._id?.id) {
                 args[0]._id.id.set(result.insertedId.id);
-              } else if (methodName === "insertMany" && result?.insertedIds && Array.isArray(args[0])) {
+              } else if (
+                methodName === "insertMany" &&
+                result?.insertedIds &&
+                Array.isArray(args[0])
+              ) {
                 for (const [index, id] of Object.entries(result.insertedIds)) {
                   const idx = Number(index);
                   if (args[0]?.[idx]?._id?.id && (id as any)?.id) {
@@ -924,6 +928,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
           return;
         }
         cursorState.recorded = true;
+        let spanFinalized = false;
 
         try {
           for await (const doc of {
@@ -932,14 +937,42 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             cursorState.collectedDocuments.push(doc);
             yield doc;
           }
-          finalizeCursorSpan();
-        } catch (error) {
-          handleCursorError(error);
+          // Directly finalize span — can't use finalizeCursorSpan() since recorded=true
+          // is needed early to prevent the wrapped next() from double-recording documents
+          if (cursorState.spanInfo) {
+            addOutputAttributesToSpan(
+              cursorState.spanInfo,
+              wrapCursorOutput(cursorState.collectedDocuments),
+            );
+            SpanUtils.endSpan(cursorState.spanInfo.span, {
+              code: SpanStatusCode.OK,
+            });
+            spanFinalized = true;
+          }
+        } catch (error: any) {
+          // Directly handle error on span (same reason as above)
+          if (cursorState.spanInfo) {
+            SpanUtils.addSpanAttributes(cursorState.spanInfo.span, {
+              outputValue: { error: error?.message || "Unknown error" },
+            });
+            SpanUtils.endSpan(cursorState.spanInfo.span, {
+              code: SpanStatusCode.ERROR,
+              message: error?.message || "Cursor operation failed",
+            });
+            spanFinalized = true;
+          }
           throw error;
         } finally {
-          // Ensure span is finalized even on early break from for-await loop.
-          // finalizeCursorSpan() is safe to call multiple times (guards with cursorState.recorded).
-          finalizeCursorSpan();
+          // Handle early break from for-await loop
+          if (!spanFinalized && cursorState.spanInfo) {
+            addOutputAttributesToSpan(
+              cursorState.spanInfo,
+              wrapCursorOutput(cursorState.collectedDocuments),
+            );
+            SpanUtils.endSpan(cursorState.spanInfo.span, {
+              code: SpanStatusCode.OK,
+            });
+          }
         }
       };
     }
@@ -2318,18 +2351,14 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
 
     // Patch initializeOrderedBulkOp
     if (typeof Collection.prototype.initializeOrderedBulkOp === "function") {
-      this._wrap(
-        Collection.prototype,
-        "initializeOrderedBulkOp",
-        (original: Function) => {
-          return function (this: any, ...args: any[]) {
-            if (self.mode === TuskDriftMode.REPLAY) {
-              self._injectFakeTopology(this);
-            }
-            return original.apply(this, args);
-          };
-        },
-      );
+      this._wrap(Collection.prototype, "initializeOrderedBulkOp", (original: Function) => {
+        return function (this: any, ...args: any[]) {
+          if (self.mode === TuskDriftMode.REPLAY) {
+            self._injectFakeTopology(this);
+          }
+          return original.apply(this, args);
+        };
+      });
       logger.debug(
         `[${this.INSTRUMENTATION_NAME}] Wrapped Collection.prototype.initializeOrderedBulkOp`,
       );
@@ -2337,18 +2366,14 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
 
     // Patch initializeUnorderedBulkOp
     if (typeof Collection.prototype.initializeUnorderedBulkOp === "function") {
-      this._wrap(
-        Collection.prototype,
-        "initializeUnorderedBulkOp",
-        (original: Function) => {
-          return function (this: any, ...args: any[]) {
-            if (self.mode === TuskDriftMode.REPLAY) {
-              self._injectFakeTopology(this);
-            }
-            return original.apply(this, args);
-          };
-        },
-      );
+      this._wrap(Collection.prototype, "initializeUnorderedBulkOp", (original: Function) => {
+        return function (this: any, ...args: any[]) {
+          if (self.mode === TuskDriftMode.REPLAY) {
+            self._injectFakeTopology(this);
+          }
+          return original.apply(this, args);
+        };
+      });
       logger.debug(
         `[${this.INSTRUMENTATION_NAME}] Wrapped Collection.prototype.initializeUnorderedBulkOp`,
       );

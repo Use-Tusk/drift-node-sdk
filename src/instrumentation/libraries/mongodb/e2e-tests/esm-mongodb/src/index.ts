@@ -37,7 +37,11 @@ async function initializeDatabase() {
   await largeData.deleteMany({});
   const largeDataDocs = [];
   for (let i = 1; i <= 10; i++) {
-    largeDataDocs.push({ value: `test_data_${i}`, index: i, category: i % 2 === 0 ? "even" : "odd" });
+    largeDataDocs.push({
+      value: `test_data_${i}`,
+      index: i,
+      category: i % 2 === 0 ? "even" : "odd",
+    });
   }
   await largeData.insertMany(largeDataDocs);
 
@@ -73,14 +77,50 @@ async function initializeMongoose() {
   await Author.deleteMany({});
   await Post.deleteMany({});
 
-  const author1 = await Author.create({ name: "Alice Writer", email: "alice@example.com", bio: "Tech blogger" });
-  const author2 = await Author.create({ name: "Bob Author", email: "bob_author@example.com", bio: "Fiction writer" });
+  const author1 = await Author.create({
+    name: "Alice Writer",
+    email: "alice@example.com",
+    bio: "Tech blogger",
+  });
+  const author2 = await Author.create({
+    name: "Bob Author",
+    email: "bob_author@example.com",
+    bio: "Fiction writer",
+  });
 
   await Post.create([
-    { title: "First Post", body: "Hello world content", author: author1._id, tags: ["intro", "tech"], views: 100, published: true },
-    { title: "Second Post", body: "Advanced topics", author: author1._id, tags: ["tech", "advanced"], views: 250, published: true },
-    { title: "Draft Post", body: "Work in progress", author: author2._id, tags: ["draft"], views: 0, published: false },
-    { title: "Fiction Story", body: "Once upon a time", author: author2._id, tags: ["fiction", "story"], views: 50, published: true },
+    {
+      title: "First Post",
+      body: "Hello world content",
+      author: author1._id,
+      tags: ["intro", "tech"],
+      views: 100,
+      published: true,
+    },
+    {
+      title: "Second Post",
+      body: "Advanced topics",
+      author: author1._id,
+      tags: ["tech", "advanced"],
+      views: 250,
+      published: true,
+    },
+    {
+      title: "Draft Post",
+      body: "Work in progress",
+      author: author2._id,
+      tags: ["draft"],
+      views: 0,
+      published: false,
+    },
+    {
+      title: "Fiction Story",
+      body: "Once upon a time",
+      author: author2._id,
+      tags: ["fiction", "story"],
+      views: 50,
+      published: true,
+    },
   ]);
 
   console.log("Mongoose data seeded");
@@ -107,7 +147,11 @@ const server = http.createServer(async (req, res) => {
     if (url === "/test/insert-one" && method === "GET") {
       const tempCol = db.collection("temp_insert_one");
       await tempCol.deleteMany({});
-      const result = await tempCol.insertOne({ name: "Test User", email: "test@example.com", age: 28 });
+      const result = await tempCol.insertOne({
+        name: "Test User",
+        email: "test@example.com",
+        age: 28,
+      });
       await tempCol.drop();
       sendJson(res, 200, {
         success: true,
@@ -181,7 +225,10 @@ const server = http.createServer(async (req, res) => {
       const tempCol = db.collection("temp_update_one");
       await tempCol.deleteMany({});
       await tempCol.insertOne({ name: "Update Target", status: "pending" });
-      const result = await tempCol.updateOne({ name: "Update Target" }, { $set: { status: "completed" } });
+      const result = await tempCol.updateOne(
+        { name: "Update Target" },
+        { $set: { status: "completed" } },
+      );
       await tempCol.drop();
       sendJson(res, 200, {
         success: true,
@@ -370,9 +417,7 @@ const server = http.createServer(async (req, res) => {
       await tempCol.deleteMany({});
       await tempCol.insertOne({ field1: "a", field2: "b" });
       const indexName = await tempCol.createIndex({ field1: 1 });
-      const indexNames = await tempCol.createIndexes([
-        { key: { field2: 1 }, name: "field2_idx" },
-      ]);
+      const indexNames = await tempCol.createIndexes([{ key: { field2: 1 }, name: "field2_idx" }]);
       await tempCol.drop();
       sendJson(res, 200, { success: true, indexName, indexNames });
       return;
@@ -474,7 +519,11 @@ const server = http.createServer(async (req, res) => {
 
     // --- Mongoose: create ---
     if (url === "/test/mongoose-create" && method === "GET") {
-      const tmpAuthor = await Author.create({ name: "Temp Author", email: "temp@example.com", bio: "Temporary" });
+      const tmpAuthor = await Author.create({
+        name: "Temp Author",
+        email: "temp@example.com",
+        bio: "Temporary",
+      });
       const result = { id: tmpAuthor._id, name: tmpAuthor.name, email: tmpAuthor.email };
       await Author.deleteOne({ _id: tmpAuthor._id });
       sendJson(res, 200, { success: true, data: result });
@@ -484,10 +533,22 @@ const server = http.createServer(async (req, res) => {
     // --- Mongoose: create multiple docs (insertMany path) ---
     if (url === "/test/mongoose-create-many" && method === "GET") {
       const created = await Post.create([
-        { title: "TempMulti1", body: "Multi body 1", tags: ["temp-multi"], views: 0, published: false },
-        { title: "TempMulti2", body: "Multi body 2", tags: ["temp-multi"], views: 0, published: false },
+        {
+          title: "TempMulti1",
+          body: "Multi body 1",
+          tags: ["temp-multi"],
+          views: 0,
+          published: false,
+        },
+        {
+          title: "TempMulti2",
+          body: "Multi body 2",
+          tags: ["temp-multi"],
+          views: 0,
+          published: false,
+        },
       ]);
-      const result = created.map(d => ({ title: d.title, id: d._id }));
+      const result = created.map((d) => ({ title: d.title, id: d._id }));
       await Post.deleteMany({ tags: "temp-multi" });
       sendJson(res, 200, { success: true, data: result, count: result.length });
       return;
@@ -495,8 +556,22 @@ const server = http.createServer(async (req, res) => {
 
     // --- Raw MongoDB: cursor map transform ---
     if (url === "/test/cursor-map" && method === "GET") {
-      const mapped = await largeData.find({ category: "even" }).map(doc => ({ value: doc.value, doubled: doc.index * 2 })).toArray();
+      const mapped = await largeData
+        .find({ category: "even" })
+        .map((doc) => ({ value: doc.value, doubled: doc.index * 2 }))
+        .toArray();
       sendJson(res, 200, { success: true, data: mapped });
+      return;
+    }
+
+    // --- Raw MongoDB: cursor async iterator (for await...of) ---
+    if (url === "/test/cursor-async-iterator" && method === "GET") {
+      const items: any[] = [];
+      const cursor = largeData.find({ category: "even" }).sort({ index: 1 });
+      for await (const doc of cursor) {
+        items.push({ value: doc.value, index: doc.index });
+      }
+      sendJson(res, 200, { success: true, data: items });
       return;
     }
 
