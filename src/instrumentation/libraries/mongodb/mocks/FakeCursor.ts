@@ -139,21 +139,11 @@ export class TdFakeFindCursor {
     return this;
   }
 
-  map(transform: (doc: any) => any): this {
-    if (this._mockLoaded) {
-      this.documents = this.documents.map(transform);
-    } else {
-      // Chain the transform for application after mock data loads
-      const originalLoader = this._mockDataLoader;
-      if (originalLoader) {
-        this._mockDataLoader = async () => {
-          const docs = await originalLoader();
-          return docs.map(transform);
-        };
-        // Reset cached promise since loader changed
-        this._mockLoadPromise = null;
-      }
-    }
+  map(): this {
+    // No-op: recorded mock data already contains post-transform results.
+    // The real cursor's terminal methods (toArray, next, etc.) apply the
+    // map transform before the instrumentation captures the output, so
+    // re-applying the transform here would corrupt the data.
     return this;
   }
 

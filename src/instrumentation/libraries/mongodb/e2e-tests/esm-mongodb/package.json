@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@use-tusk/drift-node-sdk": "file:/sdk",
-    "mongodb": "^6.0.0"
+    "mongodb": "^6.0.0",
+    "mongoose": "^8.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

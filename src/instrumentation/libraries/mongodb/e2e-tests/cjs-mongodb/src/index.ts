@@ -1,6 +1,7 @@
 import { TuskDrift } from "./tdInit";
 import http from "http";
 import { MongoClient, Db, Collection } from "mongodb";
+import mongoose from "mongoose";
 
 const PORT = process.env.PORT || 3000;
 
@@ -41,6 +42,48 @@ async function initializeDatabase() {
   await largeData.insertMany(largeDataDocs);
 
   console.log("Database initialized successfully");
+}
+
+// --- Mongoose Setup ---
+const authorSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true },
+  bio: String,
+  createdAt: { type: Date, default: Date.now },
+});
+
+const postSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  body: { type: String, required: true },
+  author: { type: mongoose.Schema.Types.ObjectId, ref: "Author" },
+  tags: [String],
+  views: { type: Number, default: 0 },
+  published: { type: Boolean, default: false },
+  createdAt: { type: Number, default: () => Date.now() },
+});
+
+const Author = mongoose.model("Author", authorSchema);
+const Post = mongoose.model("Post", postSchema);
+
+async function initializeMongoose() {
+  await mongoose.connect(`mongodb://${mongoHost}:${mongoPort}/${mongoDb}`);
+  console.log("Mongoose connected successfully");
+
+  // Seed mongoose data
+  await Author.deleteMany({});
+  await Post.deleteMany({});
+
+  const author1 = await Author.create({ name: "Alice Writer", email: "alice@example.com", bio: "Tech blogger" });
+  const author2 = await Author.create({ name: "Bob Author", email: "bob_author@example.com", bio: "Fiction writer" });
+
+  await Post.create([
+    { title: "First Post", body: "Hello world content", author: author1._id, tags: ["intro", "tech"], views: 100, published: true },
+    { title: "Second Post", body: "Advanced topics", author: author1._id, tags: ["tech", "advanced"], views: 250, published: true },
+    { title: "Draft Post", body: "Work in progress", author: author2._id, tags: ["draft"], views: 0, published: false },
+    { title: "Fiction Story", body: "Once upon a time", author: author2._id, tags: ["fiction", "story"], views: 50, published: true },
+  ]);
+
+  console.log("Mongoose data seeded");
 }
 
 function sendJson(res: http.ServerResponse, statusCode: number, data: any) {
@@ -429,6 +472,34 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // --- Mongoose: create ---
+    if (url === "/test/mongoose-create" && method === "GET") {
+      const tmpAuthor = await Author.create({ name: "Temp Author", email: "temp@example.com", bio: "Temporary" });
+      const result = { id: tmpAuthor._id, name: tmpAuthor.name, email: tmpAuthor.email };
+      await Author.deleteOne({ _id: tmpAuthor._id });
+      sendJson(res, 200, { success: true, data: result });
+      return;
+    }
+
+    // --- Mongoose: create multiple docs (insertMany path) ---
+    if (url === "/test/mongoose-create-many" && method === "GET") {
+      const created = await Post.create([
+        { title: "TempMulti1", body: "Multi body 1", tags: ["temp-multi"], views: 0, published: false },
+        { title: "TempMulti2", body: "Multi body 2", tags: ["temp-multi"], views: 0, published: false },
+      ]);
+      const result = created.map(d => ({ title: d.title, id: d._id }));
+      await Post.deleteMany({ tags: "temp-multi" });
+      sendJson(res, 200, { success: true, data: result, count: result.length });
+      return;
+    }
+
+    // --- Raw MongoDB: cursor map transform ---
+    if (url === "/test/cursor-map" && method === "GET") {
+      const mapped = await largeData.find({ category: "even" }).map(doc => ({ value: doc.value, doubled: doc.index * 2 })).toArray();
+      sendJson(res, 200, { success: true, data: mapped });
+      return;
+    }
+
     // 404 for unknown routes
     sendJson(res, 404, { error: "Not found" });
   } catch (error) {
@@ -443,6 +514,7 @@ const server = http.createServer(async (req, res) => {
 // Initialize database first, then start server
 async function main() {
   await initializeDatabase();
+  await initializeMongoose();
   server.listen(PORT, () => {
     TuskDrift.markAppAsReady();
     console.log(`MongoDB integration test server running on port ${PORT}`);
@@ -459,6 +531,7 @@ main().catch((error) => {
 async function shutdown() {
   console.log("Shutting down gracefully...");
   try {
+    await mongoose.disconnect();
     await client.close();
   } catch (error) {
     console.error("Error during shutdown:", error);

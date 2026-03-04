@@ -458,6 +458,24 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                 reconstructBsonValue(mockData.result, this.moduleExports),
               );
 
+              // Synchronize client-generated ObjectIds with recorded ones.
+              // Libraries like Mongoose generate _id client-side before calling
+              // insertOne/insertMany. During replay, the document's _id must match
+              // the recorded value. We modify the ObjectId buffer IN-PLACE because
+              // BSON's ObjectId shares the underlying Uint8Array by reference when
+              // cloned (e.g., Mongoose's toObject() does new ObjectId(obj.id)),
+              // so in-place mutation propagates back to the caller's model instance.
+              if (methodName === "insertOne" && result?.insertedId != null && args[0]?._id?.id) {
+                args[0]._id.id.set(result.insertedId.id);
+              } else if (methodName === "insertMany" && result?.insertedIds && Array.isArray(args[0])) {
+                for (const [index, id] of Object.entries(result.insertedIds)) {
+                  const idx = Number(index);
+                  if (args[0]?.[idx]?._id?.id && (id as any)?.id) {
+                    args[0][idx]._id.id.set((id as any).id);
+                  }
+                }
+              }
+
               SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
               return result;
             } catch (error: any) {

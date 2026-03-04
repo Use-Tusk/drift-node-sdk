@@ -28,5 +28,8 @@ await makeRequest('GET', '/test/list-collections');
 await makeRequest('GET', '/test/transaction');
 await makeRequest('GET', '/test/ordered-bulk');
 await makeRequest('GET', '/test/unordered-bulk');
+await makeRequest('GET', '/test/mongoose-create');
+await makeRequest('GET', '/test/mongoose-create-many');
+await makeRequest('GET', '/test/cursor-map');
 
 printRequestSummary();
