@@ -906,8 +906,13 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
     if (typeof cursor.close === "function") {
       const originalClose = cursor.close.bind(cursor);
       cursor.close = async (): Promise<void> => {
-        finalizeCursorSpan();
-        return originalClose();
+        try {
+          await originalClose();
+          finalizeCursorSpan();
+        } catch (error) {
+          handleCursorError(error);
+          throw error;
+        }
       };
     }
 
