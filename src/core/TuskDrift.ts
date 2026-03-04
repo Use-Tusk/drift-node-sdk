@@ -20,6 +20,7 @@ import {
   NextjsInstrumentation,
   PrismaInstrumentation,
   MysqlInstrumentation,
+  MongodbInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
 import { trace, Tracer, SpanKind, SpanStatusCode } from "@opentelemetry/api";
@@ -322,6 +323,11 @@ export class TuskDriftCore {
     });
 
     new MysqlInstrumentation({
+      enabled: true,
+      mode: this.mode,
+    });
+
+    new MongodbInstrumentation({
       enabled: true,
       mode: this.mode,
     });
