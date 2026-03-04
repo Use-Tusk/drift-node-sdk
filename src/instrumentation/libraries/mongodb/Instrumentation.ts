@@ -21,11 +21,16 @@ import {
 import { TdSpanAttributes } from "../../../core/types";
 import { ConnectionHandler } from "./handlers/ConnectionHandler";
 import { TdFakeFindCursor, TdFakeAggregationCursor, TdFakeChangeStream } from "./mocks/FakeCursor";
+import { TdFakeTopology } from "./mocks/FakeTopology";
 import {
   sanitizeBsonValue,
   reconstructBsonValue,
   addOutputAttributesToSpan,
   sanitizeOptions,
+  wrapCursorOutput,
+  unwrapCursorOutput,
+  wrapDirectOutput,
+  unwrapDirectOutput,
 } from "./utils/bsonConversion";
 
 /**
@@ -191,6 +196,18 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       );
     }
 
+    // Patch Collection.prototype.initializeOrderedBulkOp / initializeUnorderedBulkOp
+    // In replay mode, inject FakeTopology before calling original to prevent
+    // "MongoClient must be connected" error from BulkOperationBase constructor.
+    try {
+      this._patchBulkOpInitMethods(actualExports);
+    } catch (error) {
+      logger.error(
+        `[${this.INSTRUMENTATION_NAME}] Error patching bulk op init methods, skipping:`,
+        error,
+      );
+    }
+
     // Patch Db.prototype methods
     try {
       this._patchDbMethods(actualExports);
@@ -345,7 +362,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             return resultPromise
               .then((result: any) => {
                 try {
-                  addOutputAttributesToSpan(spanInfo, result);
+                  addOutputAttributesToSpan(spanInfo, wrapDirectOutput(result));
                   SpanUtils.endSpan(spanInfo.span, {
                     code: SpanStatusCode.OK,
                   });
@@ -437,7 +454,9 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                 throw new Error(errorMsg);
               }
 
-              const result = reconstructBsonValue(mockData.result, this.moduleExports);
+              const result = unwrapDirectOutput(
+                reconstructBsonValue(mockData.result, this.moduleExports),
+              );
 
               SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
               return result;
@@ -597,7 +616,10 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       if (cursorState.recorded || !cursorState.spanInfo) return;
       cursorState.recorded = true;
       try {
-        addOutputAttributesToSpan(cursorState.spanInfo, cursorState.collectedDocuments);
+        addOutputAttributesToSpan(
+          cursorState.spanInfo,
+          wrapCursorOutput(cursorState.collectedDocuments),
+        );
         SpanUtils.endSpan(cursorState.spanInfo.span, {
           code: SpanStatusCode.OK,
         });
@@ -704,7 +726,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                   return originalToArray()
                     .then((result: any[]) => {
                       try {
-                        addOutputAttributesToSpan(spanInfo, result);
+                        addOutputAttributesToSpan(spanInfo, wrapCursorOutput(result));
                         SpanUtils.endSpan(spanInfo.span, {
                           code: SpanStatusCode.OK,
                         });
@@ -835,7 +857,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                   return originalForEach(wrappedIterator)
                     .then(() => {
                       try {
-                        addOutputAttributesToSpan(spanInfo, collectedDocs);
+                        addOutputAttributesToSpan(spanInfo, wrapCursorOutput(collectedDocs));
                         SpanUtils.endSpan(spanInfo.span, {
                           code: SpanStatusCode.OK,
                         });
@@ -960,12 +982,13 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                     throw new Error(errorMsg);
                   }
 
-                  const documents = reconstructBsonValue(mockData.result, self.moduleExports);
+                  const reconstructed = reconstructBsonValue(mockData.result, self.moduleExports);
+                  const documents = unwrapCursorOutput(reconstructed);
 
                   SpanUtils.endSpan(spanInfo.span, {
                     code: SpanStatusCode.OK,
                   });
-                  return Array.isArray(documents) ? documents : [documents];
+                  return documents;
                 } catch (error: any) {
                   SpanUtils.endSpan(spanInfo.span, {
                     code: SpanStatusCode.ERROR,
@@ -1401,7 +1424,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             return resultPromise
               .then((result: any) => {
                 try {
-                  addOutputAttributesToSpan(spanInfo, result);
+                  addOutputAttributesToSpan(spanInfo, wrapDirectOutput(result));
                   SpanUtils.endSpan(spanInfo.span, {
                     code: SpanStatusCode.OK,
                   });
@@ -1493,7 +1516,9 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                 throw new Error(errorMsg);
               }
 
-              const result = reconstructBsonValue(mockData.result, this.moduleExports);
+              const result = unwrapDirectOutput(
+                reconstructBsonValue(mockData.result, this.moduleExports),
+              );
 
               SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
               return result;
@@ -1787,12 +1812,13 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                     throw new Error(errorMsg);
                   }
 
-                  const documents = reconstructBsonValue(mockData.result, self.moduleExports);
+                  const reconstructed = reconstructBsonValue(mockData.result, self.moduleExports);
+                  const documents = unwrapCursorOutput(reconstructed);
 
                   SpanUtils.endSpan(spanInfo.span, {
                     code: SpanStatusCode.OK,
                   });
-                  return Array.isArray(documents) ? documents : [documents];
+                  return documents;
                 } catch (error: any) {
                   SpanUtils.endSpan(spanInfo.span, {
                     code: SpanStatusCode.ERROR,
@@ -2253,6 +2279,87 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
   // ---------------------------------------------------------------------------
 
   /**
+   * Patch Collection.prototype.initializeOrderedBulkOp and
+   * Collection.prototype.initializeUnorderedBulkOp.
+   *
+   * In replay mode, BulkOperationBase's constructor calls getTopology(collection)
+   * which throws if no topology is connected. We inject a FakeTopology onto the
+   * collection (and its client) BEFORE calling the original, so the constructor
+   * finds a valid topology object and proceeds with default size limits.
+   */
+  private _patchBulkOpInitMethods(actualExports: any): void {
+    const Collection = actualExports.Collection;
+    if (!Collection || !Collection.prototype) {
+      logger.warn(
+        `[${this.INSTRUMENTATION_NAME}] Collection not found, skipping bulk op init patching`,
+      );
+      return;
+    }
+
+    const self = this;
+
+    // Patch initializeOrderedBulkOp
+    if (typeof Collection.prototype.initializeOrderedBulkOp === "function") {
+      this._wrap(
+        Collection.prototype,
+        "initializeOrderedBulkOp",
+        (original: Function) => {
+          return function (this: any, ...args: any[]) {
+            if (self.mode === TuskDriftMode.REPLAY) {
+              self._injectFakeTopology(this);
+            }
+            return original.apply(this, args);
+          };
+        },
+      );
+      logger.debug(
+        `[${this.INSTRUMENTATION_NAME}] Wrapped Collection.prototype.initializeOrderedBulkOp`,
+      );
+    }
+
+    // Patch initializeUnorderedBulkOp
+    if (typeof Collection.prototype.initializeUnorderedBulkOp === "function") {
+      this._wrap(
+        Collection.prototype,
+        "initializeUnorderedBulkOp",
+        (original: Function) => {
+          return function (this: any, ...args: any[]) {
+            if (self.mode === TuskDriftMode.REPLAY) {
+              self._injectFakeTopology(this);
+            }
+            return original.apply(this, args);
+          };
+        },
+      );
+      logger.debug(
+        `[${this.INSTRUMENTATION_NAME}] Wrapped Collection.prototype.initializeUnorderedBulkOp`,
+      );
+    }
+  }
+
+  /**
+   * Inject a FakeTopology onto a collection and its client for replay mode.
+   *
+   * getTopology() in the MongoDB driver checks:
+   *   1. provider.topology (direct property on collection)
+   *   2. provider.client.topology (via the MongoClient)
+   * We set both to ensure the topology lookup succeeds.
+   */
+  private _injectFakeTopology(collection: any): void {
+    const fakeTopology = new TdFakeTopology();
+
+    // Set on the client (satisfies getTopology's client.topology check)
+    if (collection.client && !collection.client.topology) {
+      collection.client.topology = fakeTopology;
+    }
+
+    // Set on collection directly as fallback
+    if (!collection.topology) {
+      collection.topology = fakeTopology;
+    }
+  }
+
+  /**
    * Patch OrderedBulkOperation.prototype.execute from mongodb/lib/bulk/ordered.js.
    */
   private _patchOrderedBulkModule(moduleExports: any): any {
@@ -2560,7 +2667,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             return resultPromise
               .then((result: any) => {
                 try {
-                  addOutputAttributesToSpan(spanInfo, result);
+                  addOutputAttributesToSpan(spanInfo, wrapDirectOutput(result));
                   SpanUtils.endSpan(spanInfo.span, {
                     code: SpanStatusCode.OK,
                   });
@@ -2660,7 +2767,9 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
                 throw new Error(errorMsg);
               }
 
-              const result = reconstructBsonValue(mockData.result, this.moduleExports);
+              const result = unwrapDirectOutput(
+                reconstructBsonValue(mockData.result, this.moduleExports),
+              );
 
               SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
               return result;

@@ -1,0 +1,49 @@
+services:
+  mongo:
+    image: mongo:7
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: >
+        mongosh --quiet --eval "
+          try {
+            rs.status().ok && 1
+          } catch(e) {
+            rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]});
+            sleep(2000);
+            rs.status().ok && 1
+          }
+        " || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 10
+
+  app:
+    build:
+      context: ../../../../../..
+      dockerfile: src/instrumentation/libraries/mongodb/e2e-tests/cjs-mongodb/Dockerfile
+      args:
+        - CACHEBUST=${CACHEBUST:-1}
+        - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
+    environment:
+      - BENCHMARKS=${BENCHMARKS:-}
+      - BENCHMARK_DURATION=${BENCHMARK_DURATION:-5}
+      - BENCHMARK_WARMUP=${BENCHMARK_WARMUP:-3}
+      - PORT=3000
+      - MONGO_HOST=mongo
+      - MONGO_PORT=27017
+      - MONGO_DB=testdb
+      - TUSK_ANALYTICS_DISABLED=1
+    volumes:
+      # Mount SDK source for hot reload (this is what package.json expects)
+      - ../../../../../..:/sdk:ro
+      # Mount .tusk config to persist configuration
+      - ./.tusk/config.yaml:/app/.tusk/config.yaml:ro
+      # Persist traces and logs on host
+      - ./.tusk/traces:/app/.tusk/traces
+      - ./.tusk/logs:/app/.tusk/logs
+      # Mount app source for development
+      - ./src:/app/src
+    working_dir: /app
+    depends_on:
+      mongo:
+        condition: service_healthy

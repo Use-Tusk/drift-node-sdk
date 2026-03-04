@@ -277,6 +277,23 @@ function _sanitize(value: any, seen: WeakSet<object>): any {
     for (const key of Object.keys(value)) {
       result[key] = _sanitize(value[key], seen);
     }
+    // Capture getter properties from the prototype (e.g. BulkWriteResult.ok)
+    const proto = Object.getPrototypeOf(value);
+    if (proto && proto !== Object.prototype) {
+      const descriptors = Object.getOwnPropertyDescriptors(proto);
+      for (const [key, desc] of Object.entries(descriptors)) {
+        if (desc.get && key !== "constructor" && !(key in result)) {
+          try {
+            const val = value[key];
+            if (val !== undefined && typeof val !== "function") {
+              result[key] = _sanitize(val, seen);
+            }
+          } catch {
+            // Getter may throw; skip it
+          }
+        }
+      }
+    }
     return result;
   }
 
@@ -441,6 +458,59 @@ export function addOutputAttributesToSpan(
       error,
     );
   }
+}
+
+/**
+ * Wrap cursor result documents in an object for recording.
+ *
+ * The Tusk CLI serializes span outputValue into a protobuf Struct for mock
+ * responses. Top-level arrays cannot be represented as a Struct field "body"
+ * (the CLI omits them), so we wrap the documents array inside a plain object.
+ * Use `unwrapCursorOutput` during replay to extract the documents.
+ */
+export function wrapCursorOutput(documents: any[]): any {
+  return { __cursorDocuments: documents };
+}
+
+/**
+ * Unwrap cursor result documents from the recording wrapper.
+ * Handles both the wrapped format (`{ __cursorDocuments: [...] }`) and
+ * a direct array fallback for forward compatibility.
+ */
+export function unwrapCursorOutput(result: any): any[] {
+  if (result && typeof result === "object" && Array.isArray(result.__cursorDocuments)) {
+    return result.__cursorDocuments;
+  }
+  if (Array.isArray(result)) {
+    return result;
+  }
+  return [];
+}
+
+/**
+ * Wrap a direct method result so it survives protobuf Struct serialization.
+ *
+ * The Tusk CLI can only store objects in response.body (protobuf Struct).
+ * Non-object values (numbers, strings, booleans, arrays) are lost.
+ * This wraps them in a plain object; use `unwrapDirectOutput` during replay.
+ * Object results are left as-is since they already work with Struct.
+ */
+export function wrapDirectOutput(value: any): any {
+  if (value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  return { __directResult: value };
+}
+
+/**
+ * Unwrap a direct method result from the recording wrapper.
+ * Handles both the wrapped format and passthrough for plain objects.
+ */
+export function unwrapDirectOutput(value: any): any {
+  if (value && typeof value === "object" && "__directResult" in value) {
+    return value.__directResult;
+  }
+  return value;
 }
 
 /**
