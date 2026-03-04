@@ -575,6 +575,39 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url === "/test/with-transaction" && method === "GET") {
+      const session = client.startSession();
+      try {
+        const txnResult = await session.withTransaction(async () => {
+          const txnCol = db.collection("temp_with_txn");
+          await txnCol.deleteMany({}, { session });
+          await txnCol.insertOne({ name: "WithTxnUser", value: 42 }, { session });
+          const found = await txnCol.findOne({ name: "WithTxnUser" }, { session });
+          return found;
+        });
+        const txnCol = db.collection("temp_with_txn");
+        await txnCol.drop();
+        sendJson(res, 200, { success: true, data: txnResult });
+      } finally {
+        await session.endSession();
+      }
+      return;
+    }
+
+    // --- Mongoose: cursor close before exhaustion ---
+    if (url === "/test/mongoose-cursor-close" && method === "GET") {
+      const items: any[] = [];
+      const cursor = Post.find({}).lean().cursor();
+      // Read only first 2 items then close
+      const first = await cursor.next();
+      if (first) items.push({ title: (first as any).title });
+      const second = await cursor.next();
+      if (second) items.push({ title: (second as any).title });
+      await cursor.close();
+      sendJson(res, 200, { success: true, data: items, count: items.length });
+      return;
+    }
+
     // 404 for unknown routes
     sendJson(res, 404, { error: "Not found" });
   } catch (error) {

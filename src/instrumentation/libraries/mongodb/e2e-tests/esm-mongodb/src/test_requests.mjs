@@ -32,5 +32,7 @@ await makeRequest("GET", "/test/mongoose-create");
 await makeRequest("GET", "/test/mongoose-create-many");
 await makeRequest("GET", "/test/cursor-map");
 await makeRequest("GET", "/test/cursor-async-iterator");
+await makeRequest("GET", "/test/with-transaction");
+await makeRequest("GET", "/test/mongoose-cursor-close");
 
 printRequestSummary();
