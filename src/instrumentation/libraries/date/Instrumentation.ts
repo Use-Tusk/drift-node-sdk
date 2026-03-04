@@ -147,6 +147,14 @@ export class DateInstrumentation extends TdInstrumentationBase {
 
         return self._handleDateCall(args, isConstructorCall);
       }
+      // Preserve the original constructor name so that libraries which validate
+      // types by checking constructor.name (e.g. Mongoose schema type validation)
+      // still see "Date" instead of "_TdDate". Without this, any Mongoose schema
+      // using { type: Date } throws:
+      //   TypeError: Invalid schema configuration: `_TdDate` is not a valid type
+      // This only changes the name metadata — all instrumentation logic is unaffected.
+      Object.defineProperty(_TdDate, "name", { value: "Date" });
+
       return _TdDate;
     };
   }
