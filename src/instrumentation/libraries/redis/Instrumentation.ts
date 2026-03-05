@@ -15,11 +15,13 @@ import {
   RedisOutputValue,
   BufferMetadata,
 } from "./types";
-import { convertValueToJsonable, deserializeBufferValue } from "./utils";
+import { convertValueToJsonable, deserializeBufferValue } from "../redis-common/utils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils";
 import { captureStackTrace } from "src/instrumentation/core/utils";
 
+// @redis/client publishes stable major lines in 1.x and 5.x (no stable 2.x/3.x/4.x).
+// Source: https://www.npmjs.com/package/@redis/client?activeTab=versions
 const SUPPORTED_VERSIONS = ["1.*", "5.*"];
 
 const FILTERED_COMMANDS = ["TS.INFO_DEBUG", "FT.ALIASDEL", "FT.PROFILE"];
@@ -135,7 +137,7 @@ export class RedisInstrumentation extends TdInstrumentationBase {
       }
     }
 
-    // In replay mode, patch quit/disconnect to be no-ops since there's no real connection.
+    // In replay mode, patch quit/disconnect/close/destroy to be no-ops since there's no real connection.
     // We must also patch QUIT (uppercase) because the constructor assigns instance properties
     // like `this.quit = this.QUIT`, which shadow the lowercase prototype patches.
     if (this.mode === TuskDriftMode.REPLAY) {
@@ -157,6 +159,22 @@ export class RedisInstrumentation extends TdInstrumentationBase {
       }
       if (clientPrototype.disconnect && !isWrapped(clientPrototype.disconnect)) {
         this._wrap(clientPrototype, "disconnect", noOpDisconnect);
+      }
+      const noOpClose = () => {
+        return function close() {
+          return Promise.resolve();
+        };
+      };
+      const noOpDestroy = () => {
+        return function destroy() {
+          return undefined;
+        };
+      };
+      if (clientPrototype.close && !isWrapped(clientPrototype.close)) {
+        this._wrap(clientPrototype, "close", noOpClose);
+      }
+      if (clientPrototype.destroy && !isWrapped(clientPrototype.destroy)) {
+        this._wrap(clientPrototype, "destroy", noOpDestroy);
       }
     }
 

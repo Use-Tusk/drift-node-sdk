@@ -17,7 +17,7 @@ import {
   IORedisOutputValue,
   BufferMetadata,
 } from "./types";
-import { convertValueToJsonable, deserializeBufferValue } from "./utils";
+import { convertValueToJsonable, deserializeBufferValue } from "../redis-common/utils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger, isEsm } from "../../../core/utils";
 import { captureStackTrace } from "src/instrumentation/core/utils";
