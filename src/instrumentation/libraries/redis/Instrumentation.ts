@@ -20,7 +20,7 @@ import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../core/utils";
 import { captureStackTrace } from "src/instrumentation/core/utils";
 
-const SUPPORTED_VERSIONS = ["1.*"];
+const SUPPORTED_VERSIONS = ["1.*", "5.*"];
 
 const FILTERED_COMMANDS = ["TS.INFO_DEBUG", "FT.ALIASDEL", "FT.PROFILE"];
 
