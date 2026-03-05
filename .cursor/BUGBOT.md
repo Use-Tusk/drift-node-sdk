@@ -49,6 +49,29 @@ When setting `matchImportance` on input fields (e.g., to deprioritize certain fi
 
 If you only add it in one place, the schema hashes will differ between recording and replay, causing mock matching to fail. See the HTTP instrumentation (`src/instrumentation/libraries/http/mocks/TdMockClientRequest.ts`) for a reference implementation with `headers: { matchImportance: 0 }`.
 
+## SpanKind has two different enum systems — OTel vs Proto (off-by-one)
+
+OpenTelemetry and our Proto/drift-schemas define `SpanKind` with **different numeric values**. The proto enum has an extra `UNSPECIFIED = 0` at the start, shifting every value up by 1:
+
+| Name       | OTel (`@opentelemetry/api`) | Proto (`drift-schemas`) |
+|------------|:--:|:--:|
+| UNSPECIFIED| —  | 0  |
+| INTERNAL   | 0  | 1  |
+| SERVER     | 1  | 2  |
+| CLIENT     | 2  | 3  |
+| PRODUCER   | 3  | 4  |
+| CONSUMER   | 4  | 5  |
+
+**This means passing a raw OTel numeric value where proto is expected (or vice versa) silently misclassifies every span.** For example, OTel CLIENT (2) becomes proto SERVER (2), which caused infrastructure spans (Redis, Postgres, MongoDB) to appear as HTTP server endpoints.
+
+**Rules:**
+- `CleanSpanData.kind` stores **OTel** values. Every export path must map to proto before serializing.
+- Use `mapOtToPb()` from `protobufUtils.ts` to convert. Never cast `span.kind as number` and pass it to proto/Rust code.
+- If you are touching `kind` anywhere in the export pipeline, verify which enum system you're in and **test that the correct numeric value arrives at the backend**. The types are easy to confuse because both are small integers.
+- The mapping function `mapOtToPb()` exists in `src/core/utils/protobufUtils.ts`. It maps by name, not by numeric value, so it's immune to the offset.
+
+See `SpanTransformer.ts` — `buildSpanProtoBytes()` (Rust path) must use `mapOtToPb()`, while the return value keeps OTel values because downstream adapters do their own mapping.
+
 ## Never use `||` for enum or numeric defaults
 
 Use `??` (nullish coalescing) instead of `||` (logical OR) when providing defaults for enums or numeric values. The `||` operator treats `0` as falsy, which silently corrupts valid enum values like `SpanKind.INTERNAL` (0) and `PackageType.UNSPECIFIED` (0).
