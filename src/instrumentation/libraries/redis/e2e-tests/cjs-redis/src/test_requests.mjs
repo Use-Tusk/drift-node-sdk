@@ -42,5 +42,6 @@ await makeRequest("POST", "/test/set-nx", { body: { key: "test:nx:unique", value
 await makeRequest("GET", "/test/new-client");
 await makeRequest("GET", "/test/select");
 await makeRequest("GET", "/test/disconnect");
+await makeRequest("GET", "/test/exec-as-pipeline");
 
 printRequestSummary();

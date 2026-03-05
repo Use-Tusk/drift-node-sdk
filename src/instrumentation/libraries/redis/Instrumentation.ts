@@ -743,6 +743,14 @@ export class RedisInstrumentation extends TdInstrumentationBase {
       this._wrap(multiCommandPrototype, "exec", this._getExecPatchFn(packageName));
     }
 
+    if (multiCommandPrototype.execAsPipeline && !isWrapped(multiCommandPrototype.execAsPipeline)) {
+      this._wrap(
+        multiCommandPrototype,
+        "execAsPipeline",
+        this._getExecAsPipelinePatchFn(packageName),
+      );
+    }
+
     this.markModuleAsPatched(moduleExports);
     return moduleExports;
   }
@@ -752,9 +760,13 @@ export class RedisInstrumentation extends TdInstrumentationBase {
 
     return (originalExec: Function) => {
       return function exec(this: any, execAsPipeline?: boolean) {
+        if (execAsPipeline) {
+          return this.execAsPipeline();
+        }
+
         const inputValue: RedisMultiExecInputValue = {
           commands: [],
-          execAsPipeline: !!execAsPipeline,
+          execAsPipeline: false,
         };
 
         if (self.mode === TuskDriftMode.REPLAY) {
@@ -811,6 +823,75 @@ export class RedisInstrumentation extends TdInstrumentationBase {
           });
         } else {
           return originalExec.call(this, execAsPipeline);
+        }
+      };
+    };
+  }
+
+  private _getExecAsPipelinePatchFn(packageName: string) {
+    const self = this;
+
+    return (originalExecAsPipeline: Function) => {
+      return function execAsPipeline(this: any) {
+        const inputValue: RedisMultiExecInputValue = {
+          commands: [],
+          execAsPipeline: true,
+        };
+
+        if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["RedisInstrumentation"]);
+
+          return handleReplayMode({
+            noOpRequestHandler: () => {
+              return [];
+            },
+            isServerRequest: false,
+            replayModeHandler: () => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalExecAsPipeline.call(this),
+                {
+                  name: "redis.multi.exec",
+                  kind: SpanKind.CLIENT,
+                  submodule: "exec",
+                  packageType: PackageType.REDIS,
+                  packageName,
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart: false,
+                },
+                (spanInfo) => {
+                  return self._handleReplayExec(spanInfo, inputValue, packageName, stackTrace);
+                },
+              );
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalExecAsPipeline.call(this),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalExecAsPipeline.call(this),
+                {
+                  name: "redis.multi.exec",
+                  kind: SpanKind.CLIENT,
+                  submodule: "exec",
+                  packageType: PackageType.REDIS,
+                  packageName,
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue: inputValue,
+                  isPreAppStart,
+                },
+                (spanInfo) => {
+                  return self._handleRecordExec(spanInfo, originalExecAsPipeline, this);
+                },
+              );
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else {
+          return originalExecAsPipeline.call(this);
         }
       };
     };

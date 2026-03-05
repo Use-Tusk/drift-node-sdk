@@ -776,6 +776,29 @@ app.get("/test/disconnect", async (req: Request, res: Response) => {
   }
 });
 
+// execAsPipeline (pipeline mode instead of transaction)
+app.get("/test/exec-as-pipeline", async (req: Request, res: Response) => {
+  try {
+    const results = await redis
+      .multi()
+      .set("test:pipe1", "pvalue1")
+      .set("test:pipe2", "pvalue2")
+      .get("test:pipe1")
+      .execAsPipeline();
+
+    res.json({
+      success: true,
+      data: { results },
+      operation: "EXEC_AS_PIPELINE",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 // Start server and initialize Redis
 app.listen(PORT, async () => {
   try {
