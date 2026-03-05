@@ -3,7 +3,7 @@ import { SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { JsonSchemaHelper, JsonSchemaType, JsonSchema, SchemaMerges } from "./JsonSchemaHelper";
 import { CleanSpanData, TdSpanAttributes } from "../types";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
-import { logger } from "../utils";
+import { logger, mapOtToPb } from "../utils";
 import { buildSpanProtoBytes, processExportPayloadJsonable } from "../rustCoreBinding";
 
 /**
@@ -130,7 +130,11 @@ export class SpanTransformer {
       submoduleName: submoduleName || "",
       packageType: ((attributes[TdSpanAttributes.PACKAGE_TYPE] as PackageType) || PackageType.UNSPECIFIED) as number,
       environment,
-      kind: span.kind as number,
+      // OTel and Proto SpanKind enums are offset by 1 (proto has UNSPECIFIED=0).
+      // Must map here because buildSpanProtoBytes passes directly to Rust/proto.
+      // Line 177 intentionally keeps the OTel value — all other export paths
+      // (ApiSpanAdapter, FilesystemSpanAdapter, ProtobufCommunicator) do their own mapping.
+      kind: mapOtToPb(span.kind),
       inputSchema,
       outputSchema,
       inputSchemaHash,
