@@ -96,23 +96,67 @@ export class RedisInstrumentation extends TdInstrumentationBase {
         "commandsExecutor",
         this._getCommandsExecutorPatchFn(packageName),
       );
+
+      // Re-attach commands to use the wrapped commandsExecutor.
+      // This is necessary because attachCommands (called at module load time) captures
+      // a direct reference to the original commandsExecutor. After wrapping, the generated
+      // command methods (SET, GET, etc.) still call the old reference, bypassing our patch.
+      // We search require.cache since the modules are already loaded but can't be resolved
+      // via require() from the SDK's context.
+      try {
+        let commandsDefault: any = null;
+        let attachCommandsFn: any = null;
+        const cache = require.cache || {};
+        for (const key of Object.keys(cache)) {
+          if (
+            commandsDefault === null &&
+            key.includes("/client/commands.js") &&
+            (key.includes("@redis/client") || key.includes("@node-redis/client"))
+          ) {
+            commandsDefault = cache[key]?.exports?.default;
+          }
+          if (
+            attachCommandsFn === null &&
+            key.includes("/commander.js") &&
+            (key.includes("@redis/client") || key.includes("@node-redis/client"))
+          ) {
+            attachCommandsFn = cache[key]?.exports?.attachCommands;
+          }
+        }
+        if (attachCommandsFn && commandsDefault) {
+          attachCommandsFn({
+            BaseClass: moduleExports.default,
+            commands: commandsDefault,
+            executor: clientPrototype.commandsExecutor,
+          });
+        }
+      } catch (error) {
+        logger.error(`[RedisInstrumentation] Error re-attaching commands after patching:`, error);
+      }
     }
 
-    // In replay mode, patch quit/disconnect to be no-ops since there's no real connection
+    // In replay mode, patch quit/disconnect to be no-ops since there's no real connection.
+    // We must also patch QUIT (uppercase) because the constructor assigns instance properties
+    // like `this.quit = this.QUIT`, which shadow the lowercase prototype patches.
     if (this.mode === TuskDriftMode.REPLAY) {
+      const noOpQuit = () => {
+        return function quit() {
+          return Promise.resolve();
+        };
+      };
+      const noOpDisconnect = () => {
+        return function disconnect() {
+          return Promise.resolve();
+        };
+      };
+      if (clientPrototype.QUIT && !isWrapped(clientPrototype.QUIT)) {
+        this._wrap(clientPrototype, "QUIT", noOpQuit);
+      }
       if (clientPrototype.quit && !isWrapped(clientPrototype.quit)) {
-        this._wrap(clientPrototype, "quit", () => {
-          return function quit() {
-            return Promise.resolve();
-          };
-        });
+        this._wrap(clientPrototype, "quit", noOpQuit);
       }
       if (clientPrototype.disconnect && !isWrapped(clientPrototype.disconnect)) {
-        this._wrap(clientPrototype, "disconnect", () => {
-          return function disconnect() {
-            return Promise.resolve();
-          };
-        });
+        this._wrap(clientPrototype, "disconnect", noOpDisconnect);
       }
     }
 
@@ -315,8 +359,7 @@ export class RedisInstrumentation extends TdInstrumentationBase {
 
     return (originalCommandsExecutor: Function) => {
       return function commandsExecutor(this: any, command: any, args: any[]) {
-        // Only intercept in REPLAY mode to avoid double-tracing with sendCommand
-        if (self.mode !== TuskDriftMode.REPLAY) {
+        if (self.mode === TuskDriftMode.DISABLED) {
           return originalCommandsExecutor.call(this, command, args);
         }
 
@@ -353,37 +396,71 @@ export class RedisInstrumentation extends TdInstrumentationBase {
           argsMetadata,
         };
 
-        const stackTrace = captureStackTrace(["RedisInstrumentation"]);
+        if (self.mode === TuskDriftMode.REPLAY) {
+          const stackTrace = captureStackTrace(["RedisInstrumentation"]);
 
-        return handleReplayMode({
-          noOpRequestHandler: () => undefined,
-          isServerRequest: false,
-          replayModeHandler: () => {
-            return SpanUtils.createAndExecuteSpan(
-              self.mode,
-              () => originalCommandsExecutor.call(this, command, args),
-              {
-                name: `redis.${commandName}`,
-                kind: SpanKind.CLIENT,
-                submodule: commandName,
-                packageType: PackageType.REDIS,
-                packageName,
-                instrumentationName: self.INSTRUMENTATION_NAME,
-                inputValue,
-                isPreAppStart: false,
-              },
-              (spanInfo) => {
-                return self._handleReplayCommandsExecutor(
-                  spanInfo,
-                  commandName,
-                  inputValue,
+          return handleReplayMode({
+            noOpRequestHandler: () => undefined,
+            isServerRequest: false,
+            replayModeHandler: () => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalCommandsExecutor.call(this, command, args),
+                {
+                  name: `redis.${commandName}`,
+                  kind: SpanKind.CLIENT,
+                  submodule: commandName,
+                  packageType: PackageType.REDIS,
                   packageName,
-                  stackTrace,
-                );
-              },
-            );
-          },
-        });
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue,
+                  isPreAppStart: false,
+                },
+                (spanInfo) => {
+                  return self._handleReplayCommandsExecutor(
+                    spanInfo,
+                    commandName,
+                    inputValue,
+                    packageName,
+                    stackTrace,
+                  );
+                },
+              );
+            },
+          });
+        } else if (self.mode === TuskDriftMode.RECORD) {
+          return handleRecordMode({
+            originalFunctionCall: () => originalCommandsExecutor.call(this, command, args),
+            recordModeHandler: ({ isPreAppStart }) => {
+              return SpanUtils.createAndExecuteSpan(
+                self.mode,
+                () => originalCommandsExecutor.call(this, command, args),
+                {
+                  name: `redis.${commandName}`,
+                  kind: SpanKind.CLIENT,
+                  submodule: commandName,
+                  packageType: PackageType.REDIS,
+                  packageName,
+                  instrumentationName: self.INSTRUMENTATION_NAME,
+                  inputValue,
+                  isPreAppStart,
+                },
+                (spanInfo) => {
+                  return self._handleRecordCommandsExecutor(
+                    spanInfo,
+                    originalCommandsExecutor,
+                    command,
+                    args,
+                    this,
+                  );
+                },
+              );
+            },
+            spanKind: SpanKind.CLIENT,
+          });
+        } else {
+          return originalCommandsExecutor.call(this, command, args);
+        }
       };
     };
   }
@@ -432,6 +509,54 @@ export class RedisInstrumentation extends TdInstrumentationBase {
       );
       throw error;
     }
+  }
+
+  private _handleRecordCommandsExecutor(
+    spanInfo: SpanInfo,
+    originalCommandsExecutor: Function,
+    command: any,
+    args: any[],
+    thisContext: any,
+  ): Promise<any> {
+    const promise = originalCommandsExecutor.call(thisContext, command, args);
+
+    if (promise && typeof promise.then === "function") {
+      return promise
+        .then((result: any) => {
+          try {
+            logger.debug(
+              `[RedisInstrumentation] Redis commandsExecutor completed successfully (${SpanUtils.getTraceInfo()})`,
+            );
+            const outputValue = this._serializeOutput(result);
+            SpanUtils.addSpanAttributes(spanInfo.span, { outputValue });
+            SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+          } catch (error) {
+            logger.error(
+              `[RedisInstrumentation] error processing commandsExecutor response:`,
+              error,
+            );
+          }
+          return result;
+        })
+        .catch((error: any) => {
+          try {
+            SpanUtils.endSpan(spanInfo.span, {
+              code: SpanStatusCode.ERROR,
+              message: error.message,
+            });
+          } catch (spanError) {
+            logger.error(`[RedisInstrumentation] error ending span:`, spanError);
+          }
+          throw error;
+        });
+    }
+
+    try {
+      SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+    } catch {
+      logger.error(`[RedisInstrumentation] error ending span for synchronous commandsExecutor`);
+    }
+    return promise;
   }
 
   private _getConnectPatchFn(packageName: string) {
