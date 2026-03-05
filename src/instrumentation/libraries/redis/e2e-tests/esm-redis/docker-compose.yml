@@ -1,0 +1,38 @@
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: ../../../../../..
+      dockerfile: src/instrumentation/libraries/redis/e2e-tests/esm-redis/Dockerfile
+      args:
+        - CACHEBUST=${CACHEBUST:-1}
+        - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
+    environment:
+      - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TUSK_ANALYTICS_DISABLED=1
+      - BENCHMARKS=${BENCHMARKS:-}
+      - BENCHMARK_DURATION=${BENCHMARK_DURATION:-5}
+      - BENCHMARK_WARMUP=${BENCHMARK_WARMUP:-3}
+    volumes:
+      # Mount SDK source for hot reload (this is what package.json expects)
+      - ../../../../../..:/sdk:ro
+      # Mount .tusk config file to persist configuration
+      - ./.tusk/config.yaml:/app/.tusk/config.yaml:ro
+      # Persist traces and logs on host
+      - ./.tusk/traces:/app/.tusk/traces
+      - ./.tusk/logs:/app/.tusk/logs
+      # Mount app source for development
+      - ./src:/app/src
+    working_dir: /app
+    depends_on:
+      redis:
+        condition: service_healthy

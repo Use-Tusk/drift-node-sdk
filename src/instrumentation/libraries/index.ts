@@ -10,6 +10,7 @@ export * from "./jsonwebtoken";
 export * from "./jwks-rsa";
 export * from "./fetch";
 export * from "./ioredis";
+export * from "./redis";
 export * from "./upstash-redis-js";
 export * from "./grpc";
 export * from "./firestore";

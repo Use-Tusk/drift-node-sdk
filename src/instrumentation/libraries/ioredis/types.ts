@@ -1,5 +1,9 @@
 import { TdInstrumentationConfig } from "../../core/baseClasses/TdInstrumentationAbstract";
 import { TuskDriftMode } from "../../../core/TuskDrift";
+import { BufferEncoding, BufferMetadata } from "../redis-common/types";
+
+export { BufferEncoding };
+export type { BufferMetadata };
 
 export interface IORedisInputValue {
   command: string;
@@ -46,17 +50,6 @@ export interface IORedisInterface {
   };
   sendCommand(command: IORedisCommand): Promise<any>;
   connect(): Promise<void>;
-}
-
-export enum BufferEncoding {
-  UTF8 = "UTF8",
-  BASE64 = "BASE64",
-  NONE = "NONE",
-}
-
-export interface BufferMetadata {
-  bufferMeta?: string;
-  encoding?: BufferEncoding;
 }
 
 export interface IORedisOutputValue extends Record<string, unknown> {

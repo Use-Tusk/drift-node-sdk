@@ -34,6 +34,7 @@ jobs:
             postgres,
             prisma,
             mongodb,
+            redis,
           ]
     steps:
       - name: Checkout
