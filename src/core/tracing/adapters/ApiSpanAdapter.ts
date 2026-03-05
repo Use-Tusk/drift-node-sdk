@@ -2,7 +2,10 @@ import { ExportResult, ExportResultCode } from "@opentelemetry/core";
 import type { SpanExportAdapter } from "../TdSpanExporter";
 import { CleanSpanData } from "../../types";
 import { SpanExportServiceClient } from "@use-tusk/drift-schemas/backend/span_export_service.client";
-import { ExportSpansRequest, ExportSpansResponse } from "@use-tusk/drift-schemas/backend/span_export_service";
+import {
+  ExportSpansRequest,
+  ExportSpansResponse,
+} from "@use-tusk/drift-schemas/backend/span_export_service";
 import { TwirpFetchTransport } from "@protobuf-ts/twirp-transport";
 import { Span, PackageType, SpanKind as DriftSpanKind } from "@use-tusk/drift-schemas/core/span";
 import { SpanKind as OtelSpanKind } from "@opentelemetry/api";
@@ -61,11 +64,10 @@ export class ApiSpanAdapter implements SpanExportAdapter {
         this.environment || "",
         this.sdkVersion,
         this.sdkInstanceId,
-        spans
-          .map((s) => s.protoSpanBytes)
-          .filter((s): s is Buffer => Buffer.isBuffer(s)),
+        spans.map((s) => s.protoSpanBytes).filter((s): s is Buffer => Buffer.isBuffer(s)),
       );
-      const allSpansHavePrebuiltBytes = spans.length > 0 && spans.every((s) => Buffer.isBuffer(s.protoSpanBytes));
+      const allSpansHavePrebuiltBytes =
+        spans.length > 0 && spans.every((s) => Buffer.isBuffer(s.protoSpanBytes));
 
       if (allSpansHavePrebuiltBytes && rustRequestBytes) {
         const response = await fetch(
@@ -76,6 +78,7 @@ export class ApiSpanAdapter implements SpanExportAdapter {
               "x-api-key": this.apiKey,
               "x-td-skip-instrumentation": "true",
               "Content-Type": "application/protobuf",
+              Accept: "application/protobuf",
             },
             body: new Uint8Array(rustRequestBytes),
           },
@@ -91,7 +94,9 @@ export class ApiSpanAdapter implements SpanExportAdapter {
           throw new Error(`Remote export failed: ${parsed.message}`);
         }
 
-        logger.debug(`Successfully exported ${spans.length} spans to remote endpoint (rust binary path)`);
+        logger.debug(
+          `Successfully exported ${spans.length} spans to remote endpoint (rust binary path)`,
+        );
         return { code: ExportResultCode.SUCCESS };
       }
 
