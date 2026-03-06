@@ -1,6 +1,11 @@
 import type {
   BuildSpanProtoBytesInput as RustBuildSpanProtoBytesInput,
 } from "@use-tusk/drift-core-node";
+import type {
+  PackageType,
+  SpanKind as PbSpanKind,
+  StatusCode,
+} from "@use-tusk/drift-schemas/core/span";
 
 type RustCoreNodeBinding = Pick<
   typeof import("@use-tusk/drift-core-node"),
@@ -22,16 +27,16 @@ export type BuildSpanProtoBytesInput = {
   packageName: string;
   instrumentationName: string;
   submoduleName: string;
-  packageType: number;
+  packageType: PackageType;
   environment?: string;
-  kind: number;
+  kind: PbSpanKind;
   inputSchema: unknown;
   outputSchema: unknown;
   inputSchemaHash: string;
   outputSchemaHash: string;
   inputValueHash: string;
   outputValueHash: string;
-  statusCode: number;
+  statusCode: StatusCode;
   statusMessage: string;
   isPreAppStart: boolean;
   isRootSpan: boolean;
