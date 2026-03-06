@@ -128,7 +128,8 @@ export class SpanTransformer {
       packageName,
       instrumentationName,
       submoduleName: submoduleName || "",
-      packageType: ((attributes[TdSpanAttributes.PACKAGE_TYPE] as PackageType) || PackageType.UNSPECIFIED) as number,
+      packageType:
+        (attributes[TdSpanAttributes.PACKAGE_TYPE] as PackageType) || PackageType.UNSPECIFIED,
       environment,
       // OTel and Proto SpanKind enums are offset by 1 (proto has UNSPECIFIED=0).
       // Must map here because buildSpanProtoBytes passes directly to Rust/proto.
