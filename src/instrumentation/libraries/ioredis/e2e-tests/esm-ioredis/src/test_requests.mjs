@@ -35,6 +35,9 @@ await makeRequest('GET', '/test/ping');
 await makeRequest('GET', '/test/pipeline');
 await makeRequest('GET', '/test/multi');
 await makeRequest('GET', '/test/new-client');
+await makeRequest('GET', '/test/new-client-connect-event');
+await makeRequest('GET', '/test/new-client-connecting-event');
+await makeRequest('GET', '/test/new-client-status-check');
 await makeRequest('GET', '/test/getbuffer');
 await makeRequest('GET', '/test/mgetbuffer');
 

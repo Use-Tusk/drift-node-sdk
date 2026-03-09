@@ -699,6 +699,143 @@ app.get("/test/new-client", async (req: Request, res: Response) => {
   }
 });
 
+// Test: New client waiting on 'connect' event (not 'ready')
+// Real ioredis emits: connecting -> connect -> ready
+// Bug: replay mode only emits 'ready', so waiting on 'connect' hangs
+app.get("/test/new-client-connect-event", async (req: Request, res: Response) => {
+  try {
+    const newClient = new Redis(redisConfig);
+
+    // Wait for the 'connect' event specifically (NOT 'ready')
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        newClient.disconnect();
+        reject(new Error("Timeout waiting for 'connect' event"));
+      }, 5000);
+
+      newClient.once("connect", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+
+      newClient.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
+
+    const result = await newClient.ping();
+    await newClient.quit();
+
+    res.json({
+      success: true,
+      data: { result, eventReceived: "connect" },
+      operation: "NEW_CLIENT_CONNECT_EVENT",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Test: Check that 'connecting' event fires on new client
+// Real ioredis emits 'connecting' as the first event in the lifecycle
+app.get("/test/new-client-connecting-event", async (req: Request, res: Response) => {
+  try {
+    const newClient = new Redis(redisConfig);
+    const events: string[] = [];
+
+    // Track all connection lifecycle events
+    newClient.once("connecting", () => events.push("connecting"));
+    newClient.once("connect", () => events.push("connect"));
+    newClient.once("ready", () => events.push("ready"));
+
+    // Wait for ready with timeout
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        newClient.disconnect();
+        reject(new Error(`Timeout waiting for ready. Events received: ${events.join(", ")}`));
+      }, 5000);
+
+      newClient.once("ready", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+
+      newClient.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
+
+    const result = await newClient.ping();
+    await newClient.quit();
+
+    res.json({
+      success: true,
+      data: {
+        result,
+        eventsReceived: events,
+        hasConnecting: events.includes("connecting"),
+        hasConnect: events.includes("connect"),
+        hasReady: events.includes("ready"),
+      },
+      operation: "NEW_CLIENT_CONNECTING_EVENT",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Test: Check redis.status property after connect in replay
+// Real ioredis sets this.status via setStatus() alongside event emission
+app.get("/test/new-client-status-check", async (req: Request, res: Response) => {
+  try {
+    const newClient = new Redis(redisConfig);
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        newClient.disconnect();
+        reject(new Error("Timeout waiting for ready"));
+      }, 5000);
+
+      newClient.on("ready", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+
+      newClient.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
+
+    const status = (newClient as any).status;
+    const result = await newClient.ping();
+    await newClient.quit();
+
+    res.json({
+      success: true,
+      data: {
+        result,
+        status,
+        isReady: status === "ready",
+      },
+      operation: "NEW_CLIENT_STATUS_CHECK",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 // Test Buffer commands
 app.get("/test/getbuffer", async (req: Request, res: Response) => {
   try {
