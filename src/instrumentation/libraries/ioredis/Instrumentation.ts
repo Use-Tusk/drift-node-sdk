@@ -244,7 +244,12 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
           return handleReplayMode({
             noOpRequestHandler: () => {
               process.nextTick(() => {
-                (this as any).emit("ready");
+                this.status = "connecting";
+                this.emit("connecting");
+                this.status = "connect";
+                this.emit("connect");
+                this.status = "ready";
+                this.emit("ready");
               });
 
               return Promise.resolve();
@@ -563,7 +568,12 @@ export class IORedisInstrumentation extends TdInstrumentationBase {
     logger.debug(`[IORedisInstrumentation] Replaying IORedis connect`);
 
     process.nextTick(() => {
-      (thisContext as any).emit("ready");
+      thisContext.status = "connecting";
+      thisContext.emit("connecting");
+      thisContext.status = "connect";
+      thisContext.emit("connect");
+      thisContext.status = "ready";
+      thisContext.emit("ready");
     });
 
     return Promise.resolve();

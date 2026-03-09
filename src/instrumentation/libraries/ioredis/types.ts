@@ -42,14 +42,25 @@ export interface IORedisCommand {
   callback?: Function;
 }
 
+export type IORedisStatus =
+  | "wait"
+  | "reconnecting"
+  | "connecting"
+  | "connect"
+  | "ready"
+  | "close"
+  | "end";
+
 export interface IORedisInterface {
   options: {
     host?: string;
     port?: number;
     [key: string]: any;
   };
+  status: IORedisStatus;
   sendCommand(command: IORedisCommand): Promise<any>;
   connect(): Promise<void>;
+  emit(event: string | symbol, ...args: any[]): boolean;
 }
 
 export interface IORedisOutputValue extends Record<string, unknown> {
