@@ -34,5 +34,6 @@ await makeRequest("GET", "/test/cursor-map");
 await makeRequest("GET", "/test/cursor-async-iterator");
 await makeRequest("GET", "/test/with-transaction");
 await makeRequest("GET", "/test/mongoose-cursor-close");
+await makeRequest("GET", "/test/collection-indexes");
 
 printRequestSummary();

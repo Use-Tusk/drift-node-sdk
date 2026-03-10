@@ -625,6 +625,13 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // --- Collection.indexes() (promise-based)
+    if (url === "/test/collection-indexes" && method === "GET") {
+      const indexes = await testUsers.indexes();
+      sendJson(res, 200, { success: true, data: indexes });
+      return;
+    }
+
     // 404 for unknown routes
     sendJson(res, 404, { error: "Not found" });
   } catch (error) {

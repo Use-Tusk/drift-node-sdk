@@ -767,11 +767,19 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
     // --- Wrap toArray ---
     if (typeof cursor.toArray === "function") {
       const originalToArray = cursor.toArray.bind(cursor);
-      cursor.toArray = (): Promise<any[]> => {
-        if (cursorState.recorded) return originalToArray();
+      cursor.toArray = (callback?: any): Promise<any[]> | void => {
+        if (cursorState.recorded) {
+          if (typeof callback === "function") {
+            originalToArray()
+              .then((result: any[]) => callback(null, result))
+              .catch((error: any) => callback(error));
+            return;
+          }
+          return originalToArray();
+        }
         cursorState.recorded = true;
 
-        return context.with(creationContext, () => {
+        const resultPromise: Promise<any[]> = context.with(creationContext, () => {
           return handleRecordMode({
             originalFunctionCall: () => originalToArray(),
             recordModeHandler: ({ isPreAppStart }) => {
@@ -830,6 +838,15 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             spanKind: SpanKind.CLIENT,
           });
         });
+
+        if (typeof callback === "function") {
+          resultPromise
+            .then((result: any[]) => callback(null, result))
+            .catch((error: any) => callback(error));
+          return;
+        }
+
+        return resultPromise;
       };
     }
 
@@ -897,7 +914,8 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
           return;
         }
 
-        if (cursorState.recorded) return callback === undefined ? originalNext() : originalNext(callback);
+        if (cursorState.recorded)
+          return callback === undefined ? originalNext() : originalNext(callback);
 
         const shouldRecord = context.with(creationContext, () => ensureSpanCreated());
         if (!shouldRecord) return callback === undefined ? originalNext() : originalNext(callback);
@@ -938,7 +956,9 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
               settled = true;
               callback(error, result);
             };
-            const maybeResult = originalHasNext((error: any, result: boolean) => finish(error, result));
+            const maybeResult = originalHasNext((error: any, result: boolean) =>
+              finish(error, result),
+            );
             Promise.resolve(maybeResult)
               .then((result: boolean) => finish(null, result))
               .catch((error: any) => finish(error, false));
@@ -953,7 +973,9 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
               settled = true;
               callback(error, result);
             };
-            const maybeResult = originalHasNext((error: any, result: boolean) => finish(error, result));
+            const maybeResult = originalHasNext((error: any, result: boolean) =>
+              finish(error, result),
+            );
             Promise.resolve(maybeResult)
               .then((result: boolean) => finish(null, result))
               .catch((error: any) => finish(error, false));
@@ -2322,11 +2344,13 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
           const originalWithTransaction = session.withTransaction.bind(session);
 
           session.withTransaction = async (
-            fn: (...fnArgs: any[]) => any,
-            ...fnArgs: any[]
+            fn: (session: any) => any,
+            _options?: any,
           ): Promise<any> => {
             try {
-              await Promise.resolve(fn(...fnArgs));
+              // Match mongodb driver's callback contract: withTransaction(fn, options?)
+              // invokes fn(session), not fn(options).
+              await Promise.resolve(fn(session));
               if (typeof session.commitTransaction === "function") {
                 return await session.commitTransaction();
               }

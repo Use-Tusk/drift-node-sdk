@@ -47,7 +47,10 @@ export class TdFakeFindCursor {
   toArray(callback?: (error: any, docs?: any[]) => void): Promise<any[]> | void {
     const promise = this._ensureMockLoaded().then(() => [...this.documents]);
     if (typeof callback === "function") {
-      promise.then((docs) => callback(null, docs)).catch((error) => callback(error));
+      promise.then(
+        (docs) => callback(null, docs),
+        (error) => callback(error),
+      );
       return;
     }
     return promise;
@@ -56,7 +59,10 @@ export class TdFakeFindCursor {
   next(callback?: (error: any, doc?: any | null) => void): Promise<any | null> | void {
     const promise = this._ensureMockLoaded().then(() => this.documents[this.index++] ?? null);
     if (typeof callback === "function") {
-      promise.then((doc) => callback(null, doc)).catch((error) => callback(error));
+      promise.then(
+        (doc) => callback(null, doc),
+        (error) => callback(error),
+      );
       return;
     }
     return promise;
@@ -65,7 +71,10 @@ export class TdFakeFindCursor {
   tryNext(callback?: (error: any, doc?: any | null) => void): Promise<any | null> | void {
     const promise = this._ensureMockLoaded().then(() => this.documents[this.index++] ?? null);
     if (typeof callback === "function") {
-      promise.then((doc) => callback(null, doc)).catch((error) => callback(error));
+      promise.then(
+        (doc) => callback(null, doc),
+        (error) => callback(error),
+      );
       return;
     }
     return promise;
@@ -74,7 +83,10 @@ export class TdFakeFindCursor {
   hasNext(callback?: (error: any, hasNext?: boolean) => void): Promise<boolean> | void {
     const promise = this._ensureMockLoaded().then(() => this.index < this.documents.length);
     if (typeof callback === "function") {
-      promise.then((hasNext) => callback(null, hasNext)).catch((error) => callback(error));
+      promise.then(
+        (hasNext) => callback(null, hasNext),
+        (error) => callback(error),
+      );
       return;
     }
     return promise;
@@ -168,7 +180,10 @@ export class TdFakeFindCursor {
   close(callback?: (error?: any) => void): Promise<void> | void {
     const promise = Promise.resolve();
     if (typeof callback === "function") {
-      promise.then(() => callback()).catch((error) => callback(error));
+      promise.then(
+        () => callback(),
+        (error) => callback(error),
+      );
       return;
     }
     return promise;
