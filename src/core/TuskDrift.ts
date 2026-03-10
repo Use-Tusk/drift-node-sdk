@@ -179,8 +179,19 @@ export class TuskDriftCore {
       return;
     }
 
-    logger.warn(
-      `Rust core path requested but binding unavailable; falling back to JavaScript path (env=${envDisplay}, reason=${status.reason}, error=${status.bindingError}).`,
+    logger.info(
+      `Rust core path unavailable at startup; using JavaScript path instead (env=${envDisplay}, reason=${status.reason}, error=${status.bindingError}).`,
+    );
+  }
+
+  private logStartupSummary(): void {
+    const serviceName = this.config.service?.name || "unknown";
+    const serviceId = this.config.service?.id || "<unset>";
+    const environment = this.initParams.env || "<unset>";
+    const exportSpans = this.config.recording?.export_spans || false;
+
+    logger.info(
+      `SDK initialized successfully (version=${SDK_VERSION}, mode=${this.mode}, env=${environment}, service=${serviceName}, serviceId=${serviceId}, exportSpans=${exportSpans}, samplingRate=${this.samplingRate}, logLevel=${logger.getLogLevel()}, runtime=node ${process.version}, platform=${process.platform}/${process.arch}).`,
     );
   }
 
@@ -564,7 +575,7 @@ export class TuskDriftCore {
     this.createEnvVarsSnapshot();
 
     this.initialized = true;
-    logger.info("SDK initialized successfully");
+    this.logStartupSummary();
   }
 
   markAppAsReady(): void {
