@@ -451,7 +451,24 @@ const server = http.createServer(async (req, res) => {
     // --- listCollections ---
     if (url === "/test/list-collections" && method === "GET") {
       const collections = await db.listCollections().toArray();
-      sendJson(res, 200, { success: true, data: collections });
+      const normalized = collections.map((collection: any) => {
+        const uuid = collection?.info?.uuid;
+        if (!uuid || typeof uuid !== "object") return collection;
+
+        const serializedUuid =
+          typeof uuid.toString === "function" && uuid.toString() !== "[object Object]"
+            ? uuid.toString()
+            : uuid.value || uuid;
+
+        return {
+          ...collection,
+          info: {
+            ...collection.info,
+            uuid: serializedUuid,
+          },
+        };
+      });
+      sendJson(res, 200, { success: true, data: normalized });
       return;
     }
 
@@ -548,7 +565,7 @@ const server = http.createServer(async (req, res) => {
           published: false,
         },
       ]);
-      const result = created.map((d) => ({ title: d.title, id: d._id }));
+      const result = created.map((d: any) => ({ title: d.title, id: d._id }));
       await Post.deleteMany({ tags: "temp-multi" });
       sendJson(res, 200, { success: true, data: result, count: result.length });
       return;
@@ -605,6 +622,13 @@ const server = http.createServer(async (req, res) => {
       if (second) items.push({ title: (second as any).title });
       await cursor.close();
       sendJson(res, 200, { success: true, data: items, count: items.length });
+      return;
+    }
+
+    // --- Collection.indexes() (promise-based)
+    if (url === "/test/collection-indexes" && method === "GET") {
+      const indexes = await testUsers.indexes();
+      sendJson(res, 200, { success: true, data: indexes });
       return;
     }
 

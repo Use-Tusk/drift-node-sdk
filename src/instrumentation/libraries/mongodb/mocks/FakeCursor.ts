@@ -44,24 +44,52 @@ export class TdFakeFindCursor {
 
   // --- Terminal methods (must await mock loading) ---
 
-  async toArray(): Promise<any[]> {
-    await this._ensureMockLoaded();
-    return [...this.documents];
+  toArray(callback?: (error: any, docs?: any[]) => void): Promise<any[]> | void {
+    const promise = this._ensureMockLoaded().then(() => [...this.documents]);
+    if (typeof callback === "function") {
+      promise.then(
+        (docs) => callback(null, docs),
+        (error) => callback(error),
+      );
+      return;
+    }
+    return promise;
   }
 
-  async next(): Promise<any | null> {
-    await this._ensureMockLoaded();
-    return this.documents[this.index++] ?? null;
+  next(callback?: (error: any, doc?: any | null) => void): Promise<any | null> | void {
+    const promise = this._ensureMockLoaded().then(() => this.documents[this.index++] ?? null);
+    if (typeof callback === "function") {
+      promise.then(
+        (doc) => callback(null, doc),
+        (error) => callback(error),
+      );
+      return;
+    }
+    return promise;
   }
 
-  async tryNext(): Promise<any | null> {
-    await this._ensureMockLoaded();
-    return this.documents[this.index++] ?? null;
+  tryNext(callback?: (error: any, doc?: any | null) => void): Promise<any | null> | void {
+    const promise = this._ensureMockLoaded().then(() => this.documents[this.index++] ?? null);
+    if (typeof callback === "function") {
+      promise.then(
+        (doc) => callback(null, doc),
+        (error) => callback(error),
+      );
+      return;
+    }
+    return promise;
   }
 
-  async hasNext(): Promise<boolean> {
-    await this._ensureMockLoaded();
-    return this.index < this.documents.length;
+  hasNext(callback?: (error: any, hasNext?: boolean) => void): Promise<boolean> | void {
+    const promise = this._ensureMockLoaded().then(() => this.index < this.documents.length);
+    if (typeof callback === "function") {
+      promise.then(
+        (hasNext) => callback(null, hasNext),
+        (error) => callback(error),
+      );
+      return;
+    }
+    return promise;
   }
 
   async forEach(fn: (doc: any) => void): Promise<void> {
@@ -149,7 +177,17 @@ export class TdFakeFindCursor {
 
   // --- Lifecycle methods ---
 
-  async close(): Promise<void> {}
+  close(callback?: (error?: any) => void): Promise<void> | void {
+    const promise = Promise.resolve();
+    if (typeof callback === "function") {
+      promise.then(
+        () => callback(),
+        (error) => callback(error),
+      );
+      return;
+    }
+    return promise;
+  }
 
   rewind(): void {
     this.index = 0;

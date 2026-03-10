@@ -4,6 +4,7 @@ import { TuskDriftMode } from "../../../../core/TuskDrift";
 import { handleRecordMode, handleReplayMode } from "../../../core/utils/modeUtils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { logger } from "../../../../core/utils";
+import { TdFakeTopology } from "../mocks/FakeTopology";
 
 export class ConnectionHandler {
   constructor(
@@ -42,7 +43,7 @@ export class ConnectionHandler {
               isPreAppStart: !this.isAppReady(),
             },
             (spanInfo: SpanInfo) => {
-              return this.handleReplayConnect(spanInfo, thisArg);
+              return this.handleReplayConnect(spanInfo, thisArg, args);
             },
           );
         },
@@ -84,13 +85,19 @@ export class ConnectionHandler {
    */
   handleClose(original: Function, thisArg: any, args: any[]): any {
     if (this.mode === TuskDriftMode.REPLAY) {
+      const callback =
+        args.length > 0 && typeof args[args.length - 1] === "function"
+          ? (args[args.length - 1] as (error?: any) => void)
+          : undefined;
       return handleReplayMode({
         noOpRequestHandler: () => {
+          if (callback) callback();
           return Promise.resolve();
         },
         isServerRequest: false,
         replayModeHandler: () => {
           logger.debug(`[${this.instrumentationName}] Replaying MongoDB close (no-op)`);
+          if (callback) callback();
           return Promise.resolve();
         },
       });
@@ -143,9 +150,27 @@ export class ConnectionHandler {
     thisArg: any,
     args: any[],
   ): Promise<any> {
-    const connectPromise = original.apply(thisArg, args) as Promise<any>;
+    const connectResult = original.apply(thisArg, args) as Promise<any> | any;
+    const isPromiseLike = connectResult && typeof connectResult.then === "function";
 
-    return connectPromise
+    // mongodb@4 can still exercise callback-style internals that return void.
+    // In that case, avoid crashing on ".then" and record a best-effort span.
+    if (!isPromiseLike) {
+      try {
+        logger.debug(
+          `[${this.instrumentationName}] MongoDB connect returned a non-promise value; recording best-effort span`,
+        );
+        SpanUtils.addSpanAttributes(spanInfo.span, {
+          outputValue: { connected: true },
+        });
+        SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+      } catch (error) {
+        logger.error(`[${this.instrumentationName}] Error ending non-promise connect span:`, error);
+      }
+      return Promise.resolve(connectResult);
+    }
+
+    return (connectResult as Promise<any>)
       .then((result: any) => {
         try {
           logger.debug(
@@ -186,10 +211,12 @@ export class ConnectionHandler {
       });
   }
 
-  private handleReplayConnect(spanInfo: SpanInfo, thisArg: any): Promise<any> {
+  private handleReplayConnect(spanInfo: SpanInfo, thisArg: any, args: any[]): Promise<any> {
     logger.debug(
       `[${this.instrumentationName}] Replaying MongoDB connection (skipping TCP connect)`,
     );
+
+    this.injectFakeTopology(thisArg);
 
     try {
       SpanUtils.addSpanAttributes(spanInfo.span, {
@@ -200,7 +227,43 @@ export class ConnectionHandler {
       logger.error(`[${this.instrumentationName}] Error ending replay connect span:`, error);
     }
 
+    const callback =
+      args.length > 0 && typeof args[args.length - 1] === "function"
+        ? (args[args.length - 1] as (error: any, client?: any) => void)
+        : undefined;
+
+    if (callback) {
+      // mongodb@4 + mongoose uses callback-style MongoClient.connect().
+      // Replay must invoke the callback to unblock openUri() promise flow.
+      callback(null, thisArg);
+      return Promise.resolve(thisArg);
+    }
+
     return Promise.resolve(thisArg);
+  }
+
+  private injectFakeTopology(client: any): void {
+    const fakeTopology = new TdFakeTopology();
+    if (!client) return;
+
+    if (!client.topology) {
+      client.topology = fakeTopology;
+    }
+
+    if (client.s && !client.s.topology) {
+      client.s.topology = fakeTopology;
+    }
+
+    // Keep replay client in a "connected-enough" state for higher-level libraries
+    // that inspect internal MongoClient flags before issuing operations.
+    if (client.s) {
+      if (client.s.hasBeenClosed === true) {
+        client.s.hasBeenClosed = false;
+      }
+      if (client.s.isMongoClient === false) {
+        client.s.isMongoClient = true;
+      }
+    }
   }
 
   private handleRecordClose(
@@ -209,9 +272,22 @@ export class ConnectionHandler {
     thisArg: any,
     args: any[],
   ): Promise<void> {
-    const closePromise = original.apply(thisArg, args) as Promise<void>;
+    const closeResult = original.apply(thisArg, args) as Promise<void> | any;
+    const isPromiseLike = closeResult && typeof closeResult.then === "function";
 
-    return closePromise
+    if (!isPromiseLike) {
+      try {
+        SpanUtils.addSpanAttributes(spanInfo.span, {
+          outputValue: { closed: true },
+        });
+        SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+      } catch (error) {
+        logger.error(`[${this.instrumentationName}] Error ending non-promise close span:`, error);
+      }
+      return Promise.resolve();
+    }
+
+    return (closeResult as Promise<void>)
       .then(() => {
         try {
           logger.debug(

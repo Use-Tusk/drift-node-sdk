@@ -59,6 +59,7 @@ const COLLECTION_METHODS_TO_WRAP = [
   "dropIndex",
   "dropIndexes",
   "indexes",
+  "drop",
 ];
 
 /**
@@ -82,6 +83,7 @@ const DB_METHODS_TO_WRAP = [
  * Db.prototype methods that return cursors.
  */
 const DB_CURSOR_METHODS_TO_WRAP = ["listCollections", "aggregate"] as const;
+const SUPPORTED_MONGODB_VERSIONS = ["4.*", "5.*", "6.*", "7.*"] as const;
 
 export class MongodbInstrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "MongodbInstrumentation";
@@ -89,6 +91,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
   private tuskDrift: TuskDriftCore;
   private connectionHandler: ConnectionHandler;
   private moduleExports: any;
+  private mongodbMajorVersion?: number;
 
   constructor(config: MongodbInstrumentationConfig = {}) {
     super("mongodb", config);
@@ -103,24 +106,43 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
     return [
       new TdInstrumentationNodeModule({
         name: "mongodb",
-        supportedVersions: ["5.*", "6.*", "7.*"],
-        patch: (moduleExports: MongodbModuleExports) => this._patchMongodbModule(moduleExports),
+        supportedVersions: [...SUPPORTED_MONGODB_VERSIONS],
+        patch: (moduleExports: MongodbModuleExports, moduleVersion?: string) =>
+          this._patchMongodbModule(moduleExports, moduleVersion),
         files: [
           new TdInstrumentationNodeModuleFile({
             name: "mongodb/lib/sessions.js",
-            supportedVersions: ["5.*", "6.*", "7.*"],
+            supportedVersions: [...SUPPORTED_MONGODB_VERSIONS],
+            patch: (moduleExports: any) => this._patchSessionModule(moduleExports),
+          }),
+          // Compatibility path for some mongodb builds
+          new TdInstrumentationNodeModuleFile({
+            name: "mongodb/lib/sessions",
+            supportedVersions: [...SUPPORTED_MONGODB_VERSIONS],
             patch: (moduleExports: any) => this._patchSessionModule(moduleExports),
           }),
           // Ordered bulk operations
           new TdInstrumentationNodeModuleFile({
             name: "mongodb/lib/bulk/ordered.js",
-            supportedVersions: ["5.*", "6.*", "7.*"],
+            supportedVersions: [...SUPPORTED_MONGODB_VERSIONS],
+            patch: (moduleExports: any) => this._patchOrderedBulkModule(moduleExports),
+          }),
+          // Compatibility path for some mongodb builds
+          new TdInstrumentationNodeModuleFile({
+            name: "mongodb/lib/bulk/ordered",
+            supportedVersions: [...SUPPORTED_MONGODB_VERSIONS],
             patch: (moduleExports: any) => this._patchOrderedBulkModule(moduleExports),
           }),
           // Unordered bulk operations
           new TdInstrumentationNodeModuleFile({
             name: "mongodb/lib/bulk/unordered.js",
-            supportedVersions: ["5.*", "6.*", "7.*"],
+            supportedVersions: [...SUPPORTED_MONGODB_VERSIONS],
+            patch: (moduleExports: any) => this._patchUnorderedBulkModule(moduleExports),
+          }),
+          // Compatibility path for some mongodb builds
+          new TdInstrumentationNodeModuleFile({
+            name: "mongodb/lib/bulk/unordered",
+            supportedVersions: [...SUPPORTED_MONGODB_VERSIONS],
             patch: (moduleExports: any) => this._patchUnorderedBulkModule(moduleExports),
           }),
         ],
@@ -133,8 +155,14 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
    * Wraps MongoClient, Collection, Db, and cursor prototypes to intercept
    * all database operations for record/replay.
    */
-  private _patchMongodbModule(mongodbModule: MongodbModuleExports): MongodbModuleExports {
-    logger.debug(`[${this.INSTRUMENTATION_NAME}] Patching MongoDB module in ${this.mode} mode`);
+  private _patchMongodbModule(
+    mongodbModule: MongodbModuleExports,
+    moduleVersion?: string,
+  ): MongodbModuleExports {
+    this.mongodbMajorVersion = this._getMajorVersion(moduleVersion);
+    logger.debug(
+      `[${this.INSTRUMENTATION_NAME}] Patching MongoDB module v${moduleVersion || "unknown"} in ${this.mode} mode`,
+    );
 
     if (this.isModulePatched(mongodbModule)) {
       logger.debug(`[${this.INSTRUMENTATION_NAME}] MongoDB module already patched, skipping`);
@@ -243,6 +271,12 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
     return mongodbModule;
   }
 
+  private _getMajorVersion(version?: string): number | undefined {
+    if (!version) return undefined;
+    const major = Number(version.split(".")[0]);
+    return Number.isFinite(major) ? major : undefined;
+  }
+
   // ---------------------------------------------------------------------------
   // Collection-level CRUD method patching
   // ---------------------------------------------------------------------------
@@ -283,43 +317,68 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
 
     return (original: Function) => {
       return function (this: any, ...args: any[]) {
+        const callback =
+          args.length > 0 && typeof args[args.length - 1] === "function"
+            ? (args[args.length - 1] as (error: any, result?: any) => void)
+            : undefined;
+        const effectiveArgs = callback ? args.slice(0, -1) : args;
+
         const collectionName = this?.s?.namespace?.collection;
         const databaseName = this?.s?.namespace?.db;
         const inputValue = self._extractCollectionInput(
           methodName,
           collectionName,
           databaseName,
-          args,
+          effectiveArgs,
         );
 
         if (self.mode === TuskDriftMode.DISABLED) {
           return original.apply(this, args);
         }
 
+        const invokeHandler = () => {
+          if (self.mode === TuskDriftMode.RECORD) {
+            return self._handleRecordCollectionMethod(
+              original,
+              this,
+              effectiveArgs,
+              inputValue,
+              spanName,
+              submodule,
+            );
+          }
+
+          if (self.mode === TuskDriftMode.REPLAY) {
+            return self._handleReplayCollectionMethod(
+              original,
+              this,
+              effectiveArgs,
+              inputValue,
+              spanName,
+              submodule,
+              methodName,
+            );
+          }
+
+          return original.apply(this, effectiveArgs);
+        };
+
+        if (callback) {
+          Promise.resolve(invokeHandler())
+            .then((result) => callback(null, result))
+            .catch((error) => callback(error));
+          return;
+        }
+
         if (self.mode === TuskDriftMode.RECORD) {
-          return self._handleRecordCollectionMethod(
-            original,
-            this,
-            args,
-            inputValue,
-            spanName,
-            submodule,
-          );
+          return invokeHandler();
         }
 
         if (self.mode === TuskDriftMode.REPLAY) {
-          return self._handleReplayCollectionMethod(
-            original,
-            this,
-            args,
-            inputValue,
-            spanName,
-            submodule,
-            methodName,
-          );
+          return invokeHandler();
         }
 
-        return original.apply(this, args);
+        return original.apply(this, effectiveArgs);
       };
     };
   }
@@ -354,9 +413,8 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             stopRecordingChildSpans: true,
           },
           (spanInfo: SpanInfo) => {
-            const resultPromise = original.apply(thisArg, args) as Promise<any>;
-
-            return resultPromise
+            const resultPromise = original.apply(thisArg, args) as any;
+            return Promise.resolve(resultPromise)
               .then((result: any) => {
                 try {
                   addOutputAttributesToSpan(spanInfo, wrapDirectOutput(result));
@@ -419,7 +477,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       replayModeHandler: () => {
         return SpanUtils.createAndExecuteSpan(
           this.mode,
-          () => original.apply(thisArg, args),
+          () => Promise.resolve(this._getNoOpResult(methodName)),
           {
             name: spanName,
             kind: SpanKind.CLIENT,
@@ -709,11 +767,19 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
     // --- Wrap toArray ---
     if (typeof cursor.toArray === "function") {
       const originalToArray = cursor.toArray.bind(cursor);
-      cursor.toArray = (): Promise<any[]> => {
-        if (cursorState.recorded) return originalToArray();
+      cursor.toArray = (callback?: any): Promise<any[]> | void => {
+        if (cursorState.recorded) {
+          if (typeof callback === "function") {
+            originalToArray()
+              .then((result: any[]) => callback(null, result))
+              .catch((error: any) => callback(error));
+            return;
+          }
+          return originalToArray();
+        }
         cursorState.recorded = true;
 
-        return context.with(creationContext, () => {
+        const resultPromise: Promise<any[]> = context.with(creationContext, () => {
           return handleRecordMode({
             originalFunctionCall: () => originalToArray(),
             recordModeHandler: ({ isPreAppStart }) => {
@@ -772,58 +838,204 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             spanKind: SpanKind.CLIENT,
           });
         });
+
+        if (typeof callback === "function") {
+          resultPromise
+            .then((result: any[]) => callback(null, result))
+            .catch((error: any) => callback(error));
+          return;
+        }
+
+        return resultPromise;
       };
     }
 
     // --- Wrap next ---
     if (typeof cursor.next === "function") {
       const originalNext = cursor.next.bind(cursor);
-      cursor.next = async (): Promise<any | null> => {
-        if (cursorState.recorded) return originalNext();
+      cursor.next = (callback?: any): Promise<any | null> | any => {
+        if (typeof callback === "function") {
+          if (cursorState.recorded) {
+            let settled = false;
+            const finish = (error: any, doc: any | null) => {
+              if (settled) return;
+              settled = true;
+              callback(error, doc);
+            };
+            const maybeResult = originalNext((error: any, doc: any | null) => finish(error, doc));
+            Promise.resolve(maybeResult)
+              .then((doc: any | null) => finish(null, doc))
+              .catch((error: any) => finish(error, null));
+            return;
+          }
+
+          const shouldRecord = context.with(creationContext, () => ensureSpanCreated());
+          if (!shouldRecord) {
+            let settled = false;
+            const finish = (error: any, doc: any | null) => {
+              if (settled) return;
+              settled = true;
+              callback(error, doc);
+            };
+            const maybeResult = originalNext((error: any, doc: any | null) => finish(error, doc));
+            Promise.resolve(maybeResult)
+              .then((doc: any | null) => finish(null, doc))
+              .catch((error: any) => finish(error, null));
+            return;
+          }
+
+          let settled = false;
+          const finish = (error: any, doc: any | null) => {
+            if (settled) return;
+            settled = true;
+            if (error) {
+              handleCursorError(error);
+              callback(error);
+              return;
+            }
+            if (doc !== null) {
+              cursorState.collectedDocuments.push(doc);
+            } else {
+              finalizeCursorSpan();
+            }
+            callback(null, doc);
+          };
+          const runOriginal = () =>
+            originalNext((error: any, doc: any | null) => {
+              finish(error, doc);
+            });
+          const maybeResult = cursorState.spanInfo
+            ? SpanUtils.withSpan(cursorState.spanInfo, () => runOriginal())
+            : runOriginal();
+
+          Promise.resolve(maybeResult)
+            .then((doc: any | null) => finish(null, doc))
+            .catch((error: any) => finish(error, null));
+          return;
+        }
+
+        if (cursorState.recorded)
+          return callback === undefined ? originalNext() : originalNext(callback);
 
         const shouldRecord = context.with(creationContext, () => ensureSpanCreated());
-        if (!shouldRecord) return originalNext();
+        if (!shouldRecord) return callback === undefined ? originalNext() : originalNext(callback);
 
-        try {
-          const doc = await (cursorState.spanInfo
-            ? SpanUtils.withSpan(cursorState.spanInfo, () => originalNext())
-            : originalNext());
-
-          if (doc !== null) {
-            cursorState.collectedDocuments.push(doc);
-          } else {
-            finalizeCursorSpan();
-          }
-          return doc;
-        } catch (error) {
-          handleCursorError(error);
-          throw error;
-        }
+        return Promise.resolve(
+          cursorState.spanInfo
+            ? SpanUtils.withSpan(cursorState.spanInfo, () =>
+                callback === undefined ? originalNext() : originalNext(callback),
+              )
+            : callback === undefined
+              ? originalNext()
+              : originalNext(callback),
+        )
+          .then((doc: any | null) => {
+            if (doc !== null) {
+              cursorState.collectedDocuments.push(doc);
+            } else {
+              finalizeCursorSpan();
+            }
+            return doc;
+          })
+          .catch((error: any) => {
+            handleCursorError(error);
+            throw error;
+          });
       };
     }
 
     // --- Wrap hasNext ---
     if (typeof cursor.hasNext === "function") {
       const originalHasNext = cursor.hasNext.bind(cursor);
-      cursor.hasNext = async (): Promise<boolean> => {
-        if (cursorState.recorded) return originalHasNext();
+      cursor.hasNext = (callback?: any): Promise<boolean> | any => {
+        if (typeof callback === "function") {
+          if (cursorState.recorded) {
+            let settled = false;
+            const finish = (error: any, result: boolean) => {
+              if (settled) return;
+              settled = true;
+              callback(error, result);
+            };
+            const maybeResult = originalHasNext((error: any, result: boolean) =>
+              finish(error, result),
+            );
+            Promise.resolve(maybeResult)
+              .then((result: boolean) => finish(null, result))
+              .catch((error: any) => finish(error, false));
+            return;
+          }
+
+          const shouldRecord = context.with(creationContext, () => ensureSpanCreated());
+          if (!shouldRecord) {
+            let settled = false;
+            const finish = (error: any, result: boolean) => {
+              if (settled) return;
+              settled = true;
+              callback(error, result);
+            };
+            const maybeResult = originalHasNext((error: any, result: boolean) =>
+              finish(error, result),
+            );
+            Promise.resolve(maybeResult)
+              .then((result: boolean) => finish(null, result))
+              .catch((error: any) => finish(error, false));
+            return;
+          }
+
+          let settled = false;
+          const finish = (error: any, result: boolean) => {
+            if (settled) return;
+            settled = true;
+            if (error) {
+              handleCursorError(error);
+              callback(error);
+              return;
+            }
+            if (!result) {
+              finalizeCursorSpan();
+            }
+            callback(null, result);
+          };
+          const runOriginal = () =>
+            originalHasNext((error: any, result: boolean) => {
+              finish(error, result);
+            });
+          const maybeResult = cursorState.spanInfo
+            ? SpanUtils.withSpan(cursorState.spanInfo, () => runOriginal())
+            : runOriginal();
+
+          Promise.resolve(maybeResult)
+            .then((result: boolean) => finish(null, result))
+            .catch((error: any) => finish(error, false));
+          return;
+        }
+
+        if (cursorState.recorded)
+          return callback === undefined ? originalHasNext() : originalHasNext(callback);
 
         const shouldRecord = context.with(creationContext, () => ensureSpanCreated());
-        if (!shouldRecord) return originalHasNext();
+        if (!shouldRecord)
+          return callback === undefined ? originalHasNext() : originalHasNext(callback);
 
-        try {
-          const result = await (cursorState.spanInfo
-            ? SpanUtils.withSpan(cursorState.spanInfo, () => originalHasNext())
-            : originalHasNext());
-
-          if (!result) {
-            finalizeCursorSpan();
-          }
-          return result;
-        } catch (error) {
-          handleCursorError(error);
-          throw error;
-        }
+        return Promise.resolve(
+          cursorState.spanInfo
+            ? SpanUtils.withSpan(cursorState.spanInfo, () =>
+                callback === undefined ? originalHasNext() : originalHasNext(callback),
+              )
+            : callback === undefined
+              ? originalHasNext()
+              : originalHasNext(callback),
+        )
+          .then((result: boolean) => {
+            if (!result) {
+              finalizeCursorSpan();
+            }
+            return result;
+          })
+          .catch((error: any) => {
+            handleCursorError(error);
+            throw error;
+          });
       };
     }
 
@@ -905,14 +1117,35 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
     // --- Wrap close (for early cursor termination) ---
     if (typeof cursor.close === "function") {
       const originalClose = cursor.close.bind(cursor);
-      cursor.close = async (): Promise<void> => {
-        try {
-          await originalClose();
-          finalizeCursorSpan();
-        } catch (error) {
-          handleCursorError(error);
-          throw error;
+      cursor.close = (callback?: any): Promise<void> | any => {
+        if (typeof callback === "function") {
+          let settled = false;
+          const finish = (error?: any) => {
+            if (settled) return;
+            settled = true;
+            if (error) {
+              handleCursorError(error);
+              callback(error);
+              return;
+            }
+            finalizeCursorSpan();
+            callback();
+          };
+          const maybeResult = originalClose((error: any) => finish(error));
+          Promise.resolve(maybeResult)
+            .then(() => finish())
+            .catch((error: any) => finish(error));
+          return;
         }
+
+        return Promise.resolve(callback === undefined ? originalClose() : originalClose(callback))
+          .then(() => {
+            finalizeCursorSpan();
+          })
+          .catch((error: any) => {
+            handleCursorError(error);
+            throw error;
+          });
       };
     }
 
@@ -1355,6 +1588,9 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       case "indexes":
         return [];
 
+      case "drop":
+        return true;
+
       default:
         return null;
     }
@@ -1400,43 +1636,81 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
 
     return (original: Function) => {
       return function (this: any, ...args: any[]) {
+        const callback =
+          args.length > 0 && typeof args[args.length - 1] === "function"
+            ? (args[args.length - 1] as (error: any, result?: any) => void)
+            : undefined;
+        const effectiveArgs = callback ? args.slice(0, -1) : args;
+
         const databaseName = this?.databaseName || this?.s?.namespace?.db;
-        const inputValue = self._extractDbInput(methodName, databaseName, args);
+        const inputValue = self._extractDbInput(methodName, databaseName, effectiveArgs);
 
         if (self.mode === TuskDriftMode.DISABLED) {
           return original.apply(this, args);
         }
 
-        if (self.mode === TuskDriftMode.RECORD) {
-          if (methodName === "createCollection") {
-            return self._handleRecordCreateCollection(
+        const invokeHandler = () => {
+          if (self.mode === TuskDriftMode.RECORD) {
+            if (methodName === "createCollection") {
+              return self._handleRecordCreateCollection(
+                original,
+                this,
+                effectiveArgs,
+                inputValue,
+                spanName,
+                submodule,
+              );
+            }
+            return self._handleRecordDbMethod(
               original,
               this,
-              args,
+              effectiveArgs,
               inputValue,
               spanName,
               submodule,
             );
           }
-          return self._handleRecordDbMethod(original, this, args, inputValue, spanName, submodule);
+
+          if (self.mode === TuskDriftMode.REPLAY) {
+            if (methodName === "createCollection") {
+              return self._handleReplayCreateCollection(
+                this,
+                effectiveArgs,
+                inputValue,
+                spanName,
+                submodule,
+              );
+            }
+            return self._handleReplayDbMethod(
+              original,
+              this,
+              effectiveArgs,
+              inputValue,
+              spanName,
+              submodule,
+              methodName,
+            );
+          }
+
+          return original.apply(this, effectiveArgs);
+        };
+
+        if (callback) {
+          Promise.resolve(invokeHandler())
+            .then((result) => callback(null, result))
+            .catch((error) => callback(error));
+          return;
+        }
+
+        if (self.mode === TuskDriftMode.RECORD) {
+          return invokeHandler();
         }
 
         if (self.mode === TuskDriftMode.REPLAY) {
-          if (methodName === "createCollection") {
-            return self._handleReplayCreateCollection(this, args, inputValue, spanName, submodule);
-          }
-          return self._handleReplayDbMethod(
-            original,
-            this,
-            args,
-            inputValue,
-            spanName,
-            submodule,
-            methodName,
-          );
+          return invokeHandler();
         }
 
-        return original.apply(this, args);
+        return original.apply(this, effectiveArgs);
       };
     };
   }
@@ -1471,9 +1745,8 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             stopRecordingChildSpans: true,
           },
           (spanInfo: SpanInfo) => {
-            const resultPromise = original.apply(thisArg, args) as Promise<any>;
-
-            return resultPromise
+            const resultPromise = original.apply(thisArg, args) as any;
+            return Promise.resolve(resultPromise)
               .then((result: any) => {
                 try {
                   addOutputAttributesToSpan(spanInfo, wrapDirectOutput(result));
@@ -1537,7 +1810,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       replayModeHandler: () => {
         return SpanUtils.createAndExecuteSpan(
           this.mode,
-          () => original.apply(thisArg, args),
+          () => Promise.resolve(this._getDbNoOpResult(methodName)),
           {
             name: spanName,
             kind: SpanKind.CLIENT,
@@ -1619,9 +1892,8 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             stopRecordingChildSpans: true,
           },
           (spanInfo: SpanInfo) => {
-            const resultPromise = original.apply(thisArg, args) as Promise<any>;
-
-            return resultPromise
+            const resultPromise = original.apply(thisArg, args) as any;
+            return Promise.resolve(resultPromise)
               .then((result: any) => {
                 try {
                   // Collection objects are not serializable — record the name only
@@ -2057,16 +2329,46 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
    */
   private _getStartSessionWrapper(): (original: Function) => Function {
     const self = this;
+    const REPLAY_WITH_TXN_PATCHED = Symbol("tdReplayWithTransactionPatched");
     return (original: Function) => {
       return function (this: any, ...args: any[]) {
-        if (self.mode === TuskDriftMode.REPLAY) {
-          // In replay mode, still create a real session object.
-          // Its methods (commitTransaction, abortTransaction, endSession)
-          // are already patched on the prototype and will handle replay.
-          logger.debug(`[${self.INSTRUMENTATION_NAME}] startSession called in REPLAY mode`);
-          return original.apply(this, args);
+        const session = original.apply(this, args);
+
+        if (
+          self.mode === TuskDriftMode.REPLAY &&
+          self.mongodbMajorVersion === 4 &&
+          session &&
+          typeof session.withTransaction === "function" &&
+          !session[REPLAY_WITH_TXN_PATCHED]
+        ) {
+          const originalWithTransaction = session.withTransaction.bind(session);
+
+          session.withTransaction = async (
+            fn: (session: any) => any,
+            _options?: any,
+          ): Promise<any> => {
+            try {
+              // Match mongodb driver's callback contract: withTransaction(fn, options?)
+              // invokes fn(session), not fn(options).
+              await Promise.resolve(fn(session));
+              if (typeof session.commitTransaction === "function") {
+                return await session.commitTransaction();
+              }
+              return undefined;
+            } catch (error) {
+              if (typeof session.abortTransaction === "function") {
+                await session.abortTransaction();
+              }
+              throw error;
+            }
+          };
+
+          // Preserve access to the original method for diagnostics if needed.
+          session.__tdOriginalWithTransaction = originalWithTransaction;
+          session[REPLAY_WITH_TXN_PATCHED] = true;
         }
-        return original.apply(this, args);
+
+        return session;
       };
     };
   }
@@ -2185,9 +2487,8 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             stopRecordingChildSpans: true,
           },
           (spanInfo: SpanInfo) => {
-            const resultPromise = original.apply(thisArg, args) as Promise<any>;
-
-            return resultPromise
+            const resultPromise = original.apply(thisArg, args) as any;
+            return Promise.resolve(resultPromise)
               .then((result: any) => {
                 try {
                   addOutputAttributesToSpan(spanInfo, result ?? { success: true });
@@ -2248,7 +2549,7 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       replayModeHandler: () => {
         return SpanUtils.createAndExecuteSpan(
           this.mode,
-          () => original.apply(thisArg, args),
+          () => Promise.resolve(undefined),
           {
             name: spanName,
             kind: SpanKind.CLIENT,
@@ -2698,9 +2999,8 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
             stopRecordingChildSpans: true,
           },
           (spanInfo: SpanInfo) => {
-            const resultPromise = original.apply(thisArg, args) as Promise<any>;
-
-            return resultPromise
+            const resultPromise = original.apply(thisArg, args) as any;
+            return Promise.resolve(resultPromise)
               .then((result: any) => {
                 try {
                   addOutputAttributesToSpan(spanInfo, wrapDirectOutput(result));
@@ -2772,7 +3072,17 @@ export class MongodbInstrumentation extends TdInstrumentationBase {
       replayModeHandler: () => {
         return SpanUtils.createAndExecuteSpan(
           this.mode,
-          () => original.apply(thisArg, args),
+          () =>
+            Promise.resolve({
+              acknowledged: false,
+              insertedCount: 0,
+              matchedCount: 0,
+              modifiedCount: 0,
+              deletedCount: 0,
+              upsertedCount: 0,
+              insertedIds: {},
+              upsertedIds: {},
+            }),
           {
             name: spanName,
             kind: SpanKind.CLIENT,

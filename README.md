@@ -48,7 +48,7 @@ Tusk Drift currently supports the following packages and versions:
 - **Firestore**: `@google-cloud/firestore@7.x-8.x`
 - **Postgres**: `postgres@3.x`
 - **MySQL**: `mysql2@3.x`, `mysql@2.x`
-- **MongoDB**: `mongodb@5.x-7.x`
+- **MongoDB**: `mongodb@4.x-7.x`
 - **Redis**: `redis@4.x-5.x` (`@redis/client@1.x,5.x`)
 - **IORedis**: `ioredis@4.x-5.x`
 - **Upstash Redis**: `@upstash/redis@1.x`

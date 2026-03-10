@@ -20,6 +20,7 @@ import { EventEmitter } from "events";
  * prevent TypeError when the property is read.
  */
 export class TdFakeTopology extends EventEmitter {
+  private readonly fakeServer: { description: { address: string } };
   s: { options: Record<string, unknown> };
   description: {
     type: string;
@@ -29,6 +30,9 @@ export class TdFakeTopology extends EventEmitter {
 
   constructor() {
     super();
+    this.fakeServer = {
+      description: { address: "fake:27017" },
+    };
     this.s = { options: {} };
     this.description = {
       type: "Unknown",
@@ -43,5 +47,35 @@ export class TdFakeTopology extends EventEmitter {
 
   lastIsMaster(): Record<string, unknown> {
     return {};
+  }
+
+  shouldCheckForSessionSupport(): boolean {
+    return false;
+  }
+
+  hasSessionSupport(): boolean {
+    return true;
+  }
+
+  isConnected(): boolean {
+    return true;
+  }
+
+  isDestroyed(): boolean {
+    return false;
+  }
+
+  selectServerAsync(): Promise<{ description: { address: string } }> {
+    return Promise.resolve(this.fakeServer);
+  }
+
+  selectServer(
+    _selector: any,
+    _options: any,
+    callback?: (error: Error | null, server?: { description: { address: string } }) => void,
+  ): void {
+    if (typeof callback === "function") {
+      callback(null, this.fakeServer);
+    }
   }
 }
