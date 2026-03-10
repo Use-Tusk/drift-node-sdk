@@ -110,6 +110,37 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
             },
           });
 
+          // In replay mode, override $transaction to avoid connecting to the real DB.
+          // Interactive transactions (callback-based) normally open a DB connection
+          // before any operations inside the callback run. Since all operations will
+          // be mocked by $allOperations, we just execute the callback directly with
+          // the extended client as the transaction proxy.
+          if (self.mode === TuskDriftMode.REPLAY) {
+            const originalTransaction = extendedClient.$transaction.bind(extendedClient);
+            extendedClient.$transaction = async function (...txArgs: any[]) {
+              const firstArg = txArgs[0];
+
+              if (typeof firstArg === "function") {
+                // Interactive transaction: execute callback with the client itself
+                logger.debug(
+                  `[PrismaInstrumentation] Replay: bypassing interactive $transaction DB connection`,
+                );
+                return firstArg(extendedClient);
+              }
+
+              if (Array.isArray(firstArg)) {
+                // Sequential transaction: resolve each PrismaPromise
+                logger.debug(
+                  `[PrismaInstrumentation] Replay: bypassing sequential $transaction DB connection`,
+                );
+                return Promise.all(firstArg);
+              }
+
+              // Unknown pattern — fall through to original
+              return originalTransaction(...txArgs);
+            };
+          }
+
           return extendedClient;
         }
       };
