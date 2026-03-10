@@ -486,7 +486,7 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
       }
 
       // Once all keys have been typed, no need to scan more rows
-      if (hasTypes && Object.keys(typeMap).length >= Object.keys(rows[0]).length) break;
+      if (hasTypes && Object.keys(typeMap).length >= Object.keys(row).length) break;
     }
 
     return hasTypes ? typeMap : null;
