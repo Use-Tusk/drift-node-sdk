@@ -1,0 +1,38 @@
+import { makeRequest, printRequestSummary } from "/app/test-utils.mjs";
+
+await makeRequest("GET", "/health");
+await makeRequest("GET", "/test/insert-one");
+await makeRequest("GET", "/test/insert-many");
+await makeRequest("GET", "/test/find-one");
+await makeRequest("GET", "/test/find");
+await makeRequest("GET", "/test/find-with-options");
+await makeRequest("GET", "/test/find-cursor-next");
+await makeRequest("GET", "/test/update-one");
+await makeRequest("GET", "/test/update-many");
+await makeRequest("GET", "/test/delete-one");
+await makeRequest("GET", "/test/delete-many");
+await makeRequest("GET", "/test/replace-one");
+await makeRequest("GET", "/test/find-one-and-update");
+await makeRequest("GET", "/test/find-one-and-delete");
+await makeRequest("GET", "/test/find-one-and-replace");
+await makeRequest("GET", "/test/count-documents");
+await makeRequest("GET", "/test/estimated-count");
+await makeRequest("GET", "/test/distinct");
+await makeRequest("GET", "/test/aggregate");
+await makeRequest("GET", "/test/bulk-write");
+await makeRequest("GET", "/test/create-index");
+await makeRequest("GET", "/test/drop-index");
+await makeRequest("GET", "/test/list-indexes");
+await makeRequest("GET", "/test/db-command");
+await makeRequest("GET", "/test/list-collections");
+await makeRequest("GET", "/test/transaction");
+await makeRequest("GET", "/test/ordered-bulk");
+await makeRequest("GET", "/test/unordered-bulk");
+await makeRequest("GET", "/test/mongoose-create");
+await makeRequest("GET", "/test/mongoose-create-many");
+await makeRequest("GET", "/test/cursor-map");
+await makeRequest("GET", "/test/cursor-async-iterator");
+await makeRequest("GET", "/test/with-transaction");
+await makeRequest("GET", "/test/mongoose-cursor-close");
+
+printRequestSummary();
