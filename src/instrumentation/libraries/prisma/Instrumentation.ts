@@ -22,11 +22,34 @@ interface PrismaErrorClassInfo {
   errorClass: any;
 }
 
+/**
+ * Prisma instrumentation for recording and replaying database operations.
+ *
+ * ## Type deserialization
+ *
+ * Prisma returns special JS types (Date, BigInt, Decimal, Buffer) for certain
+ * column types. JSON round-trip during record/replay loses this type information.
+ * We reconstruct types during replay using two strategies:
+ *
+ * 1. **Model-based operations** (findFirst, create, update, etc.): The middleware
+ *    provides the model name, so we look up field types from `_runtimeDataModel`
+ *    at replay time. No extra metadata needed during recording.
+ *
+ * 2. **Raw queries** ($queryRaw): No model name is available. During recording,
+ *    we sniff JS types from the result and store a per-column `_tdTypeMap`
+ *    (e.g., `{bigNum: "bigint", data: "bytes"}`). During replay, we use this
+ *    map to reconstruct the values.
+ *
+ * Both strategies share `_reconstructSingleValue` for the actual conversion.
+ * See docs/prisma-type-deserialization-bug.md for the full design doc.
+ */
 export class PrismaInstrumentation extends TdInstrumentationBase {
   private readonly INSTRUMENTATION_NAME = "PrismaInstrumentation";
   private mode: TuskDriftMode;
   private tuskDrift: TuskDriftCore;
   private prismaErrorClasses: PrismaErrorClassInfo[] = [];
+  private prismaClient: any = null;
+  private prismaNamespace: any = null;
 
   constructor(config: PrismaInstrumentationConfig = {}) {
     super("@prisma/client", config);
@@ -50,8 +73,9 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
       return prismaModule;
     }
 
-    // Store Prisma error classes for later use
+    // Store Prisma error classes and namespace for later use
     this._storePrismaErrorClasses(prismaModule);
+    this.prismaNamespace = prismaModule.Prisma || prismaModule;
 
     // Wrap the PrismaClient constructor
     logger.debug(`[PrismaInstrumentation] Wrapping PrismaClient constructor`);
@@ -65,6 +89,9 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
 
           // Create the original Prisma client
           const prismaClient = new OriginalPrismaClient(...args);
+
+          // Store reference for runtime data model access during replay
+          self.prismaClient = prismaClient;
 
           // Extend the client with our instrumentation
           const extendedClient = prismaClient.$extends({
@@ -82,6 +109,37 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
               },
             },
           });
+
+          // In replay mode, override $transaction to avoid connecting to the real DB.
+          // Interactive transactions (callback-based) normally open a DB connection
+          // before any operations inside the callback run. Since all operations will
+          // be mocked by $allOperations, we just execute the callback directly with
+          // the extended client as the transaction proxy.
+          if (self.mode === TuskDriftMode.REPLAY) {
+            const originalTransaction = extendedClient.$transaction.bind(extendedClient);
+            extendedClient.$transaction = async function (...txArgs: any[]) {
+              const firstArg = txArgs[0];
+
+              if (typeof firstArg === "function") {
+                // Interactive transaction: execute callback with the client itself
+                logger.debug(
+                  `[PrismaInstrumentation] Replay: bypassing interactive $transaction DB connection`,
+                );
+                return firstArg(extendedClient);
+              }
+
+              if (Array.isArray(firstArg)) {
+                // Sequential transaction: resolve each PrismaPromise
+                logger.debug(
+                  `[PrismaInstrumentation] Replay: bypassing sequential $transaction DB connection`,
+                );
+                return Promise.all(firstArg);
+              }
+
+              // Unknown pattern — fall through to original
+              return originalTransaction(...txArgs);
+            };
+          }
 
           return extendedClient;
         }
@@ -174,7 +232,7 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
               isPreAppStart,
             },
             (spanInfo) => {
-              return this._handleRecordPrismaOperation(spanInfo, query, args);
+              return this._handleRecordPrismaOperation(spanInfo, query, args, model);
             },
           );
         },
@@ -216,6 +274,7 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
     spanInfo: SpanInfo,
     query: (args: any) => Promise<any>,
     args: any,
+    model?: string,
   ): Promise<any> {
     try {
       logger.debug(`[PrismaInstrumentation] Recording Prisma operation`);
@@ -223,10 +282,16 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
       // Execute the real Prisma query
       const result = await query(args);
 
+      // For operations without a model (e.g., $queryRaw), sniff JS types from
+      // the result so we can reconstruct them during replay. Model-based operations
+      // use _runtimeDataModel schema metadata instead.
+      const typeMap = model ? null : this._buildTypeMap(result);
+
       // Store the result in the span
       const outputValue: PrismaOutputValue = {
         prismaResult: result,
         _tdOriginalFormat: "result",
+        ...(typeMap && { _tdTypeMap: typeMap }),
       };
 
       try {
@@ -332,9 +397,256 @@ export class PrismaInstrumentation extends TdInstrumentationBase {
       throw errorObj;
     }
 
+    // Reconstruct Prisma types that were lost during JSON serialization
+    let result = outputValue.prismaResult;
+    try {
+      if (inputValue.model) {
+        // Model-based operations: use _runtimeDataModel schema metadata
+        result = this._reconstructPrismaTypes(result, inputValue.model);
+      } else if (outputValue._tdTypeMap) {
+        // Raw queries ($queryRaw): use sniffed type map from recording
+        result = this._reconstructFromTypeMap(result, outputValue._tdTypeMap as Record<string, string>);
+      }
+    } catch (reconstructError) {
+      logger.debug(
+        `[PrismaInstrumentation] Failed to reconstruct types: ${reconstructError}`,
+      );
+    }
+
     // Return the successful result
     SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
-    return outputValue.prismaResult;
+    return result;
+  }
+
+  /**
+   * Sniff the JS type of a value returned by Prisma.
+   *
+   * Returns type names that mirror Prisma's internal `QueryIntrospectionBuiltinType`
+   * enum from `@prisma/client/runtime` (used in `deserializeRawResults.ts`):
+   *   "bigint" | "bytes" | "decimal" | "datetime"
+   *
+   * We don't import these types directly — we use our own string literals that
+   * match Prisma's naming convention so the type map is self-documenting and
+   * consistent with what Prisma would produce internally.
+   */
+  private _sniffType(value: any): string | null {
+    if (typeof value === "bigint") return "bigint";
+    if (value instanceof Date) return "datetime";
+    if (Buffer.isBuffer(value) || value instanceof Uint8Array) return "bytes";
+    // Prisma uses decimal.js internally but minifies the class name in production builds
+    // (constructor.name may be "i" instead of "Decimal"), so we detect by checking for
+    // decimal.js-specific methods rather than constructor name.
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      typeof value.toFixed === "function" &&
+      typeof value.toExponential === "function" &&
+      typeof value.toSignificantDigits === "function"
+    )
+      return "decimal";
+    return null;
+  }
+
+  /**
+   * Build a per-column type map by sniffing values in the result.
+   * For arrays of objects (e.g., $queryRaw results), scans all rows to handle
+   * cases where the first row has null values but later rows don't.
+   * Returns null if no special types are detected.
+   */
+  private _buildTypeMap(result: any): Record<string, string> | null {
+    if (result === null || result === undefined) return null;
+
+    const rows = Array.isArray(result) ? result : typeof result === "object" ? [result] : null;
+    if (!rows || rows.length === 0) return null;
+
+    const typeMap: Record<string, string> = {};
+    let hasTypes = false;
+
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+
+      for (const [key, value] of Object.entries(row)) {
+        if (typeMap[key] || value === null || value === undefined) continue;
+
+        // Check for arrays of special types
+        if (Array.isArray(value) && value.length > 0) {
+          const elemType = this._sniffType(value[0]);
+          if (elemType) {
+            typeMap[key] = `${elemType}-array`;
+            hasTypes = true;
+            continue;
+          }
+        }
+
+        const type = this._sniffType(value);
+        if (type) {
+          typeMap[key] = type;
+          hasTypes = true;
+        }
+      }
+
+      // Once all keys have been typed, no need to scan more rows
+      if (hasTypes && Object.keys(typeMap).length >= Object.keys(row).length) break;
+    }
+
+    return hasTypes ? typeMap : null;
+  }
+
+  /**
+   * Reconstruct types from a _tdTypeMap (used for $queryRaw and other model-less operations).
+   */
+  private _reconstructFromTypeMap(
+    result: any,
+    typeMap: Record<string, string>,
+  ): any {
+    if (result === null || result === undefined) return result;
+
+    const reconstructRow = (row: any): any => {
+      if (typeof row !== "object" || row === null) return row;
+
+      for (const [key, type] of Object.entries(typeMap)) {
+        const value = row[key];
+        if (value === null || value === undefined) continue;
+
+        // Handle array types
+        if (typeof type === "string" && type.endsWith("-array") && Array.isArray(value)) {
+          const baseType = type.replace("-array", "");
+          row[key] = value.map((v: any) => this._reconstructSingleValue(v, baseType));
+          continue;
+        }
+
+        row[key] = this._reconstructSingleValue(value, type);
+      }
+
+      return row;
+    };
+
+    if (Array.isArray(result)) {
+      return result.map(reconstructRow);
+    }
+    return reconstructRow(result);
+  }
+
+  /**
+   * Reconstruct a single value from its JSON-deserialized form back to the
+   * original JS type that Prisma would have returned.
+   *
+   * The `type` parameter uses the same names as Prisma's query engine types
+   * (see _sniffType and PRISMA_SCHEMA_TO_ENGINE_TYPE). Both the model-based
+   * and raw-query replay paths converge here.
+   */
+  private _reconstructSingleValue(value: any, type: string): any {
+    if (value === null || value === undefined) return value;
+
+    switch (type) {
+      case "bigint":
+        // JSON round-trip turns BigInt into a string (via safeJsonStringify)
+        if (typeof value === "string" || typeof value === "number") {
+          return BigInt(value);
+        }
+        return value;
+      case "datetime":
+        // JSON round-trip turns Date into an ISO string
+        if (typeof value === "string") {
+          return new Date(value);
+        }
+        return value;
+      case "decimal":
+        if (typeof value === "string" || typeof value === "number") {
+          // Prefer Prisma's own Decimal class (from decimal.js) for full API compatibility
+          if (this.prismaNamespace?.Decimal) {
+            return new this.prismaNamespace.Decimal(value);
+          }
+          // Fallback: create a minimal Decimal-like object when Prisma namespace isn't available
+          const decimalValue = String(value);
+          return {
+            toString: () => decimalValue,
+            toFixed: (dp?: number) => Number(decimalValue).toFixed(dp),
+            valueOf: () => Number(decimalValue),
+            [Symbol.toPrimitive]: (hint: string) =>
+              hint === "string" ? decimalValue : Number(decimalValue),
+          };
+        }
+        return value;
+      case "bytes":
+        // JSON round-trip turns Buffer into either a base64 string or a plain object
+        // with numeric keys ({0: 222, 1: 173, ...}) or a {type: "Buffer", data: [...]} shape
+        if (typeof value === "string") {
+          return Buffer.from(value, "base64");
+        }
+        if (typeof value === "object" && !Buffer.isBuffer(value)) {
+          const bufferData = (value as any).data || Object.values(value);
+          return Buffer.from(bufferData);
+        }
+        return value;
+      default:
+        return value;
+    }
+  }
+
+  /**
+   * Map from Prisma schema type names (as found in `_runtimeDataModel.models[model].fields[].type`)
+   * to the query engine type names used by `_reconstructSingleValue`.
+   *
+   * Schema types use PascalCase ("DateTime", "BigInt"), while the engine types
+   * use lowercase ("datetime", "bigint") — matching Prisma's internal
+   * `QueryIntrospectionBuiltinType` naming convention.
+   */
+  private static readonly PRISMA_SCHEMA_TO_ENGINE_TYPE: Record<string, string> = {
+    DateTime: "datetime",
+    BigInt: "bigint",
+    Decimal: "decimal",
+    Bytes: "bytes",
+  };
+
+  /**
+   * Reconstruct Prisma types for model-based operations (findFirst, create, update, etc.).
+   *
+   * Uses `prismaClient._runtimeDataModel` — Prisma's internal schema representation
+   * available at runtime — to determine field types. This avoids needing to store
+   * type metadata during recording; the schema itself is the source of truth.
+   *
+   * Handles scalar fields, array fields (e.g., BigInt[]), and nested relations recursively.
+   */
+  private _reconstructPrismaTypes(result: any, modelName: string): any {
+    if (result === null || result === undefined) return result;
+
+    const runtimeDataModel = this.prismaClient?._runtimeDataModel;
+    if (!runtimeDataModel) return result;
+
+    if (Array.isArray(result)) {
+      return result.map((item) => this._reconstructPrismaTypes(item, modelName));
+    }
+
+    const model = runtimeDataModel.models[modelName];
+    if (!model) return result;
+
+    if (typeof result !== "object") return result;
+
+    const fieldTypeMap = new Map<string, any>(model.fields.map((f: any) => [f.name, f]));
+
+    for (const [key, value] of Object.entries(result)) {
+      const field = fieldTypeMap.get(key);
+      if (!field || value === null || value === undefined) continue;
+
+      if (field.kind === "scalar") {
+        const engineType = PrismaInstrumentation.PRISMA_SCHEMA_TO_ENGINE_TYPE[field.type];
+        if (engineType) {
+          if (Array.isArray(value)) {
+            result[key] = value.map((v: any) => this._reconstructSingleValue(v, engineType));
+          } else {
+            result[key] = this._reconstructSingleValue(value, engineType);
+          }
+        }
+      }
+
+      // Handle relations (nested objects)
+      if (field.kind === "object" && field.type && typeof value === "object") {
+        result[key] = this._reconstructPrismaTypes(value, field.type);
+      }
+    }
+
+    return result;
   }
 
   private _getPrismaErrorClassName(error: any): PrismaErrorClassName | undefined {

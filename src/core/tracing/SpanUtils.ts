@@ -16,7 +16,7 @@ import {
   TdSpanAttributes,
 } from "../types";
 import { TuskDriftCore, TuskDriftMode } from "../TuskDrift";
-import { createSpanInputValue } from "../utils/dataNormalizationUtils";
+import { createSpanInputValue, safeJsonStringify } from "../utils/dataNormalizationUtils";
 import { PackageType } from "@use-tusk/drift-schemas/core/span";
 import { SchemaMerges } from "./JsonSchemaHelper";
 import { logger } from "../utils/logger";
@@ -291,7 +291,7 @@ export class SpanUtils {
           [TdSpanAttributes.INPUT_VALUE]: createSpanInputValue(addSpanAttributesOptions.inputValue),
         }),
         ...(addSpanAttributesOptions.outputValue && {
-          [TdSpanAttributes.OUTPUT_VALUE]: JSON.stringify(addSpanAttributesOptions.outputValue),
+          [TdSpanAttributes.OUTPUT_VALUE]: safeJsonStringify(addSpanAttributesOptions.outputValue),
         }),
         ...(addSpanAttributesOptions.inputSchemaMerges && {
           [TdSpanAttributes.INPUT_SCHEMA_MERGES]: JSON.stringify(

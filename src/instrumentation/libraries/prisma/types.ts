@@ -17,6 +17,7 @@ export interface PrismaInputValue {
 export interface PrismaOutputValue {
   prismaResult: any;
   _tdOriginalFormat?: "result" | "error";
+  _tdTypeMap?: Record<string, string>;
   [key: string]: unknown;
 }
 

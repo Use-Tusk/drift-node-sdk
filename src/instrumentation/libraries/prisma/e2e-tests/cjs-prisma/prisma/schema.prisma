@@ -71,3 +71,16 @@ model Order {
   customerId  Int
   createdAt   DateTime @default(now())
 }
+
+// For testing special type deserialization (DateTime, BigInt, Decimal, Bytes)
+model TypeTest {
+  id            Int        @id @default(autoincrement())
+  bigNum        BigInt
+  price         Decimal    @db.Decimal(10, 2)
+  data          Bytes
+  createdAt     DateTime   @default(now())
+  bigNums       BigInt[]
+  prices        Decimal[]
+  timestamps    DateTime[]
+  blobs         Bytes[]
+}
