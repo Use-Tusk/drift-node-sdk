@@ -681,7 +681,7 @@ app.get("/types/bytes", async (req, res) => {
     const length = record.data.length;
     const base64 = Buffer.from(record.data).toString("base64");
     const arrayAllBuffers = record.blobs.every(
-      (b) => Buffer.isBuffer(b) || b instanceof Uint8Array,
+      (b: any) => Buffer.isBuffer(b) || b instanceof Uint8Array,
     );
     const arrayBase64s = record.blobs.map((b) => Buffer.from(b).toString("base64"));
     res.json({ isBuffer, length, base64, arrayAllBuffers, arrayBase64s });
