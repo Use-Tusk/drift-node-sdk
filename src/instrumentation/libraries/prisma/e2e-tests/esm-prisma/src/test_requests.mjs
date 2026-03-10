@@ -23,6 +23,17 @@ await makeRequest('POST', '/raw/execute');
 await makeRequest('POST', '/errors/unique-violation');
 await makeRequest('GET', '/errors/not-found');
 await makeRequest('POST', '/errors/validation');
+await makeRequest('GET', '/types/datetime');
+await makeRequest('GET', '/types/decimal');
+await makeRequest('GET', '/types/bigint');
+await makeRequest('GET', '/types/bytes');
+await makeRequest('GET', '/types/datetime-array');
+await makeRequest('GET', '/types/decimal-array');
+await makeRequest('GET', '/types/raw-bigint');
+await makeRequest('GET', '/types/raw-bytes');
+await makeRequest('GET', '/types/raw-datetime');
+await makeRequest('GET', '/types/raw-decimal');
+await makeRequest('GET', '/types/raw-arrays');
 await makeRequest('DELETE', '/users/inactive');
 
 printRequestSummary();

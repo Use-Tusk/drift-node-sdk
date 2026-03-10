@@ -19,6 +19,7 @@ async function initializeDatabase() {
     console.log("Initializing database with seed data...");
 
     // Clean up existing data (in reverse order of dependencies)
+    await prisma.typeTest.deleteMany();
     await prisma.order.deleteMany();
     await prisma.tag.deleteMany();
     await prisma.category.deleteMany();
@@ -98,6 +99,10 @@ async function initializeDatabase() {
         { orderNumber: "ORD-004", total: 500.0, status: "cancelled", customerId: charlie.id },
       ],
     });
+
+    // Seed TypeTest for special type deserialization testing
+    // Use $executeRaw to avoid BigInt serialization issue in span input
+    await prisma.$executeRaw`INSERT INTO "TypeTest" ("bigNum", "price", "data", "createdAt", "bigNums", "prices", "timestamps", "blobs") VALUES (9007199254740993, 99.99, '\\xdeadbeef', NOW(), ARRAY[9007199254740993, 9007199254740994]::bigint[], ARRAY[10.50, 20.75]::decimal[], ARRAY[NOW(), NOW() - interval '1 day']::timestamp[], ARRAY['\\xdeadbeef'::bytea, '\\xcafebabe'::bytea])`;
 
     console.log("Database initialized successfully");
   } catch (error) {
@@ -588,6 +593,232 @@ app.post("/errors/validation", async (req, res) => {
     res.status(400).json({
       errorType: error.name || error.constructor.name,
     });
+  }
+});
+
+// =============================================================================
+// Type deserialization tests - Prisma returns Date, BigInt, Decimal, Bytes
+// as proper JS objects. During replay, JSON serialization loses these types.
+// These tests call type-specific methods to verify they're real objects.
+// =============================================================================
+
+// Test DateTime deserialization - calls .toISOString() and .getTime()
+app.get("/types/datetime", async (req, res) => {
+  try {
+    const user = await prisma.user.findFirst({
+      where: { email: "alice@example.com" },
+    });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    // These will fail if createdAt is a string instead of a Date
+    const iso = user.createdAt.toISOString();
+    const timestamp = user.createdAt.getTime();
+    const isDate = user.createdAt instanceof Date;
+    res.json({
+      iso,
+      timestamp,
+      isDate,
+      updatedAtIso: user.updatedAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("Error in /types/datetime:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Test Decimal deserialization - calls Decimal methods
+app.get("/types/decimal", async (req, res) => {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { orderNumber: "ORD-001" },
+    });
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+    // These will fail if total is a plain number/string instead of Decimal
+    const asString = order.total.toString();
+    const asNumber = Number(order.total);
+    const hasToFixed = typeof order.total.toFixed === "function";
+    res.json({
+      asString,
+      asNumber,
+      hasToFixed,
+    });
+  } catch (error) {
+    console.error("Error in /types/decimal:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Test BigInt deserialization - scalar and array
+app.get("/types/bigint", async (req, res) => {
+  try {
+    const record = await prisma.typeTest.findFirst();
+    if (!record) {
+      return res.status(404).json({ error: "TypeTest not found" });
+    }
+    const isBigInt = typeof record.bigNum === "bigint";
+    const asString = record.bigNum.toString();
+    const doubled = (record.bigNum * 2n).toString();
+    const arrayAllBigInt = record.bigNums.every((n) => typeof n === "bigint");
+    const arrayValues = record.bigNums.map((n) => n.toString());
+    res.json({ isBigInt, asString, doubled, arrayAllBigInt, arrayValues });
+  } catch (error) {
+    console.error("Error in /types/bigint:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Test Bytes deserialization - scalar and array
+app.get("/types/bytes", async (req, res) => {
+  try {
+    const record = await prisma.typeTest.findFirst();
+    if (!record) {
+      return res.status(404).json({ error: "TypeTest not found" });
+    }
+    const isBuffer = Buffer.isBuffer(record.data) || (record.data as any) instanceof Uint8Array;
+    const length = record.data.length;
+    const base64 = Buffer.from(record.data).toString("base64");
+    const arrayAllBuffers = record.blobs.every(
+      (b) => Buffer.isBuffer(b) || b instanceof Uint8Array,
+    );
+    const arrayBase64s = record.blobs.map((b) => Buffer.from(b).toString("base64"));
+    res.json({ isBuffer, length, base64, arrayAllBuffers, arrayBase64s });
+  } catch (error) {
+    console.error("Error in /types/bytes:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Test DateTime array deserialization
+app.get("/types/datetime-array", async (req, res) => {
+  try {
+    const record = await prisma.typeTest.findFirst();
+    if (!record) {
+      return res.status(404).json({ error: "TypeTest not found" });
+    }
+    const allDates = record.timestamps.every((t) => t instanceof Date);
+    const isoValues = record.timestamps.map((t) => t.toISOString());
+    res.json({ allDates, isoValues });
+  } catch (error) {
+    console.error("Error in /types/datetime-array:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Test Decimal array deserialization
+app.get("/types/decimal-array", async (req, res) => {
+  try {
+    const record = await prisma.typeTest.findFirst();
+    if (!record) {
+      return res.status(404).json({ error: "TypeTest not found" });
+    }
+    const allHaveToFixed = record.prices.every((p) => typeof p.toFixed === "function");
+    const stringValues = record.prices.map((p) => p.toString());
+    res.json({ allHaveToFixed, stringValues });
+  } catch (error) {
+    console.error("Error in /types/decimal-array:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// =============================================================================
+// $queryRaw type deserialization tests
+// =============================================================================
+
+app.get("/types/raw-bigint", async (req, res) => {
+  try {
+    const records = await prisma.$queryRaw<any[]>`SELECT "bigNum" FROM "TypeTest" LIMIT 1`;
+    if (!records || records.length === 0) {
+      return res.status(404).json({ error: "TypeTest not found" });
+    }
+    const bigNum = records[0].bigNum;
+    const isBigInt = typeof bigNum === "bigint";
+    const asString = bigNum.toString();
+    const doubled = (bigNum * 2n).toString();
+    res.json({ isBigInt, asString, doubled });
+  } catch (error) {
+    console.error("Error in /types/raw-bigint:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.get("/types/raw-bytes", async (req, res) => {
+  try {
+    const records = await prisma.$queryRaw<any[]>`SELECT "data" FROM "TypeTest" LIMIT 1`;
+    if (!records || records.length === 0) {
+      return res.status(404).json({ error: "TypeTest not found" });
+    }
+    const data = records[0].data;
+    const isBuffer = Buffer.isBuffer(data) || data instanceof Uint8Array;
+    const length = data.length;
+    const base64 = Buffer.from(data).toString("base64");
+    res.json({ isBuffer, length, base64 });
+  } catch (error) {
+    console.error("Error in /types/raw-bytes:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.get("/types/raw-datetime", async (req, res) => {
+  try {
+    const records = await prisma.$queryRaw<any[]>`SELECT "createdAt" FROM "TypeTest" LIMIT 1`;
+    if (!records || records.length === 0) {
+      return res.status(404).json({ error: "TypeTest not found" });
+    }
+    const createdAt = records[0].createdAt;
+    const isDate = createdAt instanceof Date;
+    const iso = createdAt.toISOString();
+    const timestamp = createdAt.getTime();
+    res.json({ isDate, iso, timestamp });
+  } catch (error) {
+    console.error("Error in /types/raw-datetime:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.get("/types/raw-decimal", async (req, res) => {
+  try {
+    const records = await prisma.$queryRaw<any[]>`SELECT "price" FROM "TypeTest" LIMIT 1`;
+    if (!records || records.length === 0) {
+      return res.status(404).json({ error: "TypeTest not found" });
+    }
+    const price = records[0].price;
+    const asString = price.toString();
+    const asNumber = Number(price);
+    const hasToFixed = typeof price.toFixed === "function";
+    res.json({ asString, asNumber, hasToFixed });
+  } catch (error) {
+    console.error("Error in /types/raw-decimal:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.get("/types/raw-arrays", async (req, res) => {
+  try {
+    const records = await prisma.$queryRaw<any[]>`SELECT "bigNums", "prices", "timestamps", "blobs" FROM "TypeTest" LIMIT 1`;
+    if (!records || records.length === 0) {
+      return res.status(404).json({ error: "TypeTest not found" });
+    }
+    const r = records[0];
+    const bigIntsOk = Array.isArray(r.bigNums) && r.bigNums.every((n: any) => typeof n === "bigint");
+    const decimalsOk = Array.isArray(r.prices) && r.prices.every((p: any) => typeof p.toFixed === "function");
+    const datesOk = Array.isArray(r.timestamps) && r.timestamps.every((t: any) => t instanceof Date);
+    const bytesOk = Array.isArray(r.blobs) && r.blobs.every((b: any) => Buffer.isBuffer(b) || b instanceof Uint8Array);
+    res.json({
+      bigIntsOk,
+      decimalsOk,
+      datesOk,
+      bytesOk,
+      bigNumValues: r.bigNums.map((n: any) => n.toString()),
+      priceValues: r.prices.map((p: any) => p.toString()),
+      dateValues: r.timestamps.map((t: any) => t.toISOString()),
+      blobValues: r.blobs.map((b: any) => Buffer.from(b).toString("base64")),
+    });
+  } catch (error) {
+    console.error("Error in /types/raw-arrays:", error);
+    res.status(500).json({ error: String(error) });
   }
 });
 
