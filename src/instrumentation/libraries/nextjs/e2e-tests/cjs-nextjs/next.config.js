@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-const { withTuskDrift } = require("@use-tusk/drift-node-sdk");
+const { withTuskDrift } = require("@use-tusk/drift-node-sdk/next");
 
 module.exports = withTuskDrift(
   {},
