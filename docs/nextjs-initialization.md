@@ -12,7 +12,7 @@ Wrap your Next.js configuration with the `withTuskDrift` function in your `next.
 
 ```javascript
 // next.config.js
-const { withTuskDrift } = require("@use-tusk/drift-node-sdk");
+const { withTuskDrift } = require("@use-tusk/drift-node-sdk/next");
 
 module.exports = withTuskDrift({
   // Your Next.js config
@@ -23,7 +23,7 @@ module.exports = withTuskDrift({
 
 ```javascript
 // next.config.mjs
-import { withTuskDrift } from "@use-tusk/drift-node-sdk";
+import { withTuskDrift } from "@use-tusk/drift-node-sdk/next";
 
 export default withTuskDrift({
   // Your Next.js config
@@ -36,7 +36,7 @@ export default withTuskDrift({
 
 ```javascript
 // next.config.js
-const { withTuskDrift } = require("@use-tusk/drift-node-sdk");
+const { withTuskDrift } = require("@use-tusk/drift-node-sdk/next");
 
 module.exports = withTuskDrift(
   {
@@ -53,7 +53,7 @@ module.exports = withTuskDrift(
 
 ```javascript
 // next.config.mjs
-import { withTuskDrift } from "@use-tusk/drift-node-sdk";
+import { withTuskDrift } from "@use-tusk/drift-node-sdk/next";
 
 export default withTuskDrift(
   {

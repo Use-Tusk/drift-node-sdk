@@ -19,10 +19,21 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.cts",
+  "typesVersions": {
+    "*": {
+      "next": ["./dist/next.d.cts"]
+    }
+  },
   "exports": {
     ".": {
+      "types": "./dist/index.d.cts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./next": {
+      "types": "./dist/next.d.cts",
+      "import": "./dist/next.js",
+      "require": "./dist/next.cjs"
     },
     "./hook.mjs": "./hook.mjs",
     "./package.json": "./package.json",

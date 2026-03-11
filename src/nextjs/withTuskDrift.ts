@@ -19,7 +19,7 @@ import { getNextjsVersion, shouldSetInstrumentationHook, debugLog, warn } from "
  * Basic usage:
  * ```javascript
  * // next.config.js
- * const { withTuskDrift } = require('@use-tusk/drift-node-sdk');
+ * const { withTuskDrift } = require('@use-tusk/drift-node-sdk/next');
  *
  * module.exports = withTuskDrift({
  *   // Your Next.js config
@@ -30,7 +30,7 @@ import { getNextjsVersion, shouldSetInstrumentationHook, debugLog, warn } from "
  * With debug logging:
  * ```javascript
  * // next.config.js
- * const { withTuskDrift } = require('@use-tusk/drift-node-sdk');
+ * const { withTuskDrift } = require('@use-tusk/drift-node-sdk/next');
  *
  * module.exports = withTuskDrift(
  *   {

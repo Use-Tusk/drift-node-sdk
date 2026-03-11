@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-import { withTuskDrift } from "@use-tusk/drift-node-sdk";
+import { withTuskDrift } from "@use-tusk/drift-node-sdk/next";
 
 export default withTuskDrift(
   {},
