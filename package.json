@@ -19,6 +19,11 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.cts",
+  "typesVersions": {
+    "*": {
+      "next": ["./dist/next.d.cts"]
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.cts",
