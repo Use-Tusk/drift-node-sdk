@@ -215,7 +215,11 @@ export class RedisInstrumentation extends TdInstrumentationBase {
 
           return handleReplayMode({
             noOpRequestHandler: () => {
-              return undefined;
+              const upperCmd = commandName.toUpperCase();
+              if (upperCmd === "EVAL" || upperCmd === "EVALSHA") {
+                return [];
+              }
+              return null;
             },
             isServerRequest: false,
             replayModeHandler: () => {
@@ -418,7 +422,13 @@ export class RedisInstrumentation extends TdInstrumentationBase {
           const stackTrace = captureStackTrace(["RedisInstrumentation"]);
 
           return handleReplayMode({
-            noOpRequestHandler: () => undefined,
+            noOpRequestHandler: () => {
+              const upperCmd = commandName.toUpperCase();
+              if (upperCmd === "EVAL" || upperCmd === "EVALSHA") {
+                return [];
+              }
+              return null;
+            },
             isServerRequest: false,
             replayModeHandler: () => {
               return SpanUtils.createAndExecuteSpan(
