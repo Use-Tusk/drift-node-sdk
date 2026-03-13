@@ -703,7 +703,7 @@ export class FirestoreInstrumentation extends TdInstrumentationBase {
                 logger.error(`[FirestoreInstrumentation] Original doc function not available`);
                 return Promise.reject(new Error("Original doc function not available"));
               }
-              return self.originalCollectionDocFn.call(this, "");
+              return self.originalCollectionDocFn.call(this);
             },
             isServerRequest: false,
             replayModeHandler: () => {
