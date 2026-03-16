@@ -11,6 +11,7 @@ TuskDrift.markAppAsReady();
 
 import test from "ava";
 import { SpanKind } from "@opentelemetry/api";
+import diagnosticsChannel from "node:diagnostics_channel";
 import { SpanUtils } from "../../../../core/tracing/SpanUtils";
 import { TuskDriftMode } from "../../../../core/TuskDrift";
 import {
@@ -586,6 +587,72 @@ test.serial("should handle streaming queries", async (t) => {
       (input.inputValue as Mysql2InputValue)?.sql?.includes("SELECT * FROM test_users"),
   );
   t.true(mysql2Spans.length > 0);
+});
+
+test.serial("should emit native mysql2 tracing events for streaming queries", async (t) => {
+  if (typeof diagnosticsChannel.tracingChannel !== "function") {
+    t.pass();
+    return;
+  }
+
+  const events: Array<{ type: string; ctx: any }> = [];
+  const queryChannel = diagnosticsChannel.tracingChannel("mysql2:query");
+  const subscriber = {
+    start(ctx: object) {
+      events.push({ type: "start", ctx });
+    },
+    end(ctx: object) {
+      events.push({ type: "end", ctx });
+    },
+    asyncStart(ctx: object) {
+      events.push({ type: "asyncStart", ctx });
+    },
+    asyncEnd(ctx: object) {
+      events.push({ type: "asyncEnd", ctx });
+    },
+    error(ctx: object) {
+      events.push({ type: "error", ctx });
+    },
+  };
+
+  queryChannel.subscribe(subscriber);
+
+  try {
+    const rows: any[] = [];
+
+    await new Promise<void>((resolve, reject) => {
+      withRootSpan(() => {
+        const query = connection.query("SELECT * FROM test_users ORDER BY id");
+
+        query
+          .on("error", (err: any) => {
+            reject(err);
+          })
+          .on("result", (row: any) => {
+            rows.push(row);
+          })
+          .on("end", () => {
+            resolve();
+          });
+      });
+    });
+
+    t.is(rows.length, 2);
+
+    const eventTypes = events.map((event) => event.type);
+    t.true(eventTypes.includes("start"));
+    t.true(eventTypes.includes("asyncEnd"));
+    t.false(eventTypes.includes("error"));
+
+    const startEvent = events.find((event) => event.type === "start");
+    t.truthy(startEvent);
+    t.true(String(startEvent?.ctx?.query || "").includes("SELECT * FROM test_users"));
+    t.is(startEvent?.ctx?.database, TEST_MYSQL_CONFIG.database);
+    t.is(startEvent?.ctx?.serverAddress, TEST_MYSQL_CONFIG.host);
+    t.is(startEvent?.ctx?.serverPort, TEST_MYSQL_CONFIG.port);
+  } finally {
+    queryChannel.unsubscribe(subscriber);
+  }
 });
 
 test.serial("should handle connection.ping", async (t) => {
