@@ -1464,7 +1464,7 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       values: cmdQuery.values,
       database: config.database || "",
       serverAddress: config.host || "localhost",
-      serverPort: config.port || 3306,
+      serverPort: config.port ?? 3306,
     };
   }
 
@@ -2131,12 +2131,22 @@ export class Mysql2Instrumentation extends TdInstrumentationBase {
       return Reflect.construct(OriginalConnection, args, constructTarget);
     }
 
-    // Copy static properties from original class
-    const staticProps = Object.getOwnPropertyNames(OriginalConnection).filter(
-      (key) => !["length", "name", "prototype"].includes(key),
-    );
-    for (const staticProp of staticProps) {
-      (TdPatchedConnection as any)[staticProp] = OriginalConnection[staticProp];
+    // Copy static properties from original class (including inherited ones)
+    // Walk the prototype chain to pick up statics defined on parent classes
+    // (e.g., BaseConnection.statementKey inherited by Connection)
+    let currentProto: any = OriginalConnection;
+    const copiedKeys = new Set<string>();
+    while (currentProto && currentProto !== Function.prototype) {
+      for (const key of Object.getOwnPropertyNames(currentProto)) {
+        if (!copiedKeys.has(key) && !["length", "name", "prototype", "constructor"].includes(key)) {
+          const descriptor = Object.getOwnPropertyDescriptor(currentProto, key);
+          if (descriptor) {
+            Object.defineProperty(TdPatchedConnection, key, descriptor);
+          }
+          copiedKeys.add(key);
+        }
+      }
+      currentProto = Object.getPrototypeOf(currentProto);
     }
 
     // Set prototype chain

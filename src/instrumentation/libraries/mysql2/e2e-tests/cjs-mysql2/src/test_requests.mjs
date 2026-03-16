@@ -30,5 +30,6 @@ await makeRequest("GET", "/test/binary-data");
 await makeRequest("GET", "/test/knex-raw-query");
 await makeRequest("POST", "/test/knex-savepoint");
 await makeRequest("GET", "/test/knex-streaming");
+await makeRequest("GET", "/test/pool-execute-singleton-values");
 
 printRequestSummary();
