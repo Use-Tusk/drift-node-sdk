@@ -17,6 +17,11 @@ services:
     build:
       context: ../../../../../../
       dockerfile: src/instrumentation/libraries/prisma/e2e-tests/cjs-prisma/Dockerfile
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
     environment:
       DATABASE_URL: "postgresql://testuser:testpass@postgres:5432/testdb?schema=public"
       PORT: 3000

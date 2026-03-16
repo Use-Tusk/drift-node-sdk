@@ -8,6 +8,10 @@ COPY src/instrumentation/libraries/postgres/e2e-tests/esm-postgres/tsconfig.json
 
 # Add cache-busting argument to force fresh CLI download
 ARG CACHEBUST=1
+
+# Required for strict replay sandbox mode.
+RUN apt-get update && apt-get install -y socat bubblewrap && rm -rf /var/lib/apt/lists/*
+
 # Install Tusk Drift CLI
 RUN curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-drift-cli/main/install.sh | sh
 

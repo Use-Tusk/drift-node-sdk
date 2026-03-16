@@ -14,6 +14,11 @@ services:
       args:
         - CACHEBUST=${CACHEBUST:-1}
         - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
     environment:
       - PORT=3000
       - REDIS_HOST=redis
