@@ -1092,6 +1092,26 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url === "/test/pool-execute-singleton-values" && method === "GET") {
+      pool.execute("SELECT * FROM test_users WHERE id = ?", [1], (error, results) => {
+        if (error) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: error.message }));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: results,
+            rowCount: Array.isArray(results) ? results.length : 0,
+            queryType: "pool-execute-singleton-values",
+          }),
+        );
+      });
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
