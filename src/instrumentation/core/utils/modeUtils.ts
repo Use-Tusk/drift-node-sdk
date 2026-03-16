@@ -73,7 +73,9 @@ export function handleReplayMode<T>({
 
   // Background request: App is ready + not within a trace (no parent span) + not a server request
   if (isAppReady && !currentSpanInfo && !isServerRequest) {
-    logger.debug(`[ModeUtils] Handling no-op request`);
+    logger.warn(
+      `[ModeUtils] Background request detected during replay (no active trace context). This typically means a background job, scheduled task, or middleware (e.g., rate limiters, message consumers) is running outside of a test trace. To avoid errors, disable these services when TUSK_DRIFT_MODE=REPLAY.`,
+    );
     // This is a background request (app is ready and no parent span), call the backgroundRequestHandler
     return noOpRequestHandler();
   }
