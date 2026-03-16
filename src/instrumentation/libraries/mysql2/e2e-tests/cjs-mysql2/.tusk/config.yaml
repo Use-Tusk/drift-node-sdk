@@ -27,7 +27,7 @@ recording:
   sampling_rate: 1.0 # 100%
   export_spans: false
 
-replay:git
+replay:
   sandbox:
     mode: strict
   enable_telemetry: false
