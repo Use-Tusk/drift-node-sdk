@@ -169,6 +169,11 @@ export class SpanUtils {
         logger.debug(
           `[SpanUtils] Stopping recording of child spans for span ${spanContext.spanId}, packageName: ${options.packageName}, instrumentationName: ${options.instrumentationName}`,
         );
+        if (mode === TuskDriftMode.REPLAY) {
+          throw new Error(
+            `Unexpected child span in replay mode for span ${spanContext.spanId}, packageName: ${options.packageName}, instrumentationName: ${options.instrumentationName}`,
+          );
+        }
         return originalFunctionCall();
       }
     }
