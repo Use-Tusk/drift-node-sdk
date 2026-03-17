@@ -161,8 +161,7 @@ export class TcpInstrumentation extends TdInstrumentationBase {
     args: any[],
     socketContext: any,
   ): any {
-    // Don't want to log any HTTP response socket calls
-    if (this._isHttpResponseSocket(socketContext)) {
+    if (this._isNonNetworkSocket(socketContext)) {
       return originalMethod.apply(socketContext, args);
     }
 
@@ -177,7 +176,6 @@ export class TcpInstrumentation extends TdInstrumentationBase {
 
     // Don't want to log any TCP calls made to the CLI
     if (spanKind === SpanKind.SERVER && callingLibrary !== "ProtobufCommunicator") {
-      // Log unpatched dependency without expensive stack trace
       this._logUnpatchedDependency(methodName, currentSpanInfo, socketContext);
     }
 
@@ -186,8 +184,24 @@ export class TcpInstrumentation extends TdInstrumentationBase {
     return originalMethod.apply(socketContext, args);
   }
 
-  private _isHttpResponseSocket(socketContext: any): boolean {
-    // Check if this socket is associated with HTTP response handling
-    return socketContext && socketContext._httpMessage;
+  private _isNonNetworkSocket(socketContext: any): boolean {
+    if (!socketContext) return false;
+
+    // HTTP response sockets (outbound response writing)
+    if (socketContext._httpMessage) return true;
+
+    // Node.js IPC channels (e.g. process.send() used by tsx, jest workers, etc.)
+    // and Unix domain sockets use Pipe handles internally, while real network
+    // sockets use TCP handles. These are local-only and never external dependencies.
+    //
+    // In lib/net.js (https://github.com/nodejs/node/blob/main/lib/net.js#L1328-L1331),
+    // socket._handle is assigned as either `new Pipe(...)` or `new TCP(...)`:
+    //   this._handle = pipe ? new Pipe(PipeConstants.SOCKET) : new TCP(TCPConstants.SOCKET);
+    // where Pipe = internalBinding('pipe_wrap') and TCP = internalBinding('tcp_wrap').
+    // So _handle.constructor.name is "Pipe" for IPC/Unix sockets, "TCP" for network sockets.
+    const handleType = socketContext._handle?.constructor?.name;
+    if (handleType === "Pipe") return true;
+
+    return false;
   }
 }
