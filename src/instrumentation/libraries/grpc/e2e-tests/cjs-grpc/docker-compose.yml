@@ -6,6 +6,11 @@ services:
       args:
         - CACHEBUST=${CACHEBUST:-1}
         - TUSK_CLI_VERSION=${TUSK_CLI_VERSION:-latest}
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
     environment:
       - BENCHMARKS=${BENCHMARKS:-}
       - BENCHMARK_DURATION=${BENCHMARK_DURATION:-5}

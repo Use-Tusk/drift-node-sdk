@@ -10,6 +10,9 @@ COPY src/instrumentation/libraries/mongodb/e2e-tests/cjs-mongodb/tsconfig.json .
 ARG CACHEBUST=1
 ARG TUSK_CLI_VERSION=latest
 
+# Required for strict replay sandbox mode.
+RUN apt-get update && apt-get install -y socat bubblewrap && rm -rf /var/lib/apt/lists/*
+
 # Install Tusk Drift CLI
 RUN if [ "$TUSK_CLI_VERSION" = "latest" ]; then \
       curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-drift-cli/main/install.sh | sh; \

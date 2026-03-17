@@ -28,4 +28,6 @@ recording:
   export_spans: false
 
 replay:
+  sandbox:
+    mode: strict
   enable_telemetry: false
