@@ -24,7 +24,11 @@ export interface TcpInstrumentationConfig extends TdInstrumentationConfig {
  */
 export class TcpInstrumentation extends TdInstrumentationBase {
   private mode: TuskDriftMode;
-  private loggedSpans = new Set<string>(); // Track spans that have been logged
+  private loggedSpans = new Set<string>();
+  // Tracks sockets that went through our patched connect(). Used to distinguish
+  // inherited IPC pipes (which never call connect) from Unix domain socket
+  // connections (which do). See _isNonNetworkSocket for details.
+  private explicitlyConnectedSockets = new WeakSet<object>();
 
   constructor(config: TcpInstrumentationConfig = {}) {
     super("tcp", config);
@@ -99,6 +103,7 @@ export class TcpInstrumentation extends TdInstrumentationBase {
     // Socket.prototype has other methods we can patch (read, _write, end, etc)
     // But connect should be sufficient since we are only patching TCP to get insights into what modules we haven't patched
     netModule.Socket.prototype.connect = function (...args: any[]) {
+      self.explicitlyConnectedSockets.add(this);
       return self._handleTcpCall("connect", originalConnect, args, this);
     };
 
@@ -161,8 +166,7 @@ export class TcpInstrumentation extends TdInstrumentationBase {
     args: any[],
     socketContext: any,
   ): any {
-    // Don't want to log any HTTP response socket calls
-    if (this._isHttpResponseSocket(socketContext)) {
+    if (this._isNonNetworkSocket(socketContext)) {
       return originalMethod.apply(socketContext, args);
     }
 
@@ -177,7 +181,6 @@ export class TcpInstrumentation extends TdInstrumentationBase {
 
     // Don't want to log any TCP calls made to the CLI
     if (spanKind === SpanKind.SERVER && callingLibrary !== "ProtobufCommunicator") {
-      // Log unpatched dependency without expensive stack trace
       this._logUnpatchedDependency(methodName, currentSpanInfo, socketContext);
     }
 
@@ -186,8 +189,28 @@ export class TcpInstrumentation extends TdInstrumentationBase {
     return originalMethod.apply(socketContext, args);
   }
 
-  private _isHttpResponseSocket(socketContext: any): boolean {
-    // Check if this socket is associated with HTTP response handling
-    return socketContext && socketContext._httpMessage;
+  private _isNonNetworkSocket(socketContext: any): boolean {
+    if (!socketContext) return false;
+
+    if (socketContext._httpMessage) return true;
+
+    // Filter out inherited IPC pipes while still flagging Unix domain socket connections.
+    //
+    // Both IPC pipes and Unix domain sockets use Pipe handles (vs TCP handles for network
+    // sockets) — see lib/net.js: https://github.com/nodejs/node/blob/main/lib/net.js#L1328-L1331
+    //   this._handle = pipe ? new Pipe(PipeConstants.SOCKET) : new TCP(TCPConstants.SOCKET);
+    //
+    // The key distinction: IPC pipes (e.g. process.send() used by tsx, jest workers, etc.)
+    // are inherited from the parent process and never go through net.Socket.prototype.connect().
+    // Unix domain socket connections (e.g. PostgreSQL via /var/run/postgresql/.s.PGSQL.5432)
+    // DO call connect(). We track which sockets went through our patched connect() in
+    // explicitlyConnectedSockets, so we can filter Pipe sockets that were never connected
+    // (IPC) while still alerting on ones that were (potential unpatched dependencies).
+    const handleType = socketContext._handle?.constructor?.name;
+    if (handleType === "Pipe" && !this.explicitlyConnectedSockets.has(socketContext)) {
+      return true;
+    }
+
+    return false;
   }
 }
