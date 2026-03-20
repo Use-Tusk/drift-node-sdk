@@ -15,9 +15,9 @@ RUN apt-get update && apt-get install -y socat bubblewrap && rm -rf /var/lib/apt
 
 # Install Tusk Drift CLI
 RUN if [ "$TUSK_CLI_VERSION" = "latest" ]; then \
-      curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-drift-cli/main/install.sh | sh; \
+      curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-cli/main/install.sh | sh; \
     else \
-      curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-drift-cli/main/install.sh | sh -s -- ${TUSK_CLI_VERSION}; \
+      curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-cli/main/install.sh | sh -s -- ${TUSK_CLI_VERSION}; \
     fi
 
 # Expose the server ports

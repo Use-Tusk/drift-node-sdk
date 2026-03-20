@@ -10,7 +10,7 @@
   <a href="https://join.slack.com/t/tusk-community/shared_invite/zt-3fve1s7ie-NAAUn~UpHsf1m_2tdoGjsQ"><img src="https://img.shields.io/badge/slack-badge?style=flat&logo=slack&label=Tusk&color=BF40BF" alt="Tusk Community Slack"></a>
 </p>
 
-The Node.js Tusk Drift SDK enables fast and deterministic API testing by capturing and replaying API calls made to/from your service. Automatically record real-world API calls, then replay them as tests using the [Tusk CLI](https://github.com/Use-Tusk/tusk-drift-cli) to find regressions. During replay, all outbound requests are intercepted with recorded data to ensure consistent behavior without side-effects.
+The Node.js Tusk Drift SDK enables fast and deterministic API testing by capturing and replaying API calls made to/from your service. Automatically record real-world API calls, then replay them as tests using the [Tusk CLI](https://github.com/Use-Tusk/tusk-cli) to find regressions. During replay, all outbound requests are intercepted with recorded data to ensure consistent behavior without side-effects.
 
 <div align="center">
 
@@ -63,7 +63,7 @@ If you're using packages or versions not listed above, please create an issue wi
 
 ### Step 1: Install the CLI
 
-First, install and configure the Tusk Drift CLI by following our [CLI installation guide](https://github.com/Use-Tusk/tusk-drift-cli?tab=readme-ov-file#install). The CLI helps set up your Tusk configuration file and replays tests.
+First, install and configure the Tusk Drift CLI by following our [CLI installation guide](https://github.com/Use-Tusk/tusk-cli?tab=readme-ov-file#install). The CLI helps set up your Tusk configuration file and replays tests.
 
 The wizard will eventually direct you back here when it's time to set up the SDK.
 
