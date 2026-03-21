@@ -13,7 +13,7 @@ ARG CACHEBUST=1
 RUN apt-get update && apt-get install -y socat bubblewrap && rm -rf /var/lib/apt/lists/*
 
 # Install Tusk Drift CLI
-RUN curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-drift-cli/main/install.sh | sh
+RUN curl -fsSL https://raw.githubusercontent.com/Use-Tusk/tusk-cli/main/install.sh | sh
 
 # Expose the server port
 EXPOSE 3000

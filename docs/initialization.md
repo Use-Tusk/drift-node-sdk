@@ -4,7 +4,7 @@
 
 Before setting up the SDK, ensure you have:
 
-- Completed the [CLI wizard](https://github.com/Use-Tusk/tusk-drift-cli?tab=readme-ov-file#quick-start)
+- Completed the [CLI wizard](https://github.com/Use-Tusk/tusk-cli/blob/main/docs/drift/README.md#quick-start)
 - Obtained an API key from the [Tusk Drift dashboard](https://usetusk.ai/app/settings/api-keys) (only required if using Tusk Cloud)
 
 > **📦 Using Next.js?** Next.js applications require a different initialization process.

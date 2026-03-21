@@ -49,7 +49,7 @@ You should see an output similar to:
 
 Press `ESC` to exit the list view.
 
-Need to install the Tusk CLI? See [CLI installation guide](https://github.com/Use-Tusk/tusk-drift-cli?tab=readme-ov-file#install).
+Need to install the Tusk CLI? See [CLI installation guide](https://github.com/Use-Tusk/tusk-cli?tab=readme-ov-file#install).
 
 ## Step 6: Replay the Trace
 
