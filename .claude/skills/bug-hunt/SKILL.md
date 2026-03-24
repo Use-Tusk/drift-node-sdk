@@ -1,3 +1,9 @@
+---
+name: bug-hunt
+description: Hunt for instrumentation bugs by analyzing code gaps and running e2e tests through DISABLED/RECORD/REPLAY cycle
+disable-model-invocation: true
+---
+
 # Instrumentation Bug Hunting
 
 ## Arguments
@@ -166,7 +172,7 @@ Produce a prioritized list of potential bugs to investigate.
 
 ## Phase 3: Initialize Bug Tracking Document
 
-Create `BUG_TRACKING.md` in the ESM e2e test directory:
+Create `BUG_TRACKING.md` in the CJS e2e test directory:
 
 ```bash
 # Path: src/instrumentation/libraries/<library>/e2e-tests/cjs-<library>/BUG_TRACKING.md
@@ -199,7 +205,7 @@ For each potential bug, follow this workflow:
 
 ### 4.1 Initial Setup (Once)
 
-Navigate to the ESM e2e test directory:
+Navigate to the CJS e2e test directory:
 
 ```bash
 cd src/instrumentation/libraries/<library>/e2e-tests/cjs-<library>/
