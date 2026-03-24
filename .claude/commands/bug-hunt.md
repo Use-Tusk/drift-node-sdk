@@ -2,7 +2,17 @@
 
 ## Arguments
 
-$ARGUMENTS - The library name to test (e.g., mysql2, redis, pg, mongodb, ioredis, postgres, prisma, firestore, grpc, fetch, http, mysql, nextjs, upstash-redis-js)
+$ARGUMENTS - The library name, optionally followed by focus context.
+
+**Format**: `<library> [focus on <area>]`
+
+**Examples**:
+
+- `/bug-hunt redis` — broad bug hunting across all redis functionality
+- `/bug-hunt redis focus on pub sub interactions` — prioritize pub/sub patterns
+- `/bug-hunt mysql2 focus on prepared statements and transactions` — prioritize those areas
+
+**Parsing**: The first word is always the library name. Everything after it is the optional focus context.
 
 ## Library-to-GitHub-Repo Mapping
 
@@ -27,34 +37,38 @@ Use this mapping to clone the package source code for analysis:
 
 ## E2E Test Variants
 
-Each library has ESM and CJS variants. Use the **ESM variant** as the primary target for bug hunting:
+Each library has ESM and CJS variants. Use the **CJS variant** as the primary target for bug hunting:
 
-| Library          | ESM variant path                                                                 |
+| Library          | CJS variant path                                                                 |
 | ---------------- | -------------------------------------------------------------------------------- |
-| mysql2           | `src/instrumentation/libraries/mysql2/e2e-tests/esm-mysql2/`                     |
-| redis            | `src/instrumentation/libraries/redis/e2e-tests/esm-redis/`                       |
-| pg               | `src/instrumentation/libraries/pg/e2e-tests/esm-pg/`                             |
-| mongodb          | `src/instrumentation/libraries/mongodb/e2e-tests/esm-mongodb/`                   |
-| ioredis          | `src/instrumentation/libraries/ioredis/e2e-tests/esm-ioredis/`                   |
-| postgres         | `src/instrumentation/libraries/postgres/e2e-tests/esm-postgres/`                 |
-| prisma           | `src/instrumentation/libraries/prisma/e2e-tests/esm-prisma/`                     |
-| firestore        | `src/instrumentation/libraries/firestore/e2e-tests/esm-firestore/`               |
-| grpc             | `src/instrumentation/libraries/grpc/e2e-tests/esm-grpc/`                         |
-| fetch            | `src/instrumentation/libraries/fetch/e2e-tests/esm-fetch/`                       |
-| http             | `src/instrumentation/libraries/http/e2e-tests/esm-http/`                         |
-| mysql            | `src/instrumentation/libraries/mysql/e2e-tests/esm-mysql/`                       |
-| nextjs           | `src/instrumentation/libraries/nextjs/e2e-tests/esm-nextjs/`                     |
-| upstash-redis-js | `src/instrumentation/libraries/upstash-redis-js/e2e-tests/esm-upstash-redis-js/` |
+| mysql2           | `src/instrumentation/libraries/mysql2/e2e-tests/cjs-mysql2/`                     |
+| redis            | `src/instrumentation/libraries/redis/e2e-tests/cjs-redis/`                       |
+| pg               | `src/instrumentation/libraries/pg/e2e-tests/cjs-pg/`                             |
+| mongodb          | `src/instrumentation/libraries/mongodb/e2e-tests/cjs-mongodb/`                   |
+| ioredis          | `src/instrumentation/libraries/ioredis/e2e-tests/cjs-ioredis/`                   |
+| postgres         | `src/instrumentation/libraries/postgres/e2e-tests/cjs-postgres/`                 |
+| prisma           | `src/instrumentation/libraries/prisma/e2e-tests/cjs-prisma/`                     |
+| firestore        | `src/instrumentation/libraries/firestore/e2e-tests/cjs-firestore/`               |
+| grpc             | `src/instrumentation/libraries/grpc/e2e-tests/cjs-grpc/`                         |
+| fetch            | `src/instrumentation/libraries/fetch/e2e-tests/cjs-fetch/`                       |
+| http             | `src/instrumentation/libraries/http/e2e-tests/cjs-http/`                         |
+| mysql            | `src/instrumentation/libraries/mysql/e2e-tests/cjs-mysql/`                       |
+| nextjs           | `src/instrumentation/libraries/nextjs/e2e-tests/cjs-nextjs/`                     |
+| upstash-redis-js | `src/instrumentation/libraries/upstash-redis-js/e2e-tests/cjs-upstash-redis-js/` |
 
 ---
 
 ## Phase 0: Environment Setup
 
-### 0.1 Validate the library argument
+### 0.1 Parse and validate the arguments
+
+Extract the library name (first word) and optional focus context (remaining words) from the arguments.
 
 The library must be one of: fetch, firestore, grpc, http, ioredis, mongodb, mysql, mysql2, nextjs, pg, postgres, prisma, redis, upstash-redis-js.
 
-If the argument is invalid, list the valid options and stop.
+If the library is invalid, list the valid options and stop.
+
+If focus context is provided, it will guide Phases 1 and 2 to prioritize that area of the library's functionality.
 
 ### 0.2 Docker Setup (Claude Code Web only)
 
@@ -84,6 +98,8 @@ This is read-only reference material — you will NOT modify this repo.
 
 ### 0.4 Create a working branch
 
+Skip this step if you are already on a dedicated branch (e.g., in Claude Code Web where each session has its own branch).
+
 ```bash
 git checkout -b bug-hunt/<library>-$(date +%Y-%m-%d)
 ```
@@ -92,12 +108,14 @@ git checkout -b bug-hunt/<library>-$(date +%Y-%m-%d)
 
 ## Phase 1: Develop Understanding
 
+**If focus context was provided**, prioritize your analysis around that area. For example, if the focus is "pub sub interactions", concentrate on pub/sub-related code paths in the instrumentation, tests, and package source.
+
 ### 1.1 Analyze the Instrumentation Code
 
 Read the instrumentation code at:
 
 ```
-src/instrumentation/libraries/$ARGUMENTS/Instrumentation.ts
+src/instrumentation/libraries/<library>/Instrumentation.ts
 ```
 
 Identify:
@@ -105,15 +123,18 @@ Identify:
 - Which functions from the package are patched/instrumented
 - The patching strategy (what gets wrapped, when, and how)
 - Any helper files in the same directory
+- **If focus context provided**: Which patches relate to the focus area, and what's missing?
 
 ### 1.2 Analyze Existing E2E Tests
 
-Review the ESM variant's test files:
+Review the CJS variant's test files:
 
-- `src/instrumentation/libraries/$ARGUMENTS/e2e-tests/esm-$ARGUMENTS/src/index.ts` — all test endpoints
-- `src/instrumentation/libraries/$ARGUMENTS/e2e-tests/esm-$ARGUMENTS/src/test_requests.mjs` — which endpoints are called
+- `src/instrumentation/libraries/<library>/e2e-tests/cjs-<library>/src/index.ts` — all test endpoints
+- `src/instrumentation/libraries/<library>/e2e-tests/cjs-<library>/src/test_requests.mjs` — which endpoints are called
 
 Understand what functionality is already tested and identify coverage gaps.
+
+- **If focus context provided**: What tests already exist for the focus area? What's missing?
 
 ### 1.3 Analyze the Package Source Code
 
@@ -122,10 +143,13 @@ If you cloned the package source, read it to understand:
 - The package's entry points and full API surface
 - Functions that are currently patched vs functions that exist but aren't patched
 - Alternative call patterns, overloads, and edge cases
+- **If focus context provided**: Deep-dive into the focus area's API surface and usage patterns
 
 ---
 
 ## Phase 2: Identify Potential Gaps
+
+**If focus context was provided**, prioritize bugs related to that area. You may still note other potential issues, but test the focus area first.
 
 Reason about potential issues. Consider:
 
@@ -304,7 +328,7 @@ sleep 2
 Run the Tusk CLI to replay:
 
 ```bash
-docker compose exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk run --print --output-format "json" --enable-service-logs --disable-sandbox
+docker compose exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk drift run --print --output-format "json" --enable-service-logs --disable-sandbox
 ```
 
 **Check for issues:**
@@ -318,6 +342,7 @@ docker compose exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk run --print --outpu
    - Update `BUG_TRACKING.md`: Status "Confirmed Bug - No replay logs", Failure Point "REPLAY"
 
 3. **Logs contain TCP warnings**:
+
    ```bash
    docker compose exec app cat .tusk/logs/*.log | grep -i "TCP called from inbound request context"
    ```
@@ -401,12 +426,10 @@ git add src/instrumentation/libraries/$ARGUMENTS/e2e-tests/esm-$ARGUMENTS/
 git commit -m "bug-hunt($ARGUMENTS): add e2e tests exposing instrumentation bugs
 
 Found N confirmed bugs in $ARGUMENTS instrumentation.
-See BUG_TRACKING.md for details.
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+See BUG_TRACKING.md for details."
 ```
 
-Push the branch:
+Push the branch (skip if in Claude Code Web where the session handles this):
 
 ```bash
 git push origin bug-hunt/$ARGUMENTS-$(date +%Y-%m-%d)

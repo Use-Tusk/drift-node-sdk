@@ -21,7 +21,7 @@ Ensure that `TuskDrift.initialize()` is called before any other telemetry provid
 1. **Enable service and CLI logs**:
 
    ```bash
-   tusk run --debug
+   tusk drift run --debug
    ```
 
    Logs will be written to `.tusk/logs/`
