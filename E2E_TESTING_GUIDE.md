@@ -72,7 +72,7 @@ docker compose exec -T app npm install
 Start the application server in RECORD mode to capture network traffic:
 
 ```bash
-docker compose exec -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
+docker compose exec -d -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
 ```
 
 Wait a few seconds for the server to fully start (5-10 seconds recommended):

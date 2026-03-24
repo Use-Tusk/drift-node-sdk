@@ -249,7 +249,7 @@ app.get("/test/my-new-test", async (req, res) => {
 Start server without instrumentation:
 
 ```bash
-docker compose exec -e TUSK_DRIFT_MODE=DISABLED app sh -c "npm run build && npm run dev"
+docker compose exec -d -e TUSK_DRIFT_MODE=DISABLED app sh -c "npm run build && npm run dev"
 ```
 
 Wait for server to start:
@@ -289,7 +289,7 @@ rm -rf .tusk/traces/* .tusk/logs/*
 Start server in RECORD mode:
 
 ```bash
-docker compose exec -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
+docker compose exec -d -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
 ```
 
 Wait for server to start:
