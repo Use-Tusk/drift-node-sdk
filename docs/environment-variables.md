@@ -8,12 +8,12 @@ The `TUSK_DRIFT_MODE` environment variable controls how the SDK operates in your
 
 ### Available Modes
 
-| Mode       | Description                                          | When to Use                                                                                  |
-| ---------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `RECORD`   | Records traces for all instrumented operations       | Set this in environments where you want to capture API traces (e.g., staging, production)    |
-| `REPLAY`   | Replays previously recorded traces                   | Automatically set by the Tusk CLI when running `tusk run` - you should NOT set this manually |
-| `DISABLED` | Disables all instrumentation and recording           | Use when you want to completely disable Tusk with no performance impact                      |
-| Unset      | Same as `DISABLED` - no instrumentation or recording | Default state when the variable is not set                                                   |
+| Mode       | Description                                          | When to Use                                                                                        |
+| ---------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `RECORD`   | Records traces for all instrumented operations       | Set this in environments where you want to capture API traces (e.g., staging, production)          |
+| `REPLAY`   | Replays previously recorded traces                   | Automatically set by the Tusk CLI when running `tusk drift run` - you should NOT set this manually |
+| `DISABLED` | Disables all instrumentation and recording           | Use when you want to completely disable Tusk with no performance impact                            |
+| Unset      | Same as `DISABLED` - no instrumentation or recording | Default state when the variable is not set                                                         |
 
 ### Important Notes
 
@@ -25,7 +25,7 @@ The `TUSK_DRIFT_MODE` environment variable controls how the SDK operates in your
 
 **Replaying Traces:**
 
-- `TUSK_DRIFT_MODE` is automatically set to `REPLAY` by the Tusk CLI when you run `tusk run`
+- `TUSK_DRIFT_MODE` is automatically set to `REPLAY` by the Tusk CLI when you run `tusk drift run`
 - **Do NOT** manually set `TUSK_DRIFT_MODE=REPLAY` in your application startup commands
 - The start command specified in your `.tusk/config.yaml` should NOT cause `TUSK_DRIFT_MODE` to be set to anything - the CLI handles this automatically
 
@@ -61,7 +61,7 @@ start_command: "npm run dev" # Do NOT include TUSK_DRIFT_MODE here
 
 ```bash
 # The CLI automatically sets TUSK_DRIFT_MODE=REPLAY
-tusk run
+tusk drift run
 ```
 
 **Disabling Tusk:**
@@ -99,7 +99,7 @@ Your Tusk Drift API key, required when using Tusk Cloud for storing and managing
 - Can be set as an environment variable:
 
   ```bash
-  TUSK_API_KEY=your-api-key-here tusk run
+  TUSK_API_KEY=your-api-key-here tusk drift run
   ```
 
 - Or use the Tusk CLI login command (recommended):

@@ -56,7 +56,7 @@ Need to install the Tusk CLI? See [CLI installation guide](https://github.com/Us
 Replay the recorded test:
 
 ```bash
-tusk run
+tusk drift run
 ```
 
 You should see an output similar to:

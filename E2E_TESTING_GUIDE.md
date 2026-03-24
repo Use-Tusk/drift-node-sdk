@@ -72,7 +72,7 @@ docker compose exec -T app npm install
 Start the application server in RECORD mode to capture network traffic:
 
 ```bash
-docker compose exec -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
+docker compose exec -d -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm run dev"
 ```
 
 Wait a few seconds for the server to fully start (5-10 seconds recommended):
@@ -119,7 +119,7 @@ sleep 2
 Run the Tusk CLI to replay the recorded traces:
 
 ```bash
-docker compose exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk run --print --output-format "json" --enable-service-logs
+docker compose exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk drift run --print --output-format "json" --enable-service-logs
 ```
 
 **Flags explained:**
@@ -131,7 +131,7 @@ docker compose exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk run --print --outpu
 To see all available flags, run:
 
 ```bash
-tusk run --help
+tusk drift run --help
 ```
 
 **Interpreting Results:**
@@ -262,7 +262,7 @@ docker compose exec -d -e TUSK_DRIFT_MODE=RECORD app sh -c "npm run build && npm
 docker compose exec app pkill -f "node" || true
 
 # Run tests
-docker compose exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk run --print --output-format "json" --enable-service-logs
+docker compose exec -T -e TUSK_ANALYTICS_DISABLED=1 app tusk drift run --print --output-format "json" --enable-service-logs
 
 # View logs
 docker compose exec app ls .tusk/logs
