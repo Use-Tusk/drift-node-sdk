@@ -1365,7 +1365,10 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     return (originalEmit: Function) => {
       return function (this: Server, eventName: string, ...args: any[]) {
         if (eventName === "request") {
-          // Sample as soon as we can to avoid additional overhead if this request is not sampled
+          if (!self.tuskDrift.isAppReady()) {
+            self.tuskDrift.markAppAsReady();
+          }
+
           if (self.mode === TuskDriftMode.RECORD) {
             if (
               !shouldSample({
