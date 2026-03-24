@@ -170,12 +170,16 @@ export class TuskDriftCore {
     }
 
     if (!status.enabled) {
-      logger.info(`Rust core path disabled at startup (env=${envDisplay}, reason=${status.reason}).`);
+      logger.info(
+        `Rust core path disabled at startup (env=${envDisplay}, reason=${status.reason}).`,
+      );
       return;
     }
 
     if (status.bindingLoaded) {
-      logger.info(`Rust core path enabled at startup (env=${envDisplay}, reason=${status.reason}).`);
+      logger.info(
+        `Rust core path enabled at startup (env=${envDisplay}, reason=${status.reason}).`,
+      );
       return;
     }
 
