@@ -53,16 +53,16 @@ export function initializeEsmLoader(): void {
     // Resolved relative to this SDK package (import.meta.url) so the hook
     // module is found from node_modules regardless of the user's cwd.
     // @ts-expect-error register exists on module in supported Node versions
-    moduleModule.register("import-in-the-middle/hook.mjs", import.meta.url,
-      {
-        // Payload sent to the loader hook's initialize() function:
-        // - addHookMessagePort: the MessagePort for main↔loader communication
-        // - include: [] means wrap all ESM modules (not just instrumented ones)
-        data: { addHookMessagePort, include: [] },
-        // Transfer (not clone) the port — a MessagePort can only be owned by one thread
-        transferList: [addHookMessagePort],
-      },
-    );
+    moduleModule.register("import-in-the-middle/hook.mjs", import.meta.url, {
+      // Payload sent to the loader hook's initialize() function:
+      // - addHookMessagePort: the MessagePort for main↔loader communication
+      // - include: [] starts with an empty allowlist; only modules registered
+      //   via new Hook([...]) on the main thread get added dynamically through
+      //   the MessagePort, so only instrumented modules are wrapped.
+      data: { addHookMessagePort, include: [] },
+      // Transfer (not clone) the port — a MessagePort can only be owned by one thread
+      transferList: [addHookMessagePort],
+    });
     logger.debug("ESM loader hooks registered successfully");
   } catch (error) {
     logger.warn("Failed to register ESM loader hooks:", error);

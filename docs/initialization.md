@@ -238,9 +238,9 @@ app.listen(8000, () => {
 
 ## Troubleshooting ESM
 
-The SDK automatically registers ESM loader hooks via [`import-in-the-middle`](https://www.npmjs.com/package/import-in-the-middle) to intercept ES module imports. This works by wrapping every ESM module's exports with getter/setter proxies so the SDK can patch them for instrumentation.
+The SDK automatically registers ESM loader hooks via [`import-in-the-middle`](https://www.npmjs.com/package/import-in-the-middle) to intercept ES module imports. Only modules that the SDK instruments have their exports wrapped with getter/setter proxies -- unrelated modules are left untouched.
 
-In rare cases, this wrapping can cause issues with certain packages:
+In rare cases, the wrapping can cause issues with instrumented packages:
 
 - **Non-standard export patterns**: Some packages use dynamic `export *` re-exports or conditional exports that the wrapper's static analysis cannot parse, resulting in runtime syntax errors.
 - **Native or WASM bindings**: Packages with native addons loaded via ESM can conflict with the proxy wrapping mechanism.
