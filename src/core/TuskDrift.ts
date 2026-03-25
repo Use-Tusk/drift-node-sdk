@@ -40,11 +40,13 @@ import {
   loadTuskConfig,
   TuskConfig,
   OriginalGlobalUtils,
+  isCommonJS,
 } from "./utils";
 import { TransformConfigs } from "../instrumentation/libraries/types";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { Resource } from "@opentelemetry/resources";
 import { getRustCoreStartupStatus } from "./rustCoreBinding";
+import { initializeEsmLoader } from "./esmLoader";
 
 export interface InitParams {
   apiKey?: string;
@@ -52,6 +54,8 @@ export interface InitParams {
   logLevel?: LogLevel;
   transforms?: TransformConfigs;
   samplingRate?: number;
+  /** Set to `false` to disable automatic ESM loader hook registration. Defaults to `true`. */
+  registerEsmLoaderHooks?: boolean;
 }
 
 export enum TuskDriftMode {
@@ -83,15 +87,6 @@ export class TuskDriftCore {
     this.config = loadTuskConfig() || {};
   }
 
-  private isCommonJS(): boolean {
-    return (
-      typeof module !== "undefined" &&
-      "exports" in module &&
-      typeof require !== "undefined" &&
-      typeof require.cache !== "undefined"
-    );
-  }
-
   private getPackageName(modulePath: string): string | null {
     let dir = path.dirname(modulePath);
     while (dir) {
@@ -117,7 +112,7 @@ export class TuskDriftCore {
   private alreadyRequiredModules(): Set<string> {
     const alreadyRequiredModuleNames = new Set<string>();
 
-    if (this.isCommonJS()) {
+    if (isCommonJS()) {
       const requireCache = Object.keys(require.cache);
       for (const modulePath of requireCache) {
         if (modulePath.includes("node_modules")) {
@@ -476,6 +471,10 @@ export class TuskDriftCore {
     if (this.mode === TuskDriftMode.DISABLED) {
       logger.debug("SDK disabled via environment variable");
       return;
+    }
+
+    if (initParams.registerEsmLoaderHooks !== false) {
+      initializeEsmLoader();
     }
 
     this.logRustCoreStartupStatus();

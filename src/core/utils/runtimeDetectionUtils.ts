@@ -1,3 +1,16 @@
+export function isCommonJS(): boolean {
+  try {
+    return (
+      typeof module !== "undefined" &&
+      "exports" in module &&
+      typeof require !== "undefined" &&
+      typeof require.cache !== "undefined"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function isNextJsRuntime(): boolean {
   return (
     process.env.NEXT_RUNTIME !== undefined || typeof (global as any).__NEXT_DATA__ !== "undefined"

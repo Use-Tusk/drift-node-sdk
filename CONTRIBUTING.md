@@ -65,22 +65,40 @@ The SDK supports both CommonJS and ESM module systems, using different intercept
 
 #### CommonJS Module Interception
 
-- **Package**: `require-in-the-middle`
-- **How it works**: Hooks into `Module.prototype.require` globally
-- **When it activates**: When `require()` is called
-- **Setup**: Automatic - no special flags needed
-- **Use case**: Works for all CommonJS modules
+- **Package**: `require-in-the-middle` (RITM)
+- **How it works**: CJS modules are loaded through a single JavaScript function (`Module._load`). RITM monkey-patches this function so that every `require()` call passes through the patch, giving the SDK a chance to intercept and wrap module exports.
+- **Setup**: Automatic -- no special flags or loader registration needed. Just calling `TuskDrift.initialize()` before other `require()` calls is sufficient.
 
 #### ESM Module Interception
 
-- **Package**: `import-in-the-middle`, created by [Datadog](https://opensource.datadoghq.com/projects/node/#the-import-in-the-middle-library)
-- **How it works**: Uses Node.js loader hooks to intercept imports before they're cached
-- **When it activates**: During module resolution/loading phase
-- **Setup**: Requires `--import` flag or `module.register()` call
-- **Use case**: Required for ESM modules
-- **Loader file**: `hook.mjs` - re-exports loader hooks from `import-in-the-middle`
+- **Package**: `import-in-the-middle` (IITM), created by [Datadog](https://opensource.datadoghq.com/projects/node/#the-import-in-the-middle-library)
+- **How it works**: Unlike CJS, ESM module loading is handled by Node.js internals (C++), not a patchable JavaScript function. The only way to intercept ESM imports is through Node's official [customization hooks API](https://nodejs.org/api/module.html#customization-hooks) (`module.register`), which runs hook code in a separate loader thread.
+- **Setup**: The SDK automatically registers ESM loader hooks inside `TuskDrift.initialize()` via `module.register()` (see `src/core/esmLoader.ts`). ESM applications must still use `--import` to ensure the init file runs before the application's import graph is resolved. The `hook.mjs` file at the package root is kept for backward compatibility but is no longer required for manual registration.
 
-**Key difference**: CommonJS's `require()` is synchronous and sequential, so you can control order. ESM's `import` is hoisted and parallel, requiring loader hooks to intercept before evaluation.
+#### How ESM instrumentation works end-to-end
+
+1. **Loader registration**: `initializeEsmLoader()` (called from `TuskDrift.initialize()`) uses `createAddHookMessageChannel()` from IITM to set up a `MessagePort` between the main thread and the loader thread, then calls `module.register('import-in-the-middle/hook.mjs', ...)` to install the loader hooks.
+2. **Module wrapping**: When any ESM module is imported, IITM's `load` hook transforms its source code on the fly, replacing all named exports with getter/setter proxies. The module works normally, but exports now pass through a proxy layer.
+3. **Hook registration**: `TdInstrumentationBase.enable()` creates `new HookImport(['pg'], {}, hookFn)` for each instrumented module. This registers a callback and sends the module name to the loader thread via the `MessagePort` so the loader knows to watch for it.
+4. **Interception at runtime**: When application code accesses a wrapped module's exports (e.g., `import { Client } from 'pg'`), the getter proxy fires, the `hookFn` callback runs, and the SDK patches the export with its instrumented version.
+
+For CJS, steps 1-2 are unnecessary -- RITM patches `Module._load` directly in the main thread, and the rest works the same way.
+
+#### Why `--import` is still needed for ESM
+
+In CJS, `require()` is synchronous and imperative -- putting `require('./tuskDriftInit')` first guarantees it runs before other modules. In ESM, all `import` declarations are hoisted and the entire module graph is resolved before any module-level code executes. The `--import` flag runs the init file in a pre-evaluation phase, ensuring `TuskDrift.initialize()` (and the loader registration) happens before the application's imports are resolved.
+
+#### Node.js built-in modules are always CJS
+
+Node.js built-in modules (`http`, `https`, `net`, `fs`, etc.) are loaded through the CJS `require()` path internally, even when imported via ESM `import` syntax. This means RITM can intercept them regardless of the application's module system, and the ESM loader hooks are not required for built-in module instrumentation.
+
+#### The `registerEsmLoaderHooks` opt-out
+
+Because we pass `include: []` during `module.register()`, IITM starts with an empty allowlist and only wraps modules that are explicitly registered via `new Hook([...])` on the main thread (sent to the loader thread over the `MessagePort`). This means only modules the SDK actually instruments get their exports wrapped with getter/setter proxies -- unrelated modules are left untouched. In rare cases, the wrapping can still conflict with non-standard export patterns, native/WASM bindings, or bundler-generated ESM in the instrumented modules themselves. Users can disable this with `registerEsmLoaderHooks: false` in `TuskDrift.initialize()`, which means only CJS-loaded modules will be instrumentable. See `docs/initialization.md` for the user-facing documentation.
+
+#### Compatibility with other IITM consumers (Sentry, OpenTelemetry)
+
+Multiple SDKs can each call `module.register()` with their own IITM loader instance and `MessagePort`. IITM detects the duplicate initialization (`global.__import_in_the_middle_initialized__`) and logs a warning, but both SDKs' hooks will fire correctly. Patches layer on top of each other -- if Sentry wraps `pg.Client.query` and Drift also wraps it, the final export passes through both wrappers.
 
 ### When Does an Instrumentation Need Special ESM Handling?
 
