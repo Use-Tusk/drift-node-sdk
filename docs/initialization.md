@@ -20,26 +20,7 @@ Create a separate file (e.g. `tuskDriftInit.ts` or `tuskDriftInit.js`) to initia
 
 **IMPORTANT**: Ensure that `TuskDrift` is initialized before any other telemetry providers (e.g. OpenTelemetry, Sentry, etc.). If not, your existing telemetry may not work properly.
 
-### Determining Your Module System
-
-Before proceeding, you need to determine whether your application uses **CommonJS** or **ESM** (ECMAScript Modules).
-
-The easiest way to determine this is by looking at your import syntax.
-
-**If your application uses `require()`:**
-
-- Your application is CommonJS (use the CommonJS setup below)
-
-**If your application uses `import` statements:**
-
-- This could be either CommonJS or ESM, depending on your build configuration
-- Check your compiled output (if you compile to a directory like `dist/`):
-  - If the compiled code contains `require()` statements → CommonJS application
-  - If the compiled code contains `import` statements → ESM application
-- If you don't compile your code (running source files directly):
-  - It is an ESM application
-
-### For CommonJS Applications
+The initialization file is the same for both CommonJS and ESM applications. The SDK automatically registers ESM loader hooks when running in an ESM environment (Node.js >= 18.19.0 or >= 20.6.0).
 
 ```typescript
 // tuskDriftInit.ts or tuskDriftInit.js
@@ -54,31 +35,7 @@ TuskDrift.initialize({
 export { TuskDrift };
 ```
 
-### For ESM Applications
-
-ESM applications require additional setup to properly intercept module imports:
-
-```typescript
-// tuskDriftInit.ts
-import { register } from "node:module";
-import { pathToFileURL } from "node:url";
-
-// Register the ESM loader
-// This enables interception of ESM module imports
-register("@use-tusk/drift-node-sdk/hook.mjs", pathToFileURL("./"));
-
-import { TuskDrift } from "@use-tusk/drift-node-sdk";
-
-// Initialize SDK immediately
-TuskDrift.initialize({
-  apiKey: process.env.TUSK_API_KEY,
-  env: process.env.NODE_ENV,
-});
-
-export { TuskDrift };
-```
-
-**Why the ESM loader is needed**: ESM imports are statically analyzed and hoisted, meaning all imports are resolved before any code runs. The `register()` call sets up Node.js loader hooks that intercept module imports, allowing the SDK to instrument packages like `postgres`, `http`, etc. Without this, the SDK cannot patch ESM modules.
+> **Note:** ESM applications still require the `--import` flag when starting Node.js. See [Step 2](#2-import-sdk-at-application-entry-point) for details.
 
 ### Initialization Parameters
 
@@ -116,12 +73,35 @@ export { TuskDrift };
       <td><code>1.0</code></td>
       <td>Override sampling rate (0.0 - 1.0) for recording. Takes precedence over <code>TUSK_SAMPLING_RATE</code> env var and config file.</td>
     </tr>
+    <tr>
+      <td><code>registerEsmLoaderHooks</code></td>
+      <td><code>boolean</code></td>
+      <td><code>true</code></td>
+      <td>Automatically register ESM loader hooks for module interception. Set to <code>false</code> to disable if <code>import-in-the-middle</code> causes issues with certain packages. See <a href="#troubleshooting-esm">Troubleshooting ESM</a>.</td>
+    </tr>
   </tbody>
 </table>
 
 > **See also:** [Environment Variables guide](./environment-variables.md) for detailed information about environment variables.
 
 ## 2. Import SDK at Application Entry Point
+
+### Determining Your Module System
+
+You need to know whether your application uses **CommonJS** or **ESM** (ECMAScript Modules) because the entry point setup differs.
+
+**If your application uses `require()`:**
+
+- Your application is CommonJS
+
+**If your application uses `import` statements:**
+
+- This could be either CommonJS or ESM, depending on your build configuration
+- Check your compiled output (if you compile to a directory like `dist/`):
+  - If the compiled code contains `require()` statements → CommonJS application
+  - If the compiled code contains `import` statements → ESM application
+- If you don't compile your code (running source files directly):
+  - It is an ESM application
 
 ### For CommonJS Applications
 
@@ -153,7 +133,7 @@ For ESM applications, you **cannot** control import order within your applicatio
 }
 ```
 
-**Why `--import` is required for ESM**: In ESM, all `import` statements are hoisted and evaluated before any code runs, making it impossible to control import order within a file. The `--import` flag ensures the SDK initialization (including loader registration) happens in a separate phase before your application code loads, guaranteeing proper module interception.
+**Why `--import` is required for ESM**: In ESM, all `import` statements are hoisted and evaluated before any code runs, making it impossible to control import order within a file. The `--import` flag ensures the SDK initialization happens in a separate phase before your application code loads, guaranteeing proper module interception.
 
 ### 3. Configure Sampling Rate
 
@@ -255,3 +235,33 @@ app.listen(8000, () => {
   console.log("Server started and ready for Tusk Drift");
 });
 ```
+
+## Troubleshooting ESM
+
+The SDK automatically registers ESM loader hooks via [`import-in-the-middle`](https://www.npmjs.com/package/import-in-the-middle) to intercept ES module imports. This works by wrapping every ESM module's exports with getter/setter proxies so the SDK can patch them for instrumentation.
+
+In rare cases, this wrapping can cause issues with certain packages:
+
+- **Non-standard export patterns**: Some packages use dynamic `export *` re-exports or conditional exports that the wrapper's static analysis cannot parse, resulting in runtime syntax errors.
+- **Native or WASM bindings**: Packages with native addons loaded via ESM can conflict with the proxy wrapping mechanism.
+- **Bundler-generated ESM**: Code that was bundled (e.g., by esbuild or webpack) into ESM sometimes produces patterns the wrapper does not handle correctly.
+- **Circular ESM imports**: The proxy layer can interact badly with circular ESM import graphs in some edge cases.
+
+If you encounter errors like:
+
+```
+SyntaxError: The requested module '...' does not provide an export named '...'
+(node:1234) Error: 'import-in-the-middle' failed to wrap 'file://../../path/to/file.js'
+```
+
+You can disable the automatic ESM hook registration:
+
+```typescript
+TuskDrift.initialize({
+  apiKey: process.env.TUSK_API_KEY,
+  env: process.env.NODE_ENV,
+  registerEsmLoaderHooks: false,
+});
+```
+
+> **Note:** Disabling ESM loader hooks means the SDK will only be able to instrument packages loaded via CommonJS (`require()`). Packages loaded purely through ESM `import` statements will not be intercepted. Node.js built-in modules (like `http`, `https`, `net`) are always loaded through the CJS path internally, so they will continue to be instrumented regardless of this setting.
