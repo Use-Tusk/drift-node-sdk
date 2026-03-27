@@ -140,6 +140,10 @@ export function withTuskDrift(
     // This ensures packages remain external regardless of which bundler is used
     serverExternalPackages: [...(config.serverExternalPackages || []), ...coreExternals],
 
+    // Preserve user's turbopack config (or set empty) so Next.js 16+ doesn't error
+    // when it sees our webpack config without a turbopack counterpart
+    turbopack: (config as any).turbopack || {},
+
     webpack: (webpackConfig: any, webpackOptions: any) => {
       if (webpackOptions.isServer) {
         // Safely handle different externals formats (array, function, object, or undefined)
