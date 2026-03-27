@@ -83,7 +83,9 @@ export class PgInstrumentation extends TdInstrumentationBase {
         // Submittable queries use EventEmitter pattern (row, end, error events)
         // and return the Query object itself, not a Promise
         if (self.isSubmittable(args[0])) {
-          logger.debug(`[PgInstrumentation] Submittable query detected, passing through uninstrumented`);
+          logger.debug(
+            `[PgInstrumentation] Submittable query detected, passing through uninstrumented`,
+          );
           return originalQuery.apply(this, args);
         }
 
@@ -365,9 +367,25 @@ export class PgInstrumentation extends TdInstrumentationBase {
       return originalQuery.apply(context, args);
     } else {
       // Promise-based query
-      const promise = originalQuery.apply(context, args);
+      const result = originalQuery.apply(context, args);
 
-      return promise
+      // ORMs like Prisma, TypeORM, etc. may call pg.query() internally in ways
+      // that return undefined instead of a Promise (e.g. Prisma's driver adapter).
+      // Without this guard, we'd crash with "Cannot read properties of undefined
+      // (reading 'then')".
+      if (!result || typeof result.then !== "function") {
+        logger.debug(
+          `[PgInstrumentation] originalQuery returned non-thenable, passing through (${SpanUtils.getTraceInfo()})`,
+        );
+        try {
+          SpanUtils.endSpan(spanInfo.span, { code: SpanStatusCode.OK });
+        } catch (error) {
+          logger.error(`[PgInstrumentation] error ending span:`, error);
+        }
+        return result;
+      }
+
+      return result
         .then((result: PgResult) => {
           logger.debug(
             `[PgInstrumentation] PG query completed successfully (${SpanUtils.getTraceInfo()})`,
@@ -497,15 +515,17 @@ export class PgInstrumentation extends TdInstrumentationBase {
    *
    * Reference for data type IDs: https://jdbc.postgresql.org/documentation/publicapi/constant-values.html
    */
-  private convertPostgresTypes(result: any, rowMode?: 'array'): any {
+  private convertPostgresTypes(result: any, rowMode?: "array"): any {
     // Handle multi-statement results (wrapped format from _addOutputAttributesToSpan)
     if (result && result.isMultiStatement && Array.isArray(result.results)) {
-      return result.results.map((singleResult: any) => this.convertPostgresTypes(singleResult, rowMode));
+      return result.results.map((singleResult: any) =>
+        this.convertPostgresTypes(singleResult, rowMode),
+      );
     }
 
     // Handle multi-statement results (array of Results - legacy/direct format)
     if (Array.isArray(result)) {
-      return result.map(singleResult => this.convertPostgresTypes(singleResult, rowMode));
+      return result.map((singleResult) => this.convertPostgresTypes(singleResult, rowMode));
     }
 
     if (!result || !result.fields || !result.rows) {
@@ -513,7 +533,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
     }
 
     // If rowMode is 'array', handle arrays differently
-    if (rowMode === 'array') {
+    if (rowMode === "array") {
       // For array mode, rows are arrays of values indexed by column position
       const convertedRows = result.rows.map((row: any) => {
         if (!Array.isArray(row)) return row; // Safety check
@@ -655,7 +675,7 @@ export class PgInstrumentation extends TdInstrumentationBase {
       // Wrap in object with 'results' key to ensure CLI can handle it properly
       outputValue = {
         isMultiStatement: true,
-        results: result.map(r => ({
+        results: result.map((r) => ({
           command: r.command,
           rowCount: r.rowCount,
           oid: r.oid,
