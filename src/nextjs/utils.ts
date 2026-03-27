@@ -1,5 +1,4 @@
 import * as fs from "fs";
-import * as path from "path";
 import { parse as parseSemver } from "semver";
 import type { ParsedVersion } from "./types";
 
@@ -9,28 +8,15 @@ import type { ParsedVersion } from "./types";
  * @returns The Next.js version string, or undefined if not found
  */
 export function getNextjsVersion(): string | undefined {
-  // Try cwd-based lookup first (works for standard project layouts)
   try {
-    const nextPackageJsonPath = path.join(process.cwd(), "node_modules", "next", "package.json");
-
-    if (fs.existsSync(nextPackageJsonPath)) {
-      const packageJson = JSON.parse(fs.readFileSync(nextPackageJsonPath, "utf-8"));
-      return packageJson.version;
-    }
-  } catch {
-    // Fall through to require.resolve
-  }
-
-  // Fallback: use Node's module resolution, which handles hoisted packages in monorepos
-  try {
+    // Resolve from cwd so we find the app's next, not the SDK's devDependency.
+    // This also handles monorepos where next is hoisted to the workspace root.
     const resolvedPath = require.resolve("next/package.json", { paths: [process.cwd()] });
     const packageJson = JSON.parse(fs.readFileSync(resolvedPath, "utf-8"));
     return packageJson.version;
   } catch {
-    // next is not resolvable
+    return undefined;
   }
-
-  return undefined;
 }
 
 /**
