@@ -632,8 +632,12 @@ export class TuskDriftCore {
         return lo + 1; // 1-based
       }
 
-      // Process a V8 coverage JSON file into per-file line counts
-      function processV8File(filePath: string): Record<string, Record<string, number>> {
+      // Process a V8 coverage JSON file into per-file line counts.
+      // When includeAll=true, includes lines with count=0 (for baseline/denominator).
+      function processV8File(
+        filePath: string,
+        includeAll: boolean = false,
+      ): Record<string, Record<string, number>> {
         const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
         const coverage: Record<string, Record<string, number>> = {};
 
@@ -649,12 +653,17 @@ export class TuskDriftCore {
           const lines: Record<string, number> = {};
           for (const func of script.functions) {
             for (const range of func.ranges) {
-              if (range.count === 0) continue;
+              if (!includeAll && range.count === 0) continue;
               const startLine = offsetToLine(lineStarts, range.startOffset);
               const endLine = offsetToLine(lineStarts, range.endOffset);
               for (let line = startLine; line <= endLine; line++) {
                 const key = String(line);
-                lines[key] = (lines[key] || 0) + range.count;
+                // For includeAll, use max to avoid overwriting a positive count with 0
+                if (includeAll) {
+                  lines[key] = Math.max(lines[key] || 0, range.count);
+                } else {
+                  lines[key] = (lines[key] || 0) + range.count;
+                }
               }
             }
           }
@@ -669,10 +678,16 @@ export class TuskDriftCore {
 
       this.coverageServer = http.createServer(
         (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
-          if (req.url === "/snapshot") {
+          const parsedUrl = new URL(req.url || "/", `http://127.0.0.1:${port}`);
+
+          if (parsedUrl.pathname === "/snapshot") {
             try {
+              // ?baseline=true includes ALL coverable lines (count=0 for uncovered)
+              // for computing the total coverable denominator.
+              // Regular calls only include executed lines (and reset counters).
+              const isBaseline = parsedUrl.searchParams.get("baseline") === "true";
+
               // v8.takeCoverage() writes a V8 coverage file and RESETS counters.
-              // Each call gives us ONLY the coverage since the last call.
               v8Module.takeCoverage();
 
               // Find and process the latest V8 coverage file
@@ -684,7 +699,7 @@ export class TuskDriftCore {
               let coverage: Record<string, Record<string, number>> = {};
               if (files.length > 0) {
                 const latestFile = pathModule.join(coverageDir, files[files.length - 1]);
-                coverage = processV8File(latestFile);
+                coverage = processV8File(latestFile, isBaseline);
 
                 // Clean up all V8 files to save disk space
                 for (const f of files) {
