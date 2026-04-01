@@ -579,6 +579,45 @@ export class TuskDriftCore {
 
     this.initialized = true;
     this.logStartupSummary();
+
+    // Start coverage snapshot server if V8 coverage is enabled
+    this.startCoverageSnapshotServer();
+  }
+
+  private coverageServer: ReturnType<typeof import("http").createServer> | null = null;
+
+  private startCoverageSnapshotServer(): void {
+    const coverageDir = OriginalGlobalUtils.getOriginalProcessEnvVar("NODE_V8_COVERAGE");
+    if (!coverageDir) return;
+
+    const port = parseInt(
+      OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_COVERAGE_PORT") || "19876",
+      10,
+    );
+
+    try {
+      const v8 = require("v8");
+      const http = require("http");
+
+      this.coverageServer = http.createServer(
+        (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
+          if (req.url === "/snapshot") {
+            v8.takeCoverage();
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, timestamp: Date.now() }));
+          } else {
+            res.writeHead(404);
+            res.end();
+          }
+        },
+      );
+
+      this.coverageServer!.listen(port, "127.0.0.1", () => {
+        logger.info(`Coverage snapshot server listening on port ${port}`);
+      });
+    } catch (error) {
+      logger.error("Failed to start coverage snapshot server:", error);
+    }
   }
 
   markAppAsReady(): void {
