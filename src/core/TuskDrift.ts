@@ -727,6 +727,9 @@ export class TuskDriftCore {
       this.coverageServer!.listen(port, "127.0.0.1", () => {
         logger.info(`Coverage snapshot server listening on port ${port}`);
       });
+
+      // Don't let the coverage server prevent the process from exiting
+      this.coverageServer!.unref();
     } catch (error) {
       logger.error("Failed to start coverage snapshot server:", error);
     }
