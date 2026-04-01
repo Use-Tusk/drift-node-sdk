@@ -597,97 +597,9 @@ export class TuskDriftCore {
     );
 
     try {
-      const v8Module = require("v8");
       const http = require("http");
-      const fs = require("fs");
-      const pathModule = require("path");
-
+      const { takeAndProcessSnapshot } = require("./coverageProcessor");
       const sourceRoot = process.cwd();
-
-      // Cache line-start offsets per source file for byte-offset-to-line conversion
-      const lineStartsCache = new Map<string, number[]>();
-      function getLineStarts(filePath: string): number[] | null {
-        if (lineStartsCache.has(filePath)) return lineStartsCache.get(filePath)!;
-        try {
-          const source = fs.readFileSync(filePath, "utf-8");
-          const starts = [0];
-          for (let i = 0; i < source.length; i++) {
-            if (source[i] === "\n") starts.push(i + 1);
-          }
-          lineStartsCache.set(filePath, starts);
-          return starts;
-        } catch {
-          return null;
-        }
-      }
-
-      function offsetToLine(lineStarts: number[], offset: number): number {
-        let lo = 0;
-        let hi = lineStarts.length - 1;
-        while (lo < hi) {
-          const mid = (lo + hi + 1) >> 1;
-          if (lineStarts[mid] <= offset) lo = mid;
-          else hi = mid - 1;
-        }
-        return lo + 1; // 1-based
-      }
-
-      // Process a V8 coverage JSON file into per-file line counts.
-      // When includeAll=true, includes lines with count=0 (for baseline/denominator).
-      //
-      // V8 block coverage uses nested ranges: the first range in each function covers
-      // the entire function (count = times function was called), and inner ranges
-      // refine counts for branches/blocks within it. The INNERMOST range for any byte
-      // position gives the accurate count. We process ranges in order (outermost first,
-      // V8's default) and let later (more specific) ranges overwrite earlier ones.
-      function processV8File(
-        filePath: string,
-        includeAll: boolean = false,
-      ): Record<string, Record<string, number>> {
-        const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-        const coverage: Record<string, Record<string, number>> = {};
-
-        for (const script of data.result) {
-          if (!script.url || !script.url.startsWith("file://")) continue;
-          const scriptPath = script.url.replace("file://", "");
-          if (scriptPath.includes("node_modules")) continue;
-          if (!scriptPath.startsWith(sourceRoot)) continue;
-
-          const lineStarts = getLineStarts(scriptPath);
-          if (!lineStarts) continue;
-
-          const lines: Record<string, number> = {};
-          for (const func of script.functions) {
-            // Process ranges in order (outermost first). V8 orders ranges so that
-            // inner (more specific) ranges come after outer ones. By overwriting,
-            // each line ends up with its innermost range's count.
-            // This correctly handles uncalled catch blocks, untaken branches, etc.
-            for (const range of func.ranges) {
-              const startLine = offsetToLine(lineStarts, range.startOffset);
-              const endLine = offsetToLine(lineStarts, range.endOffset);
-              for (let line = startLine; line <= endLine; line++) {
-                lines[String(line)] = range.count;
-              }
-            }
-          }
-
-          // Filter based on mode
-          if (!includeAll) {
-            // Per-test mode: only keep lines with count > 0
-            for (const key of Object.keys(lines)) {
-              if (lines[key] === 0) {
-                delete lines[key];
-              }
-            }
-          }
-
-          if (Object.keys(lines).length > 0) {
-            coverage[scriptPath] = lines;
-          }
-        }
-
-        return coverage;
-      }
 
       this.coverageServer = http.createServer(
         (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
@@ -695,38 +607,13 @@ export class TuskDriftCore {
 
           if (parsedUrl.pathname === "/snapshot") {
             try {
-              // ?baseline=true includes ALL coverable lines (count=0 for uncovered)
-              // for computing the total coverable denominator.
-              // Regular calls only include executed lines (and reset counters).
               const isBaseline = parsedUrl.searchParams.get("baseline") === "true";
-
-              // v8.takeCoverage() writes a V8 coverage file and RESETS counters.
-              v8Module.takeCoverage();
-
-              // Find and process the latest V8 coverage file
-              const files = fs
-                .readdirSync(coverageDir)
-                .filter((f: string) => f.startsWith("coverage-") && f.endsWith(".json"))
-                .sort();
-
-              let coverage: Record<string, Record<string, number>> = {};
-              if (files.length > 0) {
-                const latestFile = pathModule.join(coverageDir, files[files.length - 1]);
-                coverage = processV8File(latestFile, isBaseline);
-
-                // Clean up all V8 files to save disk space
-                for (const f of files) {
-                  try {
-                    fs.unlinkSync(pathModule.join(coverageDir, f));
-                  } catch {
-                    // ignore cleanup errors
-                  }
-                }
-              }
+              const coverage = takeAndProcessSnapshot(coverageDir, sourceRoot, isBaseline);
 
               res.writeHead(200, { "Content-Type": "application/json" });
               res.end(JSON.stringify({ ok: true, coverage }));
             } catch (err) {
+              logger.error("Coverage snapshot error:", err);
               res.writeHead(500, { "Content-Type": "application/json" });
               res.end(JSON.stringify({ ok: false, error: String(err) }));
             }
@@ -741,7 +628,6 @@ export class TuskDriftCore {
         logger.info(`Coverage snapshot server listening on port ${port}`);
       });
 
-      // Don't let the coverage server prevent the process from exiting
       this.coverageServer!.unref();
     } catch (error) {
       logger.error("Failed to start coverage snapshot server:", error);
