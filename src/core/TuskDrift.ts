@@ -457,6 +457,10 @@ export class TuskDriftCore {
       return;
     }
 
+    // Start coverage server early - only depends on NODE_V8_COVERAGE, not SDK mode
+    // Uses v8.takeCoverage() for snapshots (binary best-effort coverage)
+    this.startCoverageSnapshotServer();
+
     if (
       this.mode === TuskDriftMode.RECORD &&
       this.config.recording?.export_spans &&
@@ -579,9 +583,6 @@ export class TuskDriftCore {
 
     this.initialized = true;
     this.logStartupSummary();
-
-    // Start coverage snapshot server if V8 coverage is enabled
-    this.startCoverageSnapshotServer();
   }
 
   private coverageServer: ReturnType<typeof import("http").createServer> | null = null;
