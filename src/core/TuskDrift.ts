@@ -634,6 +634,12 @@ export class TuskDriftCore {
 
       // Process a V8 coverage JSON file into per-file line counts.
       // When includeAll=true, includes lines with count=0 (for baseline/denominator).
+      //
+      // V8 block coverage uses nested ranges: the first range in each function covers
+      // the entire function (count = times function was called), and inner ranges
+      // refine counts for branches/blocks within it. The INNERMOST range for any byte
+      // position gives the accurate count. We process ranges in order (outermost first,
+      // V8's default) and let later (more specific) ranges overwrite earlier ones.
       function processV8File(
         filePath: string,
         includeAll: boolean = false,
@@ -652,16 +658,27 @@ export class TuskDriftCore {
 
           const lines: Record<string, number> = {};
           for (const func of script.functions) {
-            for (const range of func.ranges) {
-              if (!includeAll && range.count === 0) continue;
-              const startLine = offsetToLine(lineStarts, range.startOffset);
-              const endLine = offsetToLine(lineStarts, range.endOffset);
-              for (let line = startLine; line <= endLine; line++) {
-                const key = String(line);
-                // For includeAll, use max to avoid overwriting a positive count with 0
-                if (includeAll) {
-                  lines[key] = Math.max(lines[key] || 0, range.count);
-                } else {
+            if (includeAll) {
+              // Baseline mode: process ranges in order (outermost first).
+              // Later (inner/more-specific) ranges overwrite earlier ones,
+              // so each line ends up with the innermost range's count.
+              // This correctly shows count=0 for uncalled branches inside called functions.
+              for (const range of func.ranges) {
+                const startLine = offsetToLine(lineStarts, range.startOffset);
+                const endLine = offsetToLine(lineStarts, range.endOffset);
+                for (let line = startLine; line <= endLine; line++) {
+                  lines[String(line)] = range.count;
+                }
+              }
+            } else {
+              // Per-test mode: only include lines with count > 0.
+              // Sum counts across ranges (a line covered by multiple ranges is still covered).
+              for (const range of func.ranges) {
+                if (range.count === 0) continue;
+                const startLine = offsetToLine(lineStarts, range.startOffset);
+                const endLine = offsetToLine(lineStarts, range.endOffset);
+                for (let line = startLine; line <= endLine; line++) {
+                  const key = String(line);
                   lines[key] = (lines[key] || 0) + range.count;
                 }
               }
