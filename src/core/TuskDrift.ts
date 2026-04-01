@@ -597,15 +597,111 @@ export class TuskDriftCore {
     );
 
     try {
-      const v8 = require("v8");
+      const v8Module = require("v8");
       const http = require("http");
+      const fs = require("fs");
+      const pathModule = require("path");
+
+      const sourceRoot = process.cwd();
+
+      // Cache line-start offsets per source file for byte-offset-to-line conversion
+      const lineStartsCache = new Map<string, number[]>();
+      function getLineStarts(filePath: string): number[] | null {
+        if (lineStartsCache.has(filePath)) return lineStartsCache.get(filePath)!;
+        try {
+          const source = fs.readFileSync(filePath, "utf-8");
+          const starts = [0];
+          for (let i = 0; i < source.length; i++) {
+            if (source[i] === "\n") starts.push(i + 1);
+          }
+          lineStartsCache.set(filePath, starts);
+          return starts;
+        } catch {
+          return null;
+        }
+      }
+
+      function offsetToLine(lineStarts: number[], offset: number): number {
+        let lo = 0;
+        let hi = lineStarts.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi + 1) >> 1;
+          if (lineStarts[mid] <= offset) lo = mid;
+          else hi = mid - 1;
+        }
+        return lo + 1; // 1-based
+      }
+
+      // Process a V8 coverage JSON file into per-file line counts
+      function processV8File(filePath: string): Record<string, Record<string, number>> {
+        const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        const coverage: Record<string, Record<string, number>> = {};
+
+        for (const script of data.result) {
+          if (!script.url || !script.url.startsWith("file://")) continue;
+          const scriptPath = script.url.replace("file://", "");
+          if (scriptPath.includes("node_modules")) continue;
+          if (!scriptPath.startsWith(sourceRoot)) continue;
+
+          const lineStarts = getLineStarts(scriptPath);
+          if (!lineStarts) continue;
+
+          const lines: Record<string, number> = {};
+          for (const func of script.functions) {
+            for (const range of func.ranges) {
+              if (range.count === 0) continue;
+              const startLine = offsetToLine(lineStarts, range.startOffset);
+              const endLine = offsetToLine(lineStarts, range.endOffset);
+              for (let line = startLine; line <= endLine; line++) {
+                const key = String(line);
+                lines[key] = (lines[key] || 0) + range.count;
+              }
+            }
+          }
+
+          if (Object.keys(lines).length > 0) {
+            coverage[scriptPath] = lines;
+          }
+        }
+
+        return coverage;
+      }
 
       this.coverageServer = http.createServer(
         (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
           if (req.url === "/snapshot") {
-            v8.takeCoverage();
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ ok: true, timestamp: Date.now() }));
+            try {
+              // v8.takeCoverage() writes a V8 coverage file and RESETS counters.
+              // Each call gives us ONLY the coverage since the last call.
+              v8Module.takeCoverage();
+
+              // Find and process the latest V8 coverage file
+              const files = fs
+                .readdirSync(coverageDir)
+                .filter((f: string) => f.startsWith("coverage-") && f.endsWith(".json"))
+                .sort();
+
+              let coverage: Record<string, Record<string, number>> = {};
+              if (files.length > 0) {
+                const latestFile = pathModule.join(coverageDir, files[files.length - 1]);
+                coverage = processV8File(latestFile);
+
+                // Clean up all V8 files to save disk space
+                for (const f of files) {
+                  try {
+                    fs.unlinkSync(pathModule.join(coverageDir, f));
+                  } catch {
+                    // ignore cleanup errors
+                  }
+                }
+              }
+
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ ok: true, coverage }));
+            } catch (err) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ ok: false, error: String(err) }));
+            }
           } else {
             res.writeHead(404);
             res.end();
