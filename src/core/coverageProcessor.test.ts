@@ -63,11 +63,11 @@ test("processScriptCoverage: outer covered, inner uncovered (catch block)", (t) 
   ];
 
   const result = processScriptCoverage(functions, lineStarts, true);
-  t.is(result["1"], 1); // outer
-  t.is(result["2"], 1); // outer
-  t.is(result["3"], 0); // inner catch (overwrites)
-  t.is(result["4"], 0); // inner catch (overwrites)
-  t.is(result["5"], 1); // outer resumes
+  t.is(result.lines["1"], 1); // outer
+  t.is(result.lines["2"], 1); // outer
+  t.is(result.lines["3"], 0); // inner catch (overwrites)
+  t.is(result.lines["4"], 0); // inner catch (overwrites)
+  t.is(result.lines["5"], 1); // outer resumes
 });
 
 test("processScriptCoverage: per-test filters out count=0", (t) => {
@@ -82,11 +82,11 @@ test("processScriptCoverage: per-test filters out count=0", (t) => {
   ];
 
   const result = processScriptCoverage(functions, lineStarts, false);
-  t.is(result["1"], 1);
-  t.is(result["2"], 1);
-  t.falsy(result["3"]); // filtered
-  t.falsy(result["4"]); // filtered
-  t.is(result["5"], 1);
+  t.is(result.lines["1"], 1);
+  t.is(result.lines["2"], 1);
+  t.falsy(result.lines["3"]); // filtered
+  t.falsy(result.lines["4"]); // filtered
+  t.is(result.lines["5"], 1);
 });
 
 test("processScriptCoverage: uncalled function baseline includes at count=0", (t) => {
@@ -96,8 +96,8 @@ test("processScriptCoverage: uncalled function baseline includes at count=0", (t
   ];
 
   const result = processScriptCoverage(functions, lineStarts, true);
-  t.is(result["1"], 0);
-  t.is(result["2"], 0);
+  t.is(result.lines["1"], 0);
+  t.is(result.lines["2"], 0);
 });
 
 test("processScriptCoverage: uncalled function per-test is empty", (t) => {
@@ -107,7 +107,7 @@ test("processScriptCoverage: uncalled function per-test is empty", (t) => {
   ];
 
   const result = processScriptCoverage(functions, lineStarts, false);
-  t.is(Object.keys(result).length, 0);
+  t.is(Object.keys(result.lines).length, 0);
 });
 
 test("processScriptCoverage: if/else only one branch taken", (t) => {
@@ -123,10 +123,10 @@ test("processScriptCoverage: if/else only one branch taken", (t) => {
   ];
 
   const result = processScriptCoverage(functions, lineStarts, true);
-  t.is(result["1"], 1);
-  t.is(result["2"], 1); // if taken
-  t.is(result["3"], 0); // else not taken
-  t.is(result["4"], 1); // after if/else
+  t.is(result.lines["1"], 1);
+  t.is(result.lines["2"], 1); // if taken
+  t.is(result.lines["3"], 0); // else not taken
+  t.is(result.lines["4"], 1); // after if/else
 });
 
 test("processScriptCoverage: real execution counts preserved", (t) => {
@@ -136,8 +136,8 @@ test("processScriptCoverage: real execution counts preserved", (t) => {
   ];
 
   const result = processScriptCoverage(functions, lineStarts, false);
-  t.is(result["1"], 5);
-  t.is(result["2"], 5);
+  t.is(result.lines["1"], 5);
+  t.is(result.lines["2"], 5);
 });
 
 // --- filterScriptUrl ---
@@ -193,22 +193,22 @@ test("processV8CoverageFile: processes covered and uncovered functions", (t) => 
 
   // Baseline: include uncovered
   const baseline = processV8CoverageFile("/tmp/coverage.json", "/project", true, mockReader);
-  const lines = baseline["/project/server.js"];
-  t.truthy(lines);
-  t.is(lines["1"], 1); // outer range covered
-  t.is(lines["2"], 0); // inner catch block (overwrites to 0)
-  t.is(lines["3"], 1); // outer range covered
-  t.is(lines["4"], 0); // handlePost never called
-  t.is(lines["5"], 0); // handlePost never called
+  const fileData = baseline["/project/server.js"];
+  t.truthy(fileData);
+  t.is(fileData.lines["1"], 1); // outer range covered
+  t.is(fileData.lines["2"], 0); // inner catch block (overwrites to 0)
+  t.is(fileData.lines["3"], 1); // outer range covered
+  t.is(fileData.lines["4"], 0); // handlePost never called
+  t.is(fileData.lines["5"], 0); // handlePost never called
 
   // Per-test: exclude uncovered
   const perTest = processV8CoverageFile("/tmp/coverage.json", "/project", false, mockReader);
-  const ptLines = perTest["/project/server.js"];
-  t.truthy(ptLines);
-  t.is(ptLines["1"], 1);
-  t.falsy(ptLines["2"]); // catch filtered
-  t.is(ptLines["3"], 1);
-  t.falsy(ptLines["4"]); // handlePost filtered
+  const ptData = perTest["/project/server.js"];
+  t.truthy(ptData);
+  t.is(ptData.lines["1"], 1);
+  t.falsy(ptData.lines["2"]); // catch filtered
+  t.is(ptData.lines["3"], 1);
+  t.falsy(ptData.lines["4"]); // handlePost filtered
 });
 
 test("processV8CoverageFile: excludes node_modules", (t) => {

@@ -40,11 +40,22 @@ export interface V8CoverageData {
   result: V8ScriptCoverage[];
 }
 
-/** Per-file line-level coverage: { lineNumber: hitCount } */
-export type LineCoverage = Record<string, number>;
+/** Branch info for a single line: { total branches, covered branches } */
+export interface BranchInfo {
+  total: number;
+  covered: number;
+}
 
-/** Coverage for all files: { filePath: LineCoverage } */
-export type CoverageResult = Record<string, LineCoverage>;
+/** Per-file coverage data including lines and branches. */
+export interface FileCoverageData {
+  lines: Record<string, number>; // lineNumber -> hitCount
+  totalBranches: number;
+  coveredBranches: number;
+  branches: Record<string, BranchInfo>; // lineNumber -> branch detail
+}
+
+/** Coverage for all files: { filePath: FileCoverageData } */
+export type CoverageResult = Record<string, FileCoverageData>;
 
 /**
  * Compute line-start byte offsets for a source file.
@@ -88,15 +99,39 @@ export function processScriptCoverage(
   functions: V8FunctionCoverage[],
   lineStarts: number[],
   includeAll: boolean,
-): LineCoverage {
-  const lines: LineCoverage = {};
+): FileCoverageData {
+  const lines: Record<string, number> = {};
+  const branches: Record<string, BranchInfo> = {};
+  let totalBranches = 0;
+  let coveredBranches = 0;
 
   for (const func of functions) {
+    // Process line coverage: innermost range wins
     for (const range of func.ranges) {
       const startLine = offsetToLine(lineStarts, range.startOffset);
       const endLine = offsetToLine(lineStarts, range.endOffset);
       for (let line = startLine; line <= endLine; line++) {
         lines[String(line)] = range.count;
+      }
+    }
+
+    // Extract branch data: inner ranges (index > 0) within block coverage
+    // functions represent branch points. The first range is the whole function;
+    // subsequent ranges are branches/blocks within it.
+    if (func.isBlockCoverage && func.ranges.length > 1) {
+      for (let i = 1; i < func.ranges.length; i++) {
+        const range = func.ranges[i];
+        const branchLine = String(offsetToLine(lineStarts, range.startOffset));
+
+        if (!branches[branchLine]) {
+          branches[branchLine] = { total: 0, covered: 0 };
+        }
+        branches[branchLine].total++;
+        totalBranches++;
+        if (range.count > 0) {
+          branches[branchLine].covered++;
+          coveredBranches++;
+        }
       }
     }
   }
@@ -107,9 +142,11 @@ export function processScriptCoverage(
         delete lines[key];
       }
     }
+    // Also filter branch data for uncovered-only branches in per-test mode
+    // Keep all branches though - even showing "0/2 branches" is useful per-test
   }
 
-  return lines;
+  return { lines, totalBranches, coveredBranches, branches };
 }
 
 /**
@@ -163,10 +200,10 @@ export function processV8CoverageFile(
       }
     }
 
-    const lines = processScriptCoverage(script.functions, lineStarts, includeAll);
+    const fileData = processScriptCoverage(script.functions, lineStarts, includeAll);
 
-    if (Object.keys(lines).length > 0) {
-      coverage[scriptPath] = lines;
+    if (Object.keys(fileData.lines).length > 0) {
+      coverage[scriptPath] = fileData;
     }
   }
 
