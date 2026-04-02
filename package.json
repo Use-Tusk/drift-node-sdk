@@ -109,12 +109,12 @@
   },
   "dependencies": {
     "@use-tusk/drift-core-node": "^0.1.8",
+    "ast-v8-to-istanbul": "^1.0.0",
     "import-in-the-middle": "^1.14.4",
     "js-yaml": "^4.1.0",
     "jsonpath": "^1.1.1",
     "require-in-the-middle": "^7.0.0",
-    "semver": "^7.7.2",
-    "v8-to-istanbul": "^9.3.0"
+    "semver": "^7.7.2"
   },
   "engines": {
     "node": ">=16.0.0"

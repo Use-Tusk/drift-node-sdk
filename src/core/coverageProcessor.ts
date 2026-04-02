@@ -1,12 +1,13 @@
 /**
- * V8 coverage data processing using v8-to-istanbul.
+ * V8 coverage data processing using ast-v8-to-istanbul.
  *
  * Converts raw V8 coverage JSON into per-file coverage data with accurate
- * line, branch, and function coverage. v8-to-istanbul handles:
- * - V8 nested range resolution (innermost range wins)
- * - Implicit branch detection (taken paths that V8 doesn't create ranges for)
- * - Source map support for TypeScript
- * - Istanbul format conversion (statementMap, branchMap, fnMap)
+ * line, branch, and function coverage. ast-v8-to-istanbul parses the source
+ * file's AST independently, so it correctly handles partial V8 data (after
+ * v8.takeCoverage() reset) where uncalled functions are absent from V8 output.
+ *
+ * This is the key advantage over v8-to-istanbul (which assumes complete V8 data
+ * and marks missing functions as "covered by default").
  */
 
 import fs from "fs";
@@ -29,7 +30,7 @@ export interface FileCoverageData {
 /** Coverage for all files */
 export type CoverageResult = Record<string, FileCoverageData>;
 
-/** V8 coverage types (for type safety) */
+/** V8 coverage types */
 export interface V8CoverageRange {
   startOffset: number;
   endOffset: number;
@@ -67,19 +68,19 @@ export function filterScriptUrl(
 }
 
 /**
- * Process a V8 coverage JSON file using v8-to-istanbul for accurate
- * line, branch, and function coverage.
+ * Process a V8 coverage JSON file using ast-v8-to-istanbul.
  *
- * @param v8FilePath - Path to the V8 coverage JSON file
- * @param sourceRoot - Project root (files outside this are excluded)
- * @param includeAll - If true, includes uncovered lines/branches (for baseline)
+ * ast-v8-to-istanbul parses the source AST independently, so it correctly
+ * identifies ALL functions/branches even when V8 only reports a subset
+ * (e.g., after v8.takeCoverage() reset). Missing functions = uncovered.
  */
 export async function processV8CoverageFile(
   v8FilePath: string,
   sourceRoot: string,
   includeAll: boolean = false,
 ): Promise<CoverageResult> {
-  const v8toIstanbul = require("v8-to-istanbul");
+  const { convert } = require("ast-v8-to-istanbul");
+  const acorn = require("acorn");
   const data: V8CoverageData = JSON.parse(fs.readFileSync(v8FilePath, "utf-8"));
   const coverage: CoverageResult = {};
 
@@ -88,40 +89,50 @@ export async function processV8CoverageFile(
     if (!scriptPath) continue;
 
     try {
-      // v8-to-istanbul converts V8 ranges to Istanbul format
-      // It handles: nested ranges, implicit branches, source maps
-      const converter = v8toIstanbul(scriptPath);
-      await converter.load();
-      converter.applyCoverage(script.functions);
-      const istanbulData = converter.toIstanbul();
+      const code = fs.readFileSync(scriptPath, "utf-8");
+      const ast = acorn.parse(code, {
+        ecmaVersion: 2022,
+        sourceType: "module",
+        locations: true,
+      });
 
-      // Istanbul output is keyed by file path
+      const istanbulData = await convert({
+        code,
+        ast,
+        coverage: { functions: script.functions, url: script.url },
+      });
+
       const fileKey = Object.keys(istanbulData)[0];
       if (!fileKey) continue;
-
       const fileCov = istanbulData[fileKey];
 
-      // Extract line coverage from Istanbul's statement map
+      // Extract line coverage from Istanbul statement map
       const lines: Record<string, number> = {};
-      for (const [stmtId, count] of Object.entries(fileCov.s as Record<string, number>)) {
+      for (const [stmtId, count] of Object.entries(
+        fileCov.s as Record<string, number>,
+      )) {
         const stmtMap = fileCov.statementMap[stmtId];
         if (stmtMap) {
           const line = String(stmtMap.start.line);
-          // Use max count if multiple statements on same line
           lines[line] = Math.max(lines[line] || 0, count);
         }
       }
 
-      // Extract branch coverage from Istanbul's branch map
+      // Extract branch coverage from Istanbul branch map
       let totalBranches = 0;
       let coveredBranches = 0;
       const branches: Record<string, BranchInfo> = {};
 
-      for (const [branchId, counts] of Object.entries(fileCov.b as Record<string, number[]>)) {
+      for (const [branchId, counts] of Object.entries(
+        fileCov.b as Record<string, number[]>,
+      )) {
         const branchMap = fileCov.branchMap[branchId];
         if (!branchMap) continue;
 
-        const branchLine = String(branchMap.loc?.start?.line || branchMap.locations?.[0]?.start?.line);
+        const branchLine = String(
+          branchMap.loc?.start?.line ||
+            branchMap.locations?.[0]?.start?.line,
+        );
 
         if (!branches[branchLine]) {
           branches[branchLine] = { total: 0, covered: 0 };
@@ -155,7 +166,6 @@ export async function processV8CoverageFile(
         };
       }
     } catch {
-      // If v8-to-istanbul fails for a file, skip it
       continue;
     }
   }
@@ -165,7 +175,7 @@ export async function processV8CoverageFile(
 
 /**
  * Take a V8 coverage snapshot: trigger v8.takeCoverage(), process with
- * v8-to-istanbul, and clean up.
+ * ast-v8-to-istanbul, and clean up.
  */
 export async function takeAndProcessSnapshot(
   coverageDir: string,
@@ -185,7 +195,6 @@ export async function takeAndProcessSnapshot(
     const latestFile = path.join(coverageDir, files[files.length - 1]);
     coverage = await processV8CoverageFile(latestFile, sourceRoot, includeAll);
 
-    // Clean up V8 files
     for (const f of files) {
       try {
         fs.unlinkSync(path.join(coverageDir, f));
@@ -198,7 +207,7 @@ export async function takeAndProcessSnapshot(
   return coverage;
 }
 
-// --- Legacy exports for backward compatibility with tests ---
+// --- Legacy exports for unit tests ---
 
 export function computeLineStarts(source: string): number[] {
   const starts = [0];
@@ -219,10 +228,6 @@ export function offsetToLine(lineStarts: number[], offset: number): number {
   return lo + 1;
 }
 
-/**
- * Simple script coverage processing (without v8-to-istanbul).
- * Kept for unit tests and as fallback.
- */
 export function processScriptCoverage(
   functions: V8FunctionCoverage[],
   lineStarts: number[],
@@ -241,7 +246,6 @@ export function processScriptCoverage(
         lines[String(line)] = range.count;
       }
     }
-
     if (func.isBlockCoverage && func.ranges.length > 1) {
       for (let i = 1; i < func.ranges.length; i++) {
         const range = func.ranges[i];
@@ -261,9 +265,7 @@ export function processScriptCoverage(
 
   if (!includeAll) {
     for (const key of Object.keys(lines)) {
-      if (lines[key] === 0) {
-        delete lines[key];
-      }
+      if (lines[key] === 0) delete lines[key];
     }
   }
 
