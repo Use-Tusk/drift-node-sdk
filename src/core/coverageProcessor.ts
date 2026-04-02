@@ -68,6 +68,51 @@ export function filterScriptUrl(
 }
 
 /**
+ * Load a source map for a compiled file, if available.
+ * Checks for //# sourceMappingURL= comment and loads the .map file.
+ */
+function loadSourceMap(
+  filePath: string,
+  code: string,
+): Record<string, unknown> | null {
+  // Look for //# sourceMappingURL=<filename> at the end of the file
+  const match = code.match(/\/\/[#@]\s*sourceMappingURL=(.+?)(?:\s|$)/);
+  if (!match) return null;
+
+  const mapRef = match[1].trim();
+
+  // Skip data URIs (inline source maps) for now
+  if (mapRef.startsWith("data:")) return null;
+
+  // Resolve relative to the source file
+  const mapPath = path.resolve(path.dirname(filePath), mapRef);
+
+  try {
+    const mapData = JSON.parse(fs.readFileSync(mapPath, "utf-8"));
+    return mapData;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a source path from Istanbul's remapped key to an absolute path.
+ * Istanbul may produce relative paths (e.g., "../src/server.ts") based on
+ * the source map's "sources" field.
+ */
+function resolveSourcePath(
+  istanbulKey: string,
+  compiledPath: string,
+  sourceRoot: string,
+): string {
+  if (path.isAbsolute(istanbulKey)) return istanbulKey;
+  // Resolve relative to the compiled file's directory
+  const resolved = path.resolve(path.dirname(compiledPath), istanbulKey);
+  if (resolved.startsWith(sourceRoot)) return resolved;
+  return resolved;
+}
+
+/**
  * Process a V8 coverage JSON file using ast-v8-to-istanbul.
  *
  * ast-v8-to-istanbul parses the source AST independently, so it correctly
@@ -96,13 +141,21 @@ export async function processV8CoverageFile(
         locations: true,
       });
 
+      // Check for source map (TypeScript, bundled code, etc.)
+      const sourceMap = loadSourceMap(scriptPath, code);
+
       const istanbulData = await convert({
         code,
         ast,
         coverage: { functions: script.functions, url: script.url },
+        ...(sourceMap ? { sourceMap } : {}),
       });
 
-      const fileKey = Object.keys(istanbulData)[0];
+      // When source maps are present, istanbul remaps to original file paths.
+      // Use the first key that points to a file under sourceRoot.
+      const fileKey = Object.keys(istanbulData).find(
+        (k) => k.startsWith(sourceRoot) || !path.isAbsolute(k),
+      ) || Object.keys(istanbulData)[0];
       if (!fileKey) continue;
       const fileCov = istanbulData[fileKey];
 
@@ -158,7 +211,10 @@ export async function processV8CoverageFile(
       }
 
       if (Object.keys(lines).length > 0 || includeAll) {
-        coverage[scriptPath] = {
+        // Use the original source path (from source map) if available,
+        // otherwise use the compiled file path
+        const coveragePath = sourceMap ? resolveSourcePath(fileKey, scriptPath, sourceRoot) : scriptPath;
+        coverage[coveragePath] = {
           lines,
           totalBranches,
           coveredBranches,
