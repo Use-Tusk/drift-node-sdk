@@ -16,6 +16,9 @@ import {
   InstrumentationVersionMismatchAlert,
   UnpatchedDependencyAlert,
   Runtime,
+  CoverageSnapshotResponse,
+  FileCoverageData,
+  BranchInfo,
 } from "@use-tusk/drift-schemas/core/communication";
 import { context, Context, SpanKind as OtSpanKind } from "@opentelemetry/api";
 import { Value } from "@use-tusk/drift-schemas/google/protobuf/struct";
@@ -684,6 +687,87 @@ try {
         });
       }
     }
+
+    // CLI-initiated: coverage snapshot request
+    if (message.payload.oneofKind === "coverageSnapshotRequest") {
+      const req = message.payload.coverageSnapshotRequest;
+      if (req) {
+        this.handleCoverageSnapshotRequest(requestId, req.baseline);
+      }
+      return;
+    }
+  }
+
+  /**
+   * Handle a coverage snapshot request from the CLI.
+   * Calls the coverage processor, converts result to protobuf, sends response.
+   */
+  private async handleCoverageSnapshotRequest(requestId: string, baseline: boolean): Promise<void> {
+    try {
+      const coverageDir = process.env.NODE_V8_COVERAGE;
+      if (!coverageDir) {
+        await this.sendCoverageResponse(requestId, false, "NODE_V8_COVERAGE not set", {});
+        return;
+      }
+
+      const { takeAndProcessSnapshot } = require("./coverageProcessor") as {
+        takeAndProcessSnapshot: (dir: string, root: string, all: boolean) => Promise<
+          Record<string, { lines: Record<string, number>; totalBranches: number; coveredBranches: number; branches: Record<string, { total: number; covered: number }> }>
+        >;
+      };
+      const sourceRoot = process.cwd();
+      const result = await takeAndProcessSnapshot(coverageDir, sourceRoot, baseline);
+
+      // Convert to protobuf format
+      const coverage: Record<string, FileCoverageData> = {};
+      for (const [filePath, fileData] of Object.entries(result)) {
+        const lines: Record<string, number> = {};
+        for (const [line, count] of Object.entries(fileData.lines)) {
+          lines[line] = count;
+        }
+
+        const branches: Record<string, BranchInfo> = {};
+        for (const [line, branchInfo] of Object.entries(fileData.branches || {})) {
+          branches[line] = BranchInfo.create({
+            total: branchInfo.total,
+            covered: branchInfo.covered,
+          });
+        }
+
+        coverage[filePath] = FileCoverageData.create({
+          lines,
+          totalBranches: fileData.totalBranches || 0,
+          coveredBranches: fileData.coveredBranches || 0,
+          branches,
+        });
+      }
+
+      await this.sendCoverageResponse(requestId, true, "", coverage);
+    } catch (err) {
+      logger.error("[ProtobufCommunicator] Coverage snapshot error:", err);
+      await this.sendCoverageResponse(requestId, false, String(err), {});
+    }
+  }
+
+  private async sendCoverageResponse(
+    requestId: string,
+    success: boolean,
+    error: string,
+    coverage: Record<string, FileCoverageData>,
+  ): Promise<void> {
+    const response = SDKMessage.create({
+      type: MessageType.COVERAGE_SNAPSHOT,
+      requestId,
+      payload: {
+        oneofKind: "coverageSnapshotResponse",
+        coverageSnapshotResponse: CoverageSnapshotResponse.create({
+          success,
+          error,
+          coverage,
+        }),
+      },
+    });
+    await this.sendProtobufMessage(response);
   }
 
   /**

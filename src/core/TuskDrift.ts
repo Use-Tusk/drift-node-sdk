@@ -457,9 +457,8 @@ export class TuskDriftCore {
       return;
     }
 
-    // Start coverage server early - only depends on NODE_V8_COVERAGE, not SDK mode
-    // Uses v8.takeCoverage() for snapshots (binary best-effort coverage)
-    this.startCoverageSnapshotServer();
+    // Coverage snapshot handling is done via the protobuf channel (ProtobufCommunicator).
+    // NODE_V8_COVERAGE env var enables V8 coverage collection at the process level.
 
     if (
       this.mode === TuskDriftMode.RECORD &&
@@ -585,54 +584,9 @@ export class TuskDriftCore {
     this.logStartupSummary();
   }
 
-  private coverageServer: ReturnType<typeof import("http").createServer> | null = null;
-
-  private startCoverageSnapshotServer(): void {
-    const coverageDir = OriginalGlobalUtils.getOriginalProcessEnvVar("NODE_V8_COVERAGE");
-    if (!coverageDir) return;
-
-    const port = parseInt(
-      OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_COVERAGE_PORT") || "19876",
-      10,
-    );
-
-    try {
-      const http = require("http");
-      const { takeAndProcessSnapshot } = require("./coverageProcessor");
-      const sourceRoot = process.cwd();
-
-      this.coverageServer = http.createServer(
-        (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
-          const parsedUrl = new URL(req.url || "/", `http://127.0.0.1:${port}`);
-
-          if (parsedUrl.pathname === "/snapshot") {
-            const isBaseline = parsedUrl.searchParams.get("baseline") === "true";
-            takeAndProcessSnapshot(coverageDir, sourceRoot, isBaseline)
-              .then((coverage: Record<string, unknown>) => {
-                res.writeHead(200, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ ok: true, coverage }));
-              })
-              .catch((err: Error) => {
-                logger.error("Coverage snapshot error:", err);
-                res.writeHead(500, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ ok: false, error: String(err) }));
-              });
-          } else {
-            res.writeHead(404);
-            res.end();
-          }
-        },
-      );
-
-      this.coverageServer!.listen(port, "127.0.0.1", () => {
-        logger.info(`Coverage snapshot server listening on port ${port}`);
-      });
-
-      this.coverageServer!.unref();
-    } catch (error) {
-      logger.error("Failed to start coverage snapshot server:", error);
-    }
-  }
+  // Coverage snapshot handling is now done via the protobuf communication channel
+  // (ProtobufCommunicator.handleCoverageSnapshotRequest). No separate HTTP server needed.
+  // NODE_V8_COVERAGE env var is still required for V8 to collect coverage data.
 
   markAppAsReady(): void {
     if (!this.initialized) {
