@@ -606,17 +606,17 @@ export class TuskDriftCore {
           const parsedUrl = new URL(req.url || "/", `http://127.0.0.1:${port}`);
 
           if (parsedUrl.pathname === "/snapshot") {
-            try {
-              const isBaseline = parsedUrl.searchParams.get("baseline") === "true";
-              const coverage = takeAndProcessSnapshot(coverageDir, sourceRoot, isBaseline);
-
-              res.writeHead(200, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ ok: true, coverage }));
-            } catch (err) {
-              logger.error("Coverage snapshot error:", err);
-              res.writeHead(500, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ ok: false, error: String(err) }));
-            }
+            const isBaseline = parsedUrl.searchParams.get("baseline") === "true";
+            takeAndProcessSnapshot(coverageDir, sourceRoot, isBaseline)
+              .then((coverage: Record<string, unknown>) => {
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ ok: true, coverage }));
+              })
+              .catch((err: Error) => {
+                logger.error("Coverage snapshot error:", err);
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ ok: false, error: String(err) }));
+              });
           } else {
             res.writeHead(404);
             res.end();

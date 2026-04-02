@@ -113,7 +113,8 @@
     "js-yaml": "^4.1.0",
     "jsonpath": "^1.1.1",
     "require-in-the-middle": "^7.0.0",
-    "semver": "^7.7.2"
+    "semver": "^7.7.2",
+    "v8-to-istanbul": "^9.3.0"
   },
   "engines": {
     "node": ">=16.0.0"
