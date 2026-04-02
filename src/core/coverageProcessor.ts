@@ -113,6 +113,52 @@ function resolveSourcePath(
 }
 
 /**
+ * Resolve the JavaScript source code to parse for a given file path.
+ *
+ * For .js files: reads directly from disk, checks for source maps.
+ * For .ts files (ts-node): V8's URL points to the .ts file, but the code
+ * V8 executed is compiled JS. With TS_NODE_EMIT=true, ts-node writes
+ * compiled JS + source maps to .ts-node/ directory. We look there.
+ */
+function resolveSourceCode(scriptPath: string): {
+  code: string;
+  resolvedPath: string;
+  sourceMap: Record<string, unknown> | null;
+} {
+  // For .ts/.tsx files, look for compiled JS in .ts-node/ directory
+  if (scriptPath.match(/\.(ts|tsx|mts|cts)$/)) {
+    // ts-node with TS_NODE_EMIT=true writes to .ts-node/ in the project root
+    // The compiled file mirrors the source path structure
+    const tsNodeDir = path.join(process.cwd(), ".ts-node");
+    // Try common ts-node output locations
+    const candidates = [
+      path.join(tsNodeDir, scriptPath.replace(process.cwd(), "") + ".js"),
+      scriptPath.replace(/\.(ts|tsx|mts|cts)$/, ".js"), // same dir, .js extension
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        const code = fs.readFileSync(candidate, "utf-8");
+        const sourceMap = loadSourceMap(candidate, code);
+        return { code, resolvedPath: candidate, sourceMap };
+      } catch {
+        continue;
+      }
+    }
+
+    // Fallback: try reading the .ts file directly (won't parse with acorn,
+    // but let it fail gracefully so processV8CoverageFile skips it)
+    const code = fs.readFileSync(scriptPath, "utf-8");
+    return { code, resolvedPath: scriptPath, sourceMap: null };
+  }
+
+  // For .js files: read directly, check for source maps
+  const code = fs.readFileSync(scriptPath, "utf-8");
+  const sourceMap = loadSourceMap(scriptPath, code);
+  return { code, resolvedPath: scriptPath, sourceMap };
+}
+
+/**
  * Process a V8 coverage JSON file using ast-v8-to-istanbul.
  *
  * ast-v8-to-istanbul parses the source AST independently, so it correctly
@@ -134,15 +180,17 @@ export async function processV8CoverageFile(
     if (!scriptPath) continue;
 
     try {
-      const code = fs.readFileSync(scriptPath, "utf-8");
+      // Resolve the actual JS code to parse.
+      // For TypeScript files (ts-node/tsx), V8's URL points to the .ts file,
+      // but the code V8 executed is compiled JS. With TS_NODE_EMIT=true,
+      // ts-node writes compiled JS to .ts-node/ directory. We look there first.
+      const { code, resolvedPath, sourceMap } = resolveSourceCode(scriptPath);
+
       const ast = acorn.parse(code, {
         ecmaVersion: 2022,
         sourceType: "module",
         locations: true,
       });
-
-      // Check for source map (TypeScript, bundled code, etc.)
-      const sourceMap = loadSourceMap(scriptPath, code);
 
       const istanbulData = await convert({
         code,
@@ -213,7 +261,10 @@ export async function processV8CoverageFile(
       if (Object.keys(lines).length > 0 || includeAll) {
         // Use the original source path (from source map) if available,
         // otherwise use the compiled file path
-        const coveragePath = sourceMap ? resolveSourcePath(fileKey, scriptPath, sourceRoot) : scriptPath;
+        // Use original .ts path when source maps remap, otherwise compiled path
+        const coveragePath = sourceMap
+          ? resolveSourcePath(fileKey, resolvedPath, sourceRoot)
+          : scriptPath;
         coverage[coveragePath] = {
           lines,
           totalBranches,
