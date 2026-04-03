@@ -1,6 +1,6 @@
 # Code Coverage (Node.js)
 
-The Node SDK collects per-test code coverage during Tusk Drift replay using V8's built-in precise coverage. No external dependencies like NYC or c8 are needed — coverage is built into the V8 engine.
+The Node SDK collects per-test code coverage during Tusk Drift replay using V8's built-in precise coverage. No external dependencies like NYC or c8 are needed.
 
 ## How It Works
 
@@ -14,7 +14,7 @@ V8 internally calls: Profiler.startPreciseCoverage({ callCount: true, detailed: 
 
 This provides:
 - **Real execution counts** (1, 2, 5...) not just binary covered/uncovered
-- **Block-level granularity** — branches, loops, expressions
+- **Block-level granularity**: branches, loops, expressions
 - **Zero external dependencies** — works with any Node.js version that supports `NODE_V8_COVERAGE`
 - **Works with CJS, ESM, TypeScript, bundled code** — anything V8 executes
 
@@ -30,7 +30,7 @@ This provides:
 
 After `v8.takeCoverage()` resets counters, V8 only reports functions that were called since the reset. Functions that were never called are **absent** from the V8 output.
 
-- **v8-to-istanbul** assumes complete V8 data. Missing functions are treated as "covered by default." This produces 100% coverage for files where only `/health` was hit — clearly wrong.
+- **v8-to-istanbul** assumes complete V8 data. Missing functions are treated as "covered by default." This produces 100% coverage for files where only `/health` was hit.
 - **ast-v8-to-istanbul** parses the source file's AST independently. It knows about ALL functions from the AST and correctly marks missing ones as uncovered.
 
 This is the key reason we use `ast-v8-to-istanbul`.
@@ -72,7 +72,7 @@ The SDK tries parsing source code as CJS (`sourceType: "script"`) first, falling
 
 ## Environment Variables
 
-These are set automatically by the CLI when `--coverage` is used. You should not set them manually.
+These are set automatically by the CLI when coverage is enabled. You should not set them manually.
 
 | Variable | Description |
 |----------|-------------|
@@ -82,7 +82,7 @@ These are set automatically by the CLI when `--coverage` is used. You should not
 
 ## Limitations
 
-- **acorn parse failures**: `ast-v8-to-istanbul` uses acorn to parse JavaScript (ES2022). Files using syntax acorn doesn't support (stage 3 proposals, certain decorator patterns) are silently skipped — they won't appear in coverage.
+- **acorn parse failures**: `ast-v8-to-istanbul` uses acorn to parse JavaScript. Files using syntax acorn doesn't support (stage 3 proposals, certain decorator patterns) are silently skipped.
 - **Stale `dist/` artifacts**: `tsc` doesn't clean old output files. If a source file was renamed or moved, the old compiled file remains in `dist/` and may have broken imports. Use `rm -rf dist` before `tsc` in your start command.
 - **Multi-process apps**: If your app uses Node's cluster module or PM2 to fork workers, each worker is a separate process. Only the worker connected to the CLI's protobuf channel handles coverage requests.
 - **Dynamic imports**: Modules loaded via dynamic `import()` after startup aren't in the baseline snapshot. Their uncovered functions won't be in the denominator.
