@@ -692,7 +692,9 @@ try {
     if (message.payload.oneofKind === "coverageSnapshotRequest") {
       const req = message.payload.coverageSnapshotRequest;
       if (req) {
-        this.handleCoverageSnapshotRequest(requestId, req.baseline);
+        this.handleCoverageSnapshotRequest(requestId, req.baseline).catch((err) => {
+          logger.error("[ProtobufCommunicator] Coverage snapshot unhandled error:", err);
+        });
       }
       return;
     }
@@ -710,6 +712,9 @@ try {
         return;
       }
 
+      // Lazy-loaded: coverageProcessor imports acorn + ast-v8-to-istanbul which are
+      // only needed for coverage. Avoids loading them on every SDK startup.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { takeAndProcessSnapshot } = require("./coverageProcessor") as {
         takeAndProcessSnapshot: (dir: string, root: string, all: boolean) => Promise<
           Record<string, { lines: Record<string, number>; totalBranches: number; coveredBranches: number; branches: Record<string, { total: number; covered: number }> }>

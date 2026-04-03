@@ -61,7 +61,14 @@ export function filterScriptUrl(
   sourceRoot: string,
 ): string | null {
   if (!url || !url.startsWith("file://")) return null;
-  const filePath = url.replace("file://", "");
+  let filePath: string;
+  try {
+    filePath = new URL(url).pathname;
+    // Decode percent-encoded characters (e.g., spaces as %20)
+    filePath = decodeURIComponent(filePath);
+  } catch {
+    filePath = url.replace("file://", "");
+  }
   if (filePath.includes("node_modules")) return null;
   if (!filePath.startsWith(sourceRoot)) return null;
   return filePath;
@@ -74,6 +81,7 @@ export function filterScriptUrl(
 function loadSourceMap(
   filePath: string,
   code: string,
+  projectRoot: string,
 ): Record<string, unknown> | null {
   // Look for //# sourceMappingURL=<filename> at the end of the file
   const match = code.match(/\/\/[#@]\s*sourceMappingURL=(.+?)(?:\s|$)/);
@@ -89,6 +97,32 @@ function loadSourceMap(
 
   try {
     const mapData = JSON.parse(fs.readFileSync(mapPath, "utf-8"));
+
+    // Fix: ast-v8-to-istanbul's internal path resolution breaks when sourceRoot
+    // is present (coverageMapData keys don't match position filenames).
+    // We resolve sources to real filesystem paths relative to the map file,
+    // then remove sourceRoot so ast-v8-to-istanbul uses simple relative paths.
+    if (mapData.sourceRoot && Array.isArray(mapData.sources)) {
+      const mapDir = path.dirname(mapPath);
+      let resolvedRoot: string;
+
+      if (mapData.sourceRoot === "/") {
+        // TypeScript convention: "/" means project root, not filesystem root
+        resolvedRoot = projectRoot;
+      } else if (path.isAbsolute(mapData.sourceRoot)) {
+        resolvedRoot = mapData.sourceRoot;
+      } else {
+        // Relative sourceRoot (e.g., "./src") — resolve from map file directory
+        resolvedRoot = path.resolve(mapDir, mapData.sourceRoot);
+      }
+
+      mapData.sources = mapData.sources.map((s: string) => {
+        const actualPath = path.resolve(resolvedRoot, s);
+        return path.relative(mapDir, actualPath);
+      });
+      delete mapData.sourceRoot;
+    }
+
     return mapData;
   } catch {
     return null;
@@ -103,13 +137,10 @@ function loadSourceMap(
 function resolveSourcePath(
   istanbulKey: string,
   compiledPath: string,
-  sourceRoot: string,
 ): string {
   if (path.isAbsolute(istanbulKey)) return istanbulKey;
   // Resolve relative to the compiled file's directory
-  const resolved = path.resolve(path.dirname(compiledPath), istanbulKey);
-  if (resolved.startsWith(sourceRoot)) return resolved;
-  return resolved;
+  return path.resolve(path.dirname(compiledPath), istanbulKey);
 }
 
 /**
@@ -120,7 +151,7 @@ function resolveSourcePath(
  * V8 executed is compiled JS. With TS_NODE_EMIT=true, ts-node writes
  * compiled JS + source maps to .ts-node/ directory. We look there.
  */
-function resolveSourceCode(scriptPath: string): {
+function resolveSourceCode(scriptPath: string, projectRoot: string): {
   code: string;
   resolvedPath: string;
   sourceMap: Record<string, unknown> | null;
@@ -129,17 +160,17 @@ function resolveSourceCode(scriptPath: string): {
   if (scriptPath.match(/\.(ts|tsx|mts|cts)$/)) {
     // ts-node with TS_NODE_EMIT=true writes to .ts-node/ in the project root
     // The compiled file mirrors the source path structure
-    const tsNodeDir = path.join(process.cwd(), ".ts-node");
+    const tsNodeDir = path.join(projectRoot, ".ts-node");
     // Try common ts-node output locations
     const candidates = [
-      path.join(tsNodeDir, scriptPath.replace(process.cwd(), "") + ".js"),
+      path.join(tsNodeDir, scriptPath.replace(projectRoot, "") + ".js"),
       scriptPath.replace(/\.(ts|tsx|mts|cts)$/, ".js"), // same dir, .js extension
     ];
 
     for (const candidate of candidates) {
       try {
         const code = fs.readFileSync(candidate, "utf-8");
-        const sourceMap = loadSourceMap(candidate, code);
+        const sourceMap = loadSourceMap(candidate, code, projectRoot);
         return { code, resolvedPath: candidate, sourceMap };
       } catch {
         continue;
@@ -154,7 +185,7 @@ function resolveSourceCode(scriptPath: string): {
 
   // For .js files: read directly, check for source maps
   const code = fs.readFileSync(scriptPath, "utf-8");
-  const sourceMap = loadSourceMap(scriptPath, code);
+  const sourceMap = loadSourceMap(scriptPath, code, projectRoot);
   return { code, resolvedPath: scriptPath, sourceMap };
 }
 
@@ -169,10 +200,15 @@ export async function processV8CoverageFile(
   v8FilePath: string,
   sourceRoot: string,
   includeAll: boolean = false,
+  preParsedData?: V8CoverageData,
 ): Promise<CoverageResult> {
+  // Lazy-loaded: these are only needed when coverage is enabled, which is opt-in.
+  // Using require() avoids loading them on every SDK startup (adds ~50ms + memory).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { convert } = require("ast-v8-to-istanbul");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const acorn = require("acorn");
-  const data: V8CoverageData = JSON.parse(fs.readFileSync(v8FilePath, "utf-8"));
+  const data: V8CoverageData = preParsedData ?? JSON.parse(fs.readFileSync(v8FilePath, "utf-8"));
   const coverage: CoverageResult = {};
 
   for (const script of data.result) {
@@ -184,16 +220,33 @@ export async function processV8CoverageFile(
       // For TypeScript files (ts-node/tsx), V8's URL points to the .ts file,
       // but the code V8 executed is compiled JS. With TS_NODE_EMIT=true,
       // ts-node writes compiled JS to .ts-node/ directory. We look there first.
-      const { code, resolvedPath, sourceMap } = resolveSourceCode(scriptPath);
+      const { code, resolvedPath, sourceMap } = resolveSourceCode(scriptPath, sourceRoot);
 
-      const ast = acorn.parse(code, {
-        ecmaVersion: 2022,
-        sourceType: "module",
-        locations: true,
-      });
+      // Try parsing as script first (CJS), fall back to module (ESM)
+      let ast;
+      try {
+        ast = acorn.parse(code, {
+          ecmaVersion: "latest",
+          sourceType: "script",
+          locations: true,
+        });
+      } catch {
+        ast = acorn.parse(code, {
+          ecmaVersion: "latest",
+          sourceType: "module",
+          locations: true,
+        });
+      }
+
+      // Strip sourceMappingURL from code passed to convert() — we already loaded
+      // and fixed the source map ourselves. Without this, ast-v8-to-istanbul would
+      // read the on-disk .map file (with broken sourceRoot) via getInlineSourceMap.
+      const codeForConvert = sourceMap
+        ? code.replace(/\/\/[#@]\s*sourceMappingURL=.+$/m, "")
+        : code;
 
       const istanbulData = await convert({
-        code,
+        code: codeForConvert,
         ast,
         coverage: { functions: script.functions, url: script.url },
         ...(sourceMap ? { sourceMap } : {}),
@@ -230,10 +283,10 @@ export async function processV8CoverageFile(
         const branchMap = fileCov.branchMap[branchId];
         if (!branchMap) continue;
 
-        const branchLine = String(
-          branchMap.loc?.start?.line ||
-            branchMap.locations?.[0]?.start?.line,
-        );
+        const line = branchMap.loc?.start?.line ??
+          branchMap.locations?.[0]?.start?.line;
+        if (line == null) continue;
+        const branchLine = String(line);
 
         if (!branches[branchLine]) {
           branches[branchLine] = { total: 0, covered: 0 };
@@ -263,7 +316,7 @@ export async function processV8CoverageFile(
         // otherwise use the compiled file path
         // Use original .ts path when source maps remap, otherwise compiled path
         const coveragePath = sourceMap
-          ? resolveSourcePath(fileKey, resolvedPath, sourceRoot)
+          ? resolveSourcePath(fileKey, resolvedPath)
           : scriptPath;
         coverage[coveragePath] = {
           lines,
@@ -281,14 +334,43 @@ export async function processV8CoverageFile(
 }
 
 /**
+ * Quick-scan a V8 coverage JSON to check if it has user scripts worth processing.
+ * Parses the JSON and checks script URLs against the sourceRoot — much cheaper
+ * than running ast-v8-to-istanbul on every script.
+ *
+ * Returns the parsed data if it has user scripts, null otherwise.
+ */
+function quickScanCoverageFile(
+  filePath: string,
+  sourceRoot: string,
+): V8CoverageData | null {
+  try {
+    const data: V8CoverageData = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    const hasUserScripts = data.result.some(
+      (script) => filterScriptUrl(script.url, sourceRoot) !== null,
+    );
+    return hasUserScripts ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Take a V8 coverage snapshot: trigger v8.takeCoverage(), process with
  * ast-v8-to-istanbul, and clean up.
+ *
+ * NODE_V8_COVERAGE is inherited by all child Node processes (npm, tsc, etc.),
+ * so the coverage directory may contain files from multiple PIDs. We quick-scan
+ * each file to find ones with user scripts and only run the expensive
+ * ast-v8-to-istanbul processing on those.
  */
 export async function takeAndProcessSnapshot(
   coverageDir: string,
   sourceRoot: string,
   includeAll: boolean,
 ): Promise<CoverageResult> {
+  // Lazy-loaded: v8 module is only needed for coverage snapshots.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const v8 = require("v8");
   v8.takeCoverage();
 
@@ -297,84 +379,54 @@ export async function takeAndProcessSnapshot(
     .filter((f: string) => f.startsWith("coverage-") && f.endsWith(".json"))
     .sort();
 
-  let coverage: CoverageResult = {};
-  if (files.length > 0) {
-    const latestFile = path.join(coverageDir, files[files.length - 1]);
-    coverage = await processV8CoverageFile(latestFile, sourceRoot, includeAll);
+  const coverage: CoverageResult = {};
 
-    for (const f of files) {
-      try {
-        fs.unlinkSync(path.join(coverageDir, f));
-      } catch {
-        // ignore cleanup errors
+  for (const f of files) {
+    const fp = path.join(coverageDir, f);
+
+    // Quick-scan: skip files from non-server processes (npm, tsc, etc.)
+    const data = quickScanCoverageFile(fp, sourceRoot);
+    if (!data) {
+      try { fs.unlinkSync(fp); } catch { /* ignore cleanup errors */ }
+      continue;
+    }
+
+    // Process the file with ast-v8-to-istanbul (expensive) — pass pre-parsed data to avoid double JSON.parse
+    const fileCoverage = await processV8CoverageFile(fp, sourceRoot, includeAll, data);
+
+    // Merge into result (handles rare case of same file in multiple V8 outputs)
+    for (const [filePath, fileData] of Object.entries(fileCoverage)) {
+      if (coverage[filePath]) {
+        // Merge line counts (max)
+        for (const [line, count] of Object.entries(fileData.lines)) {
+          coverage[filePath].lines[line] = Math.max(coverage[filePath].lines[line] || 0, count);
+        }
+        // Merge branch counts
+        for (const [line, branchInfo] of Object.entries(fileData.branches || {})) {
+          const existing = coverage[filePath].branches[line];
+          if (existing) {
+            existing.total = Math.max(existing.total, branchInfo.total);
+            existing.covered = Math.max(existing.covered, branchInfo.covered);
+          } else {
+            coverage[filePath].branches[line] = { ...branchInfo };
+          }
+        }
+        // Recompute file-level branch totals
+        let totalB = 0, covB = 0;
+        for (const b of Object.values(coverage[filePath].branches)) {
+          totalB += b.total;
+          covB += b.covered;
+        }
+        coverage[filePath].totalBranches = totalB;
+        coverage[filePath].coveredBranches = covB;
+      } else {
+        coverage[filePath] = fileData;
       }
     }
+
+    try { fs.unlinkSync(fp); } catch { /* ignore cleanup errors */ }
   }
 
   return coverage;
 }
 
-// --- Legacy exports for unit tests ---
-
-export function computeLineStarts(source: string): number[] {
-  const starts = [0];
-  for (let i = 0; i < source.length; i++) {
-    if (source[i] === "\n") starts.push(i + 1);
-  }
-  return starts;
-}
-
-export function offsetToLine(lineStarts: number[], offset: number): number {
-  let lo = 0;
-  let hi = lineStarts.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (lineStarts[mid] <= offset) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo + 1;
-}
-
-export function processScriptCoverage(
-  functions: V8FunctionCoverage[],
-  lineStarts: number[],
-  includeAll: boolean,
-): FileCoverageData {
-  const lines: Record<string, number> = {};
-  const branches: Record<string, BranchInfo> = {};
-  let totalBranches = 0;
-  let coveredBranches = 0;
-
-  for (const func of functions) {
-    for (const range of func.ranges) {
-      const startLine = offsetToLine(lineStarts, range.startOffset);
-      const endLine = offsetToLine(lineStarts, range.endOffset);
-      for (let line = startLine; line <= endLine; line++) {
-        lines[String(line)] = range.count;
-      }
-    }
-    if (func.isBlockCoverage && func.ranges.length > 1) {
-      for (let i = 1; i < func.ranges.length; i++) {
-        const range = func.ranges[i];
-        const branchLine = String(offsetToLine(lineStarts, range.startOffset));
-        if (!branches[branchLine]) {
-          branches[branchLine] = { total: 0, covered: 0 };
-        }
-        branches[branchLine].total++;
-        totalBranches++;
-        if (range.count > 0) {
-          branches[branchLine].covered++;
-          coveredBranches++;
-        }
-      }
-    }
-  }
-
-  if (!includeAll) {
-    for (const key of Object.keys(lines)) {
-      if (lines[key] === 0) delete lines[key];
-    }
-  }
-
-  return { lines, totalBranches, coveredBranches, branches };
-}
