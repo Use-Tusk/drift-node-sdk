@@ -149,7 +149,20 @@ TUSK_USE_RUST_CORE=1 npm start
 TUSK_USE_RUST_CORE=0 npm start
 ```
 
+## Coverage Variables
+
+These are set automatically by the CLI when `tusk drift run --coverage` is used. You should **not** set them manually.
+
+| Variable | Description |
+|----------|-------------|
+| `NODE_V8_COVERAGE` | Directory for V8 to write coverage JSON files. Enables V8 precise coverage collection. |
+| `TUSK_COVERAGE` | Language-agnostic signal that coverage is enabled. Set to `true`. |
+| `TS_NODE_EMIT` | Forces ts-node to write compiled JS to disk (needed for coverage processing). Set to `true`. |
+
+See [Coverage Guide](./coverage.md) for details on how coverage collection works.
+
 ## Related Documentation
 
 - [Initialization Guide](./initialization.md) - SDK initialization parameters and config file settings
 - [Quick Start Guide](./quickstart.md) - Record and replay your first trace
+- [Coverage Guide](./coverage.md) - Code coverage during test replay
