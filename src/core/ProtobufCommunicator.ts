@@ -706,7 +706,7 @@ try {
    */
   private async handleCoverageSnapshotRequest(requestId: string, baseline: boolean): Promise<void> {
     try {
-      const coverageDir = process.env.NODE_V8_COVERAGE;
+      const coverageDir = OriginalGlobalUtils.getOriginalProcessEnvVar("NODE_V8_COVERAGE");
       if (!coverageDir) {
         await this.sendCoverageResponse(requestId, false, "NODE_V8_COVERAGE not set", {});
         return;
@@ -741,8 +741,8 @@ try {
 
         coverage[filePath] = FileCoverageData.create({
           lines,
-          totalBranches: fileData.totalBranches || 0,
-          coveredBranches: fileData.coveredBranches || 0,
+          totalBranches: fileData.totalBranches ?? 0,
+          coveredBranches: fileData.coveredBranches ?? 0,
           branches,
         });
       }
