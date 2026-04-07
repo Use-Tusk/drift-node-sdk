@@ -20,5 +20,12 @@ test("filterScriptUrl: rejects files outside sourceRoot", (t) => {
   t.is(filterScriptUrl("file:///other/project/app.js", "/project"), null);
 });
 
+test("filterScriptUrl: handles URL-encoded paths (spaces)", (t) => {
+  t.is(
+    filterScriptUrl("file:///my%20project/src/app.js", "/my project"),
+    "/my project/src/app.js"
+  );
+});
+
 // Note: processV8CoverageFile and takeAndProcessSnapshot use ast-v8-to-istanbul
 // internally and require real files on disk. They are tested via end-to-end tests.
