@@ -250,17 +250,20 @@ export async function processV8CoverageFile(
         ? code.replace(/\/\/[#@]\s*sourceMappingURL=.+$/m, "")
         : code;
 
-      // Node.js wraps CJS modules with a ~62-byte function header:
+      // Node.js wraps CJS modules with a function header:
       // (function(exports, require, module, __filename, __dirname) { ... })
       // V8 coverage byte offsets include this wrapper, so we pass wrapperLength
       // to align AST node positions with V8 ranges.
-      const CJS_WRAPPER_LENGTH = 62;
+      // Get the actual wrapper length from Node.js rather than hardcoding.
+      const cjsWrapperLength = isCJS
+        ? require("module").wrapper[0].length
+        : 0;
       const istanbulData = await convert({
         code: codeForConvert,
         ast,
         coverage: { functions: script.functions, url: script.url },
         ...(sourceMap ? { sourceMap } : {}),
-        ...(isCJS ? { wrapperLength: CJS_WRAPPER_LENGTH } : {}),
+        ...(cjsWrapperLength ? { wrapperLength: cjsWrapperLength } : {}),
       });
 
       // When source maps are present, istanbul remaps to original file paths.
