@@ -224,14 +224,17 @@ export async function processV8CoverageFile(
       // ts-node writes compiled JS to .ts-node/ directory. We look there first.
       const { code, resolvedPath, sourceMap } = resolveSourceCode(scriptPath, sourceRoot);
 
-      // Try parsing as script first (CJS), fall back to module (ESM)
+      // Try parsing as script first (CJS), fall back to module (ESM).
+      // Track which succeeded — CJS modules have a V8 wrapper that shifts byte offsets.
       let ast;
+      let isCJS = false;
       try {
         ast = acorn.parse(code, {
           ecmaVersion: "latest",
           sourceType: "script",
           locations: true,
         });
+        isCJS = true;
       } catch {
         ast = acorn.parse(code, {
           ecmaVersion: "latest",
@@ -247,11 +250,17 @@ export async function processV8CoverageFile(
         ? code.replace(/\/\/[#@]\s*sourceMappingURL=.+$/m, "")
         : code;
 
+      // Node.js wraps CJS modules with a ~62-byte function header:
+      // (function(exports, require, module, __filename, __dirname) { ... })
+      // V8 coverage byte offsets include this wrapper, so we pass wrapperLength
+      // to align AST node positions with V8 ranges.
+      const CJS_WRAPPER_LENGTH = 62;
       const istanbulData = await convert({
         code: codeForConvert,
         ast,
         coverage: { functions: script.functions, url: script.url },
         ...(sourceMap ? { sourceMap } : {}),
+        ...(isCJS ? { wrapperLength: CJS_WRAPPER_LENGTH } : {}),
       });
 
       // When source maps are present, istanbul remaps to original file paths.
