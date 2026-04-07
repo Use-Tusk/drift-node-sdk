@@ -1,5 +1,12 @@
 import test from "ava";
-import { filterScriptUrl } from "./coverageProcessor";
+import {
+  filterScriptUrl,
+  takeAndProcessSnapshot,
+  V8CoverageData,
+} from "./coverageProcessor";
+import fs from "fs";
+import path from "path";
+import os from "os";
 
 // --- filterScriptUrl ---
 
@@ -27,5 +34,41 @@ test("filterScriptUrl: handles URL-encoded paths (spaces)", (t) => {
   );
 });
 
-// Note: processV8CoverageFile and takeAndProcessSnapshot use ast-v8-to-istanbul
-// internally and require real files on disk. They are tested via end-to-end tests.
+// --- takeAndProcessSnapshot ---
+
+test("takeAndProcessSnapshot: skips coverage files without user scripts", async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "coverage-test-"));
+  const coverageDir = path.join(tmpDir, "coverage");
+  fs.mkdirSync(coverageDir);
+
+  try {
+    // Create coverage for node_modules only
+    const v8Data: V8CoverageData = {
+      result: [
+        {
+          url: "file:///some/path/node_modules/pkg/index.js",
+          functions: [
+            {
+              functionName: "",
+              ranges: [{ startOffset: 0, endOffset: 10, count: 1 }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const coverageFile = path.join(coverageDir, "coverage-1.json");
+    fs.writeFileSync(coverageFile, JSON.stringify(v8Data));
+
+    const result = await takeAndProcessSnapshot(coverageDir, tmpDir, false);
+
+    // Should skip files without user scripts
+    t.deepEqual(result, {});
+
+    // File should be cleaned up
+    const remainingFiles = fs.readdirSync(coverageDir);
+    t.is(remainingFiles.length, 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
