@@ -27,6 +27,10 @@ test("filterScriptUrl: rejects files outside sourceRoot", (t) => {
   t.is(filterScriptUrl("file:///other/project/app.js", "/project"), null);
 });
 
+test("filterScriptUrl: rejects prefix collisions (e.g., /app vs /application)", (t) => {
+  t.is(filterScriptUrl("file:///application/src/app.js", "/app"), null);
+});
+
 test("filterScriptUrl: handles URL-encoded paths (spaces)", (t) => {
   t.is(
     filterScriptUrl("file:///my%20project/src/app.js", "/my project"),

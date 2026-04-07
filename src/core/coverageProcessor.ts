@@ -70,7 +70,8 @@ export function filterScriptUrl(
     filePath = url.replace("file://", "");
   }
   if (filePath.includes("node_modules")) return null;
-  if (!filePath.startsWith(sourceRoot)) return null;
+  // Check path boundary to avoid prefix collisions (/app matching /application)
+  if (!filePath.startsWith(sourceRoot + "/") && filePath !== sourceRoot) return null;
   return filePath;
 }
 
