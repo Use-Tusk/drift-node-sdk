@@ -268,7 +268,7 @@ export async function processV8CoverageFile(
         const stmtMap = fileCov.statementMap[stmtId];
         if (stmtMap) {
           const line = String(stmtMap.start.line);
-          lines[line] = Math.max(lines[line] || 0, count);
+          lines[line] = Math.max(lines[line] ?? 0, count);
         }
       }
 
@@ -399,7 +399,7 @@ export async function takeAndProcessSnapshot(
       if (coverage[filePath]) {
         // Merge line counts (max)
         for (const [line, count] of Object.entries(fileData.lines)) {
-          coverage[filePath].lines[line] = Math.max(coverage[filePath].lines[line] || 0, count);
+          coverage[filePath].lines[line] = Math.max(coverage[filePath].lines[line] ?? 0, count);
         }
         // Merge branch counts
         for (const [line, branchInfo] of Object.entries(fileData.branches || {})) {
