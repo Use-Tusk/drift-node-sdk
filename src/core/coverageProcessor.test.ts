@@ -31,6 +31,10 @@ test("filterScriptUrl: rejects prefix collisions (e.g., /app vs /application)", 
   t.is(filterScriptUrl("file:///application/src/app.js", "/app"), null);
 });
 
+test("filterScriptUrl: accepts files when sourceRoot is / (Docker root)", (t) => {
+  t.is(filterScriptUrl("file:///app/src/server.js", "/"), "/app/src/server.js");
+});
+
 test("filterScriptUrl: handles URL-encoded paths (spaces)", (t) => {
   t.is(
     filterScriptUrl("file:///my%20project/src/app.js", "/my project"),

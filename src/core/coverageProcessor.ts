@@ -70,8 +70,9 @@ export function filterScriptUrl(
     filePath = url.replace("file://", "");
   }
   if (filePath.includes("node_modules")) return null;
-  // Check path boundary to avoid prefix collisions (/app matching /application)
-  if (!filePath.startsWith(sourceRoot + "/") && filePath !== sourceRoot) return null;
+  // Check path boundary to avoid prefix collisions (/app matching /application).
+  // When sourceRoot is "/" (root dir, common in Docker), all absolute paths match.
+  if (sourceRoot !== "/" && !filePath.startsWith(sourceRoot + "/") && filePath !== sourceRoot) return null;
   return filePath;
 }
 
