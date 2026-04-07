@@ -163,7 +163,7 @@ function resolveSourceCode(scriptPath: string, projectRoot: string): {
     const tsNodeDir = path.join(projectRoot, ".ts-node");
     // Try common ts-node output locations
     const candidates = [
-      path.join(tsNodeDir, scriptPath.replace(projectRoot, "") + ".js"),
+      path.join(tsNodeDir, scriptPath.replace(projectRoot, "").replace(/\.(ts|tsx|mts|cts)$/, ".js")),
       scriptPath.replace(/\.(ts|tsx|mts|cts)$/, ".js"), // same dir, .js extension
     ];
 
