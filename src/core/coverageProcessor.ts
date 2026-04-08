@@ -232,6 +232,9 @@ export async function processV8CoverageFile(
       const isTSX = /\.tsx$/.test(scriptPath);
       // Use decorators-legacy (not decorators) to support TypeScript's experimental
       // parameter decorators used by inversify, NestJS, TypeORM, etc.
+      // This covers ~99% of TS codebases. If a project uses TC39 Stage 3 decorators
+      // (experimentalDecorators: false in tsconfig.json), we'd need to switch to the
+      // "decorators" plugin instead. Could be inferred from tsconfig.json if needed.
       const babelPlugins: string[] = isTypeScript
         ? ["typescript", "decorators-legacy", ...(isTSX ? ["jsx"] : [])]
         : ["decorators-legacy"];
