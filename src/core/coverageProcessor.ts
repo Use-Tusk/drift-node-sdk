@@ -179,8 +179,8 @@ function resolveSourceCode(scriptPath: string, projectRoot: string): {
       }
     }
 
-    // Fallback: try reading the .ts file directly (won't parse with acorn,
-    // but let it fail gracefully so processV8CoverageFile skips it)
+    // Fallback: read the .ts file directly — acorn-typescript can parse it.
+    // This handles ts-node, ts-node-dev, and --experimental-strip-types.
     const code = fs.readFileSync(scriptPath, "utf-8");
     return { code, resolvedPath: scriptPath, sourceMap: null };
   }
