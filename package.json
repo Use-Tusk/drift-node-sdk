@@ -82,7 +82,7 @@
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
-    "@use-tusk/drift-schemas": "^0.1.24",
+    "@use-tusk/drift-schemas": "^0.1.34",
     "ava": "^6.4.1",
     "axios": "^1.6.0",
     "eslint": "^8.57.1",
@@ -109,6 +109,8 @@
   },
   "dependencies": {
     "@use-tusk/drift-core-node": "^0.1.8",
+    "acorn": "^8.14.0",
+    "ast-v8-to-istanbul": "^1.0.0",
     "import-in-the-middle": "^1.14.4",
     "js-yaml": "^4.1.0",
     "jsonpath": "^1.1.1",

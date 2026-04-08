@@ -457,6 +457,9 @@ export class TuskDriftCore {
       return;
     }
 
+    // Coverage snapshot handling is done via the protobuf channel (ProtobufCommunicator).
+    // NODE_V8_COVERAGE env var enables V8 coverage collection at the process level.
+
     if (
       this.mode === TuskDriftMode.RECORD &&
       this.config.recording?.export_spans &&
@@ -580,6 +583,10 @@ export class TuskDriftCore {
     this.initialized = true;
     this.logStartupSummary();
   }
+
+  // Coverage snapshot handling is now done via the protobuf communication channel
+  // (ProtobufCommunicator.handleCoverageSnapshotRequest). No separate HTTP server needed.
+  // NODE_V8_COVERAGE env var is still required for V8 to collect coverage data.
 
   markAppAsReady(): void {
     if (!this.initialized) {
