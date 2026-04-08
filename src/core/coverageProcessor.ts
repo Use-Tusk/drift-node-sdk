@@ -179,7 +179,7 @@ function resolveSourceCode(scriptPath: string, projectRoot: string): {
       }
     }
 
-    // Fallback: read the .ts file directly — acorn-typescript can parse it.
+    // Fallback: read the .ts file directly — @babel/parser can parse it.
     // This handles ts-node, ts-node-dev, and --experimental-strip-types.
     const code = fs.readFileSync(scriptPath, "utf-8");
     return { code, resolvedPath: scriptPath, sourceMap: null };
@@ -226,34 +226,39 @@ export async function processV8CoverageFile(
 
       // Try parsing as script first (CJS), fall back to module (ESM).
       // Track which succeeded — CJS modules have a V8 wrapper that shifts byte offsets.
-      // For .ts/.tsx files run via --experimental-strip-types, use acorn-typescript
-      // plugin since acorn can't parse TypeScript syntax natively.
+      // For .ts/.tsx files, use @babel/parser which handles all TypeScript syntax.
+      // For .js files, use acorn (lighter, no TS plugin needed).
       let isCJS = false;
       const isTypeScript = /\.(ts|tsx|mts|cts)$/.test(scriptPath);
-      const parserOptions: Record<string, unknown> = {
-        ecmaVersion: "latest",
-        locations: true,
-      };
 
-      // Resolve the parser: use acorn-typescript for .ts files, plain acorn for .js
-      let parser = acorn;
-      if (isTypeScript) {
-        try {
-          const { tsPlugin } = require("acorn-typescript");
-          parser = acorn.Parser.extend(tsPlugin()) as typeof acorn;
-        } catch {
-          // acorn-typescript not available — plain acorn will be used
-          // (may fail for TS files, but the outer try/catch handles that)
-        }
-      }
-
-      // Try script (CJS) first, fall back to module (ESM)
       let ast;
-      try {
-        ast = parser.parse(code, { ...parserOptions, sourceType: "script" });
-        isCJS = true;
-      } catch {
-        ast = parser.parse(code, { ...parserOptions, sourceType: "module" });
+      if (isTypeScript) {
+        // Use @babel/parser for TypeScript — handles decorators, generics,
+        // import type, satisfies, etc. that acorn-typescript may not.
+        const babelParser = require("@babel/parser");
+        try {
+          ast = babelParser.parse(code, {
+            sourceType: "script",
+            plugins: ["typescript", "decorators"],
+            ranges: true,
+          });
+          isCJS = true;
+        } catch {
+          ast = babelParser.parse(code, {
+            sourceType: "module",
+            plugins: ["typescript", "decorators"],
+            ranges: true,
+          });
+        }
+      } else {
+        // Use acorn for JS files (lighter, no plugins needed)
+        const parserOptions = { ecmaVersion: "latest" as const, locations: true };
+        try {
+          ast = acorn.parse(code, { ...parserOptions, sourceType: "script" });
+          isCJS = true;
+        } catch {
+          ast = acorn.parse(code, { ...parserOptions, sourceType: "module" });
+        }
       }
 
       // Strip sourceMappingURL from code passed to convert() — we already loaded
