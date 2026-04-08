@@ -239,7 +239,7 @@ export async function processV8CoverageFile(
       let parser = acorn;
       if (isTypeScript) {
         try {
-          const { tsPlugin } = require("acorn-typescript");
+          const { tsPlugin } = require("@sveltejs/acorn-typescript");
           parser = acorn.Parser.extend(tsPlugin()) as typeof acorn;
         } catch {
           // acorn-typescript not available — plain acorn will be used
