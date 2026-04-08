@@ -208,8 +208,6 @@ export async function processV8CoverageFile(
   // Using require() avoids loading them on every SDK startup (adds ~50ms + memory).
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { convert } = require("ast-v8-to-istanbul");
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const acorn = require("acorn");
   const data: V8CoverageData = preParsedData ?? JSON.parse(fs.readFileSync(v8FilePath, "utf-8"));
   const coverage: CoverageResult = {};
 
@@ -226,39 +224,30 @@ export async function processV8CoverageFile(
 
       // Try parsing as script first (CJS), fall back to module (ESM).
       // Track which succeeded — CJS modules have a V8 wrapper that shifts byte offsets.
-      // For .ts/.tsx files, use @babel/parser which handles all TypeScript syntax.
-      // For .js files, use acorn (lighter, no TS plugin needed).
+      // Use @babel/parser for all files — handles JS and TypeScript uniformly,
+      // including decorators, generics, import type, etc.
       let isCJS = false;
       const isTypeScript = /\.(ts|tsx|mts|cts)$/.test(scriptPath);
+      const babelParser = require("@babel/parser");
+      const isTSX = /\.tsx$/.test(scriptPath);
+      const babelPlugins: string[] = isTypeScript
+        ? ["typescript", "decorators", "decoratorAutoAccessors", ...(isTSX ? ["jsx"] : [])]
+        : ["decorators"];
 
       let ast;
-      if (isTypeScript) {
-        // Use @babel/parser for TypeScript — handles decorators, generics,
-        // import type, satisfies, etc. that acorn-typescript may not.
-        const babelParser = require("@babel/parser");
-        try {
-          ast = babelParser.parse(code, {
-            sourceType: "script",
-            plugins: ["typescript", "decorators"],
-            ranges: true,
-          });
-          isCJS = true;
-        } catch {
-          ast = babelParser.parse(code, {
-            sourceType: "module",
-            plugins: ["typescript", "decorators"],
-            ranges: true,
-          });
-        }
-      } else {
-        // Use acorn for JS files (lighter, no plugins needed)
-        const parserOptions = { ecmaVersion: "latest" as const, locations: true };
-        try {
-          ast = acorn.parse(code, { ...parserOptions, sourceType: "script" });
-          isCJS = true;
-        } catch {
-          ast = acorn.parse(code, { ...parserOptions, sourceType: "module" });
-        }
+      try {
+        ast = babelParser.parse(code, {
+          sourceType: "script",
+          plugins: babelPlugins,
+          ranges: true,
+        });
+        isCJS = true;
+      } catch {
+        ast = babelParser.parse(code, {
+          sourceType: "module",
+          plugins: babelPlugins,
+          ranges: true,
+        });
       }
 
       // Strip sourceMappingURL from code passed to convert() — we already loaded
