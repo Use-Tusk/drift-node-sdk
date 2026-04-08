@@ -228,7 +228,6 @@ export async function processV8CoverageFile(
       // Track which succeeded — CJS modules have a V8 wrapper that shifts byte offsets.
       // For .ts/.tsx files run via --experimental-strip-types, use acorn-typescript
       // plugin since acorn can't parse TypeScript syntax natively.
-      let ast;
       let isCJS = false;
       const isTypeScript = /\.(ts|tsx|mts|cts)$/.test(scriptPath);
       const parserOptions: Record<string, unknown> = {
@@ -236,33 +235,25 @@ export async function processV8CoverageFile(
         locations: true,
       };
 
+      // Resolve the parser: use acorn-typescript for .ts files, plain acorn for .js
+      let parser = acorn;
       if (isTypeScript) {
         try {
           const { tsPlugin } = require("acorn-typescript");
-          const tsParser = acorn.Parser.extend(tsPlugin());
-          try {
-            ast = tsParser.parse(code, { ...parserOptions, sourceType: "script" });
-            isCJS = true;
-          } catch {
-            ast = tsParser.parse(code, { ...parserOptions, sourceType: "module" });
-          }
+          parser = acorn.Parser.extend(tsPlugin()) as typeof acorn;
         } catch {
-          // acorn-typescript not available, fall through to plain acorn
-          // (will likely fail for TS files, but the outer try/catch handles that)
-          try {
-            ast = acorn.parse(code, { ...parserOptions, sourceType: "script" });
-            isCJS = true;
-          } catch {
-            ast = acorn.parse(code, { ...parserOptions, sourceType: "module" });
-          }
+          // acorn-typescript not available — plain acorn will be used
+          // (may fail for TS files, but the outer try/catch handles that)
         }
-      } else {
-        try {
-          ast = acorn.parse(code, { ...parserOptions, sourceType: "script" });
-          isCJS = true;
-        } catch {
-          ast = acorn.parse(code, { ...parserOptions, sourceType: "module" });
-        }
+      }
+
+      // Try script (CJS) first, fall back to module (ESM)
+      let ast;
+      try {
+        ast = parser.parse(code, { ...parserOptions, sourceType: "script" });
+        isCJS = true;
+      } catch {
+        ast = parser.parse(code, { ...parserOptions, sourceType: "module" });
       }
 
       // Strip sourceMappingURL from code passed to convert() — we already loaded
