@@ -230,9 +230,11 @@ export async function processV8CoverageFile(
       const isTypeScript = /\.(ts|tsx|mts|cts)$/.test(scriptPath);
       const babelParser = require("@babel/parser");
       const isTSX = /\.tsx$/.test(scriptPath);
+      // Use decorators-legacy (not decorators) to support TypeScript's experimental
+      // parameter decorators used by inversify, NestJS, TypeORM, etc.
       const babelPlugins: string[] = isTypeScript
-        ? ["typescript", "decorators", "decoratorAutoAccessors", ...(isTSX ? ["jsx"] : [])]
-        : ["decorators"];
+        ? ["typescript", "decorators-legacy", ...(isTSX ? ["jsx"] : [])]
+        : ["decorators-legacy"];
 
       let ast;
       try {
