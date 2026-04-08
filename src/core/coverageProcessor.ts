@@ -226,21 +226,43 @@ export async function processV8CoverageFile(
 
       // Try parsing as script first (CJS), fall back to module (ESM).
       // Track which succeeded — CJS modules have a V8 wrapper that shifts byte offsets.
+      // For .ts/.tsx files run via --experimental-strip-types, use acorn-typescript
+      // plugin since acorn can't parse TypeScript syntax natively.
       let ast;
       let isCJS = false;
-      try {
-        ast = acorn.parse(code, {
-          ecmaVersion: "latest",
-          sourceType: "script",
-          locations: true,
-        });
-        isCJS = true;
-      } catch {
-        ast = acorn.parse(code, {
-          ecmaVersion: "latest",
-          sourceType: "module",
-          locations: true,
-        });
+      const isTypeScript = /\.(ts|tsx|mts|cts)$/.test(scriptPath);
+      const parserOptions: Record<string, unknown> = {
+        ecmaVersion: "latest",
+        locations: true,
+      };
+
+      if (isTypeScript) {
+        try {
+          const { tsPlugin } = require("acorn-typescript");
+          const tsParser = acorn.Parser.extend(tsPlugin());
+          try {
+            ast = tsParser.parse(code, { ...parserOptions, sourceType: "script" });
+            isCJS = true;
+          } catch {
+            ast = tsParser.parse(code, { ...parserOptions, sourceType: "module" });
+          }
+        } catch {
+          // acorn-typescript not available, fall through to plain acorn
+          // (will likely fail for TS files, but the outer try/catch handles that)
+          try {
+            ast = acorn.parse(code, { ...parserOptions, sourceType: "script" });
+            isCJS = true;
+          } catch {
+            ast = acorn.parse(code, { ...parserOptions, sourceType: "module" });
+          }
+        }
+      } else {
+        try {
+          ast = acorn.parse(code, { ...parserOptions, sourceType: "script" });
+          isCJS = true;
+        } catch {
+          ast = acorn.parse(code, { ...parserOptions, sourceType: "module" });
+        }
       }
 
       // Strip sourceMappingURL from code passed to convert() — we already loaded

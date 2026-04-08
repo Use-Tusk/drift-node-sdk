@@ -110,6 +110,7 @@
   "dependencies": {
     "@use-tusk/drift-core-node": "^0.1.8",
     "acorn": "^8.14.0",
+    "acorn-typescript": "^1.4.13",
     "ast-v8-to-istanbul": "^1.0.0",
     "import-in-the-middle": "^1.14.4",
     "js-yaml": "^4.1.0",
