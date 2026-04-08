@@ -179,8 +179,8 @@ function resolveSourceCode(scriptPath: string, projectRoot: string): {
       }
     }
 
-    // Fallback: try reading the .ts file directly (won't parse with acorn,
-    // but let it fail gracefully so processV8CoverageFile skips it)
+    // Fallback: read the .ts file directly — acorn-typescript can parse it.
+    // This handles ts-node, ts-node-dev, and --experimental-strip-types.
     const code = fs.readFileSync(scriptPath, "utf-8");
     return { code, resolvedPath: scriptPath, sourceMap: null };
   }
@@ -226,21 +226,34 @@ export async function processV8CoverageFile(
 
       // Try parsing as script first (CJS), fall back to module (ESM).
       // Track which succeeded — CJS modules have a V8 wrapper that shifts byte offsets.
-      let ast;
+      // For .ts/.tsx files run via --experimental-strip-types, use acorn-typescript
+      // plugin since acorn can't parse TypeScript syntax natively.
       let isCJS = false;
+      const isTypeScript = /\.(ts|tsx|mts|cts)$/.test(scriptPath);
+      const parserOptions: Record<string, unknown> = {
+        ecmaVersion: "latest",
+        locations: true,
+      };
+
+      // Resolve the parser: use acorn-typescript for .ts files, plain acorn for .js
+      let parser = acorn;
+      if (isTypeScript) {
+        try {
+          const { tsPlugin } = require("acorn-typescript");
+          parser = acorn.Parser.extend(tsPlugin()) as typeof acorn;
+        } catch {
+          // acorn-typescript not available — plain acorn will be used
+          // (may fail for TS files, but the outer try/catch handles that)
+        }
+      }
+
+      // Try script (CJS) first, fall back to module (ESM)
+      let ast;
       try {
-        ast = acorn.parse(code, {
-          ecmaVersion: "latest",
-          sourceType: "script",
-          locations: true,
-        });
+        ast = parser.parse(code, { ...parserOptions, sourceType: "script" });
         isCJS = true;
       } catch {
-        ast = acorn.parse(code, {
-          ecmaVersion: "latest",
-          sourceType: "module",
-          locations: true,
-        });
+        ast = parser.parse(code, { ...parserOptions, sourceType: "module" });
       }
 
       // Strip sourceMappingURL from code passed to convert() — we already loaded
