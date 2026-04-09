@@ -179,7 +179,7 @@ function resolveSourceCode(scriptPath: string, projectRoot: string): {
       }
     }
 
-    // Fallback: read the .ts file directly — acorn-typescript can parse it.
+    // Fallback: read the .ts file directly — @babel/parser can parse it.
     // This handles ts-node, ts-node-dev, and --experimental-strip-types.
     const code = fs.readFileSync(scriptPath, "utf-8");
     return { code, resolvedPath: scriptPath, sourceMap: null };
@@ -208,8 +208,6 @@ export async function processV8CoverageFile(
   // Using require() avoids loading them on every SDK startup (adds ~50ms + memory).
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { convert } = require("ast-v8-to-istanbul");
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const acorn = require("acorn");
   const data: V8CoverageData = preParsedData ?? JSON.parse(fs.readFileSync(v8FilePath, "utf-8"));
   const coverage: CoverageResult = {};
 
@@ -226,34 +224,35 @@ export async function processV8CoverageFile(
 
       // Try parsing as script first (CJS), fall back to module (ESM).
       // Track which succeeded — CJS modules have a V8 wrapper that shifts byte offsets.
-      // For .ts/.tsx files run via --experimental-strip-types, use acorn-typescript
-      // plugin since acorn can't parse TypeScript syntax natively.
+      // Use @babel/parser for all files — handles JS and TypeScript uniformly,
+      // including decorators, generics, import type, etc.
       let isCJS = false;
       const isTypeScript = /\.(ts|tsx|mts|cts)$/.test(scriptPath);
-      const parserOptions: Record<string, unknown> = {
-        ecmaVersion: "latest",
-        locations: true,
-      };
+      const babelParser = require("@babel/parser");
+      const isTSX = /\.tsx$/.test(scriptPath);
+      // Use decorators-legacy (not decorators) to support TypeScript's experimental
+      // parameter decorators used by inversify, NestJS, TypeORM, etc.
+      // This covers ~99% of TS codebases. If a project uses TC39 Stage 3 decorators
+      // (experimentalDecorators: false in tsconfig.json), we'd need to switch to the
+      // "decorators" plugin instead. Could be inferred from tsconfig.json if needed.
+      const babelPlugins: string[] = isTypeScript
+        ? ["typescript", "decorators-legacy", ...(isTSX ? ["jsx"] : [])]
+        : ["decorators-legacy"];
 
-      // Resolve the parser: use acorn-typescript for .ts files, plain acorn for .js
-      let parser = acorn;
-      if (isTypeScript) {
-        try {
-          const { tsPlugin } = require("acorn-typescript");
-          parser = acorn.Parser.extend(tsPlugin()) as typeof acorn;
-        } catch {
-          // acorn-typescript not available — plain acorn will be used
-          // (may fail for TS files, but the outer try/catch handles that)
-        }
-      }
-
-      // Try script (CJS) first, fall back to module (ESM)
       let ast;
       try {
-        ast = parser.parse(code, { ...parserOptions, sourceType: "script" });
+        ast = babelParser.parse(code, {
+          sourceType: "script",
+          plugins: babelPlugins,
+          ranges: true,
+        });
         isCJS = true;
       } catch {
-        ast = parser.parse(code, { ...parserOptions, sourceType: "module" });
+        ast = babelParser.parse(code, {
+          sourceType: "module",
+          plugins: babelPlugins,
+          ranges: true,
+        });
       }
 
       // Strip sourceMappingURL from code passed to convert() — we already loaded
