@@ -247,8 +247,8 @@ test("extractLineCoverage: single-line statement works", (t) => {
   const lines = extractLineCoverage(statementMap, statementCounts);
 
   t.is(lines["5"], 3);
-  t.is(lines["4"], undefined);
-  t.is(lines["6"], undefined);
+  t.false("4" in lines);
+  t.false("6" in lines);
 });
 
 test("extractLineCoverage: inner uncovered statement overrides outer covered statement", (t) => {
