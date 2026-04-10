@@ -283,6 +283,26 @@ test("extractLineCoverage: inner uncovered statement overrides outer covered sta
   t.is(lines["40"], 1);
 });
 
+test("extractLineCoverage: same-size statements use max count (covered wins)", (t) => {
+  // Two single-line statements on the same line: if (x) foo(); else bar();
+  // foo() was called (count=1), bar() was not (count=0)
+  const statementMap = {
+    "0": { start: { line: 10, column: 0 }, end: { line: 10, column: 40 } },
+    "1": { start: { line: 10, column: 7 }, end: { line: 10, column: 20 } },
+    "2": { start: { line: 10, column: 26 }, end: { line: 10, column: 40 } },
+  };
+  const statementCounts = {
+    "0": 1, // if statement executed
+    "1": 1, // foo() called
+    "2": 0, // bar() not called
+  };
+
+  const lines = extractLineCoverage(statementMap, statementCounts);
+
+  // Line 10 should be covered because at least one statement on it was executed
+  t.is(lines["10"], 1);
+});
+
 test("extractLineCoverage: handles empty statement map", (t) => {
   const lines = extractLineCoverage({}, {});
   t.deepEqual(lines, {});

@@ -84,9 +84,24 @@ export function extractLineCoverage(
     });
 
   const lines: Record<string, number> = {};
+  // Track the size of the statement that last wrote each line, so
+  // same-size statements use Math.max (preserving covered status)
+  // while strictly smaller statements override (inner wins over outer).
+  const lineStmtSize: Record<string, number> = {};
   for (const { stmtMap, count } of stmtEntries) {
+    const size = stmtMap.end.line - stmtMap.start.line;
     for (let lineNum = stmtMap.start.line; lineNum <= stmtMap.end.line; lineNum++) {
-      lines[String(lineNum)] = count;
+      const key = String(lineNum);
+      const prevSize = lineStmtSize[key];
+      if (prevSize === undefined || size < prevSize) {
+        // Strictly smaller (more specific) statement — override
+        lines[key] = count;
+        lineStmtSize[key] = size;
+      } else if (size === prevSize) {
+        // Same size — take max (covered wins)
+        lines[key] = Math.max(lines[key] ?? 0, count);
+      }
+      // size > prevSize: larger statement, skip — a more specific one already wrote this line
     }
   }
   return lines;
