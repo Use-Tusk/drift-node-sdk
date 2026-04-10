@@ -53,6 +53,60 @@ export interface V8CoverageData {
   result: V8ScriptCoverage[];
 }
 
+interface IstanbulStatementMap {
+  start: { line: number; column: number };
+  end: { line: number; column: number };
+}
+
+/**
+ * Extract per-line execution counts from Istanbul's statement map.
+ *
+ * Multi-line statements (e.g. res.json({...}) spanning lines 14-20) are
+ * expanded to all lines in the range. When statements overlap (e.g. a
+ * try-catch block contains a catch body), the innermost (most specific)
+ * statement wins — so the catch body stays uncovered even though the
+ * outer try-catch block is covered.
+ */
+export function extractLineCoverage(
+  statementMap: Record<string, IstanbulStatementMap>,
+  statementCounts: Record<string, number>,
+): Record<string, number> {
+  const stmtEntries = Object.entries(statementCounts)
+    .map(([stmtId, count]) => ({
+      stmtMap: statementMap[stmtId],
+      count,
+    }))
+    .filter((e) => e.stmtMap)
+    .sort((a, b) => {
+      const sizeA = a.stmtMap.end.line - a.stmtMap.start.line;
+      const sizeB = b.stmtMap.end.line - b.stmtMap.start.line;
+      return sizeB - sizeA; // largest first
+    });
+
+  const lines: Record<string, number> = {};
+  // Track the size of the statement that last wrote each line, so
+  // same-size statements use Math.max (preserving covered status)
+  // while strictly smaller statements override (inner wins over outer).
+  const lineStmtSize: Record<string, number> = {};
+  for (const { stmtMap, count } of stmtEntries) {
+    const size = stmtMap.end.line - stmtMap.start.line;
+    for (let lineNum = stmtMap.start.line; lineNum <= stmtMap.end.line; lineNum++) {
+      const key = String(lineNum);
+      const prevSize = lineStmtSize[key];
+      if (prevSize === undefined || size < prevSize) {
+        // Strictly smaller (more specific) statement — override
+        lines[key] = count;
+        lineStmtSize[key] = size;
+      } else if (size === prevSize) {
+        // Same size — take max (covered wins)
+        lines[key] = Math.max(lines[key] ?? 0, count);
+      }
+      // size > prevSize: larger statement, skip — a more specific one already wrote this line
+    }
+  }
+  return lines;
+}
+
 /**
  * Filter a script URL to determine if it's a user source file.
  */
@@ -286,17 +340,10 @@ export async function processV8CoverageFile(
       if (!fileKey) continue;
       const fileCov = istanbulData[fileKey];
 
-      // Extract line coverage from Istanbul statement map
-      const lines: Record<string, number> = {};
-      for (const [stmtId, count] of Object.entries(
+      const lines = extractLineCoverage(
+        fileCov.statementMap,
         fileCov.s as Record<string, number>,
-      )) {
-        const stmtMap = fileCov.statementMap[stmtId];
-        if (stmtMap) {
-          const line = String(stmtMap.start.line);
-          lines[line] = Math.max(lines[line] ?? 0, count);
-        }
-      }
+      );
 
       // Extract branch coverage from Istanbul branch map
       let totalBranches = 0;
