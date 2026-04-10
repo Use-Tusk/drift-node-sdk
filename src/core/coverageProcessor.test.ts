@@ -1,5 +1,6 @@
 import test from "ava";
 import {
+  extractLineCoverage,
   filterScriptUrl,
   takeAndProcessSnapshot,
   V8CoverageData,
@@ -215,4 +216,74 @@ class Example {}
 
   t.truthy(ast);
   t.is(ast.type, "File");
+});
+
+// --- extractLineCoverage ---
+
+test("extractLineCoverage: expands multi-line statements to all lines", (t) => {
+  // res.json({ ... }) spanning lines 14-20, covered
+  const statementMap = {
+    "0": { start: { line: 14, column: 2 }, end: { line: 20, column: 4 } },
+  };
+  const statementCounts = { "0": 1 };
+
+  const lines = extractLineCoverage(statementMap, statementCounts);
+
+  t.is(lines["14"], 1);
+  t.is(lines["15"], 1);
+  t.is(lines["16"], 1);
+  t.is(lines["17"], 1);
+  t.is(lines["18"], 1);
+  t.is(lines["19"], 1);
+  t.is(lines["20"], 1);
+});
+
+test("extractLineCoverage: single-line statement works", (t) => {
+  const statementMap = {
+    "0": { start: { line: 5, column: 0 }, end: { line: 5, column: 30 } },
+  };
+  const statementCounts = { "0": 3 };
+
+  const lines = extractLineCoverage(statementMap, statementCounts);
+
+  t.is(lines["5"], 3);
+  t.is(lines["4"], undefined);
+  t.is(lines["6"], undefined);
+});
+
+test("extractLineCoverage: inner uncovered statement overrides outer covered statement", (t) => {
+  // Simulates: try { ... } catch (error) { res.status(500).json({...}) }
+  // Outer try-catch block (lines 25-40) is covered (count=1)
+  // Inner catch body (lines 36-39) is uncovered (count=0)
+  const statementMap = {
+    "0": { start: { line: 25, column: 0 }, end: { line: 40, column: 1 } },
+    "1": { start: { line: 26, column: 4 }, end: { line: 27, column: 5 } },
+    "2": { start: { line: 36, column: 4 }, end: { line: 39, column: 5 } },
+  };
+  const statementCounts = {
+    "0": 1, // try-catch executed
+    "1": 1, // try body executed
+    "2": 0, // catch body NOT executed
+  };
+
+  const lines = extractLineCoverage(statementMap, statementCounts);
+
+  // Try body lines should be covered
+  t.is(lines["26"], 1);
+  t.is(lines["27"], 1);
+
+  // Catch body lines should be uncovered (inner statement overrides outer)
+  t.is(lines["36"], 0);
+  t.is(lines["37"], 0);
+  t.is(lines["38"], 0);
+  t.is(lines["39"], 0);
+
+  // Outer try-catch structural lines are covered
+  t.is(lines["25"], 1);
+  t.is(lines["40"], 1);
+});
+
+test("extractLineCoverage: handles empty statement map", (t) => {
+  const lines = extractLineCoverage({}, {});
+  t.deepEqual(lines, {});
 });
