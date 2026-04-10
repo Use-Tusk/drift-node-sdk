@@ -13,7 +13,7 @@ function supportsModuleRegister(): boolean {
 
 // ---- initializeEsmLoader ----
 
-test("initializeEsmLoader: is a no-op in CJS environment (default test env)", (t) => {
+test.serial("initializeEsmLoader: is a no-op in CJS environment (default test env)", (t) => {
   // Tests run as CJS so _esmLoaderDeps.isCommonJS() returns true by default —
   // the function exits immediately without setting the registration flag.
   const prevFlag = (globalThis as any).__tuskDriftEsmLoaderRegistered;
@@ -21,7 +21,7 @@ test("initializeEsmLoader: is a no-op in CJS environment (default test env)", (t
   t.is((globalThis as any).__tuskDriftEsmLoaderRegistered, prevFlag);
 });
 
-test("initializeEsmLoader: skips registration if already registered", (t) => {
+test.serial("initializeEsmLoader: skips registration if already registered", (t) => {
   if (!supportsModuleRegister()) {
     t.pass();
     return;
@@ -54,7 +54,7 @@ test("initializeEsmLoader: skips registration if already registered", (t) => {
   }
 });
 
-test("initializeEsmLoader: registers ESM loader hooks when not in CJS and not yet registered", (t) => {
+test.serial("initializeEsmLoader: registers ESM loader hooks when not in CJS and not yet registered", (t) => {
   if (!supportsModuleRegister()) {
     t.pass();
     return;
@@ -103,7 +103,7 @@ test("initializeEsmLoader: registers ESM loader hooks when not in CJS and not ye
   }
 });
 
-test("initializeEsmLoader: warns and returns early when Node version does not support module.register", (t) => {
+test.serial("initializeEsmLoader: warns and returns early when Node version does not support module.register", (t) => {
   const originalIsCommonJS = _esmLoaderDeps.isCommonJS;
   const originalNodeMajor = _esmLoaderDeps.nodeMajor;
   const originalNodeMinor = _esmLoaderDeps.nodeMinor;
@@ -131,7 +131,7 @@ test("initializeEsmLoader: warns and returns early when Node version does not su
   }
 });
 
-test("initializeEsmLoader: handles createAddHookMessageChannel error gracefully", (t) => {
+test.serial("initializeEsmLoader: handles createAddHookMessageChannel error gracefully", (t) => {
   if (!supportsModuleRegister()) {
     t.pass();
     return;

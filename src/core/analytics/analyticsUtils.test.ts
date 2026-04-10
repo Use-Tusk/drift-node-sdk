@@ -23,7 +23,7 @@ function withMockedInstance(mock: MockCore, fn: () => void): void {
 
 // ---- sendVersionMismatchAlert ----
 
-test("sendVersionMismatchAlert: does not send when mode is RECORD", (t) => {
+test.serial("sendVersionMismatchAlert: does not send when mode is RECORD", (t) => {
   let sendCalled = false;
   withMockedInstance(
     {
@@ -45,7 +45,7 @@ test("sendVersionMismatchAlert: does not send when mode is RECORD", (t) => {
   t.false(sendCalled);
 });
 
-test("sendVersionMismatchAlert: does not send when mode is DISABLED", (t) => {
+test.serial("sendVersionMismatchAlert: does not send when mode is DISABLED", (t) => {
   let sendCalled = false;
   withMockedInstance(
     {
@@ -67,7 +67,7 @@ test("sendVersionMismatchAlert: does not send when mode is DISABLED", (t) => {
   t.false(sendCalled);
 });
 
-test("sendVersionMismatchAlert: does not send when protobufComm is null in REPLAY mode", (t) => {
+test.serial("sendVersionMismatchAlert: does not send when protobufComm is null in REPLAY mode", (t) => {
   let sendCalled = false;
   withMockedInstance(
     {
@@ -85,7 +85,7 @@ test("sendVersionMismatchAlert: does not send when protobufComm is null in REPLA
   t.false(sendCalled);
 });
 
-test("sendVersionMismatchAlert: sends alert in REPLAY mode with protobufComm", (t) => {
+test.serial("sendVersionMismatchAlert: sends alert in REPLAY mode with protobufComm", (t) => {
   t.plan(3);
   withMockedInstance(
     {
@@ -112,7 +112,7 @@ test("sendVersionMismatchAlert: sends alert in REPLAY mode with protobufComm", (
   );
 });
 
-test("sendVersionMismatchAlert: passes undefined foundVersion as requestedVersion", (t) => {
+test.serial("sendVersionMismatchAlert: passes undefined foundVersion as requestedVersion", (t) => {
   t.plan(1);
   withMockedInstance(
     {
@@ -133,7 +133,7 @@ test("sendVersionMismatchAlert: passes undefined foundVersion as requestedVersio
   );
 });
 
-test("sendVersionMismatchAlert: handles exception without throwing", (t) => {
+test.serial("sendVersionMismatchAlert: handles exception without throwing", (t) => {
   withMockedInstance(
     {
       getMode: () => {
@@ -155,7 +155,7 @@ test("sendVersionMismatchAlert: handles exception without throwing", (t) => {
 
 // ---- sendUnpatchedDependencyAlert ----
 
-test("sendUnpatchedDependencyAlert: does nothing when protobufComm is null", (t) => {
+test.serial("sendUnpatchedDependencyAlert: does nothing when protobufComm is null", (t) => {
   let sendCalled = false;
   withMockedInstance(
     {
@@ -172,7 +172,7 @@ test("sendUnpatchedDependencyAlert: does nothing when protobufComm is null", (t)
   t.false(sendCalled);
 });
 
-test("sendUnpatchedDependencyAlert: does nothing when stackTrace is undefined", (t) => {
+test.serial("sendUnpatchedDependencyAlert: does nothing when stackTrace is undefined", (t) => {
   let sendCalled = false;
   withMockedInstance(
     {
@@ -193,7 +193,7 @@ test("sendUnpatchedDependencyAlert: does nothing when stackTrace is undefined", 
   t.false(sendCalled);
 });
 
-test("sendUnpatchedDependencyAlert: sends alert when protobufComm and stackTrace are present", (t) => {
+test.serial("sendUnpatchedDependencyAlert: sends alert when protobufComm and stackTrace are present", (t) => {
   t.plan(2);
   withMockedInstance(
     {
@@ -217,7 +217,7 @@ test("sendUnpatchedDependencyAlert: sends alert when protobufComm and stackTrace
   );
 });
 
-test("sendUnpatchedDependencyAlert: handles exception without throwing", (t) => {
+test.serial("sendUnpatchedDependencyAlert: handles exception without throwing", (t) => {
   withMockedInstance(
     {
       getMode: () => TuskDriftMode.RECORD,
