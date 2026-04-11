@@ -102,8 +102,14 @@ export class TdSpanExporter implements SpanExporter {
    * Export spans using all configured adapters
    */
   export(spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
+    this._exportAsync(spans).then(
+      () => resultCallback({ code: ExportResultCode.SUCCESS }),
+      (error) => resultCallback({ code: ExportResultCode.FAILED, error }),
+    );
+  }
+
+  private async _exportAsync(spans: ReadableSpan[]): Promise<void> {
     if (this.mode !== TuskDriftMode.RECORD) {
-      resultCallback({ code: ExportResultCode.SUCCESS });
       return;
     }
 
@@ -171,29 +177,26 @@ export class TdSpanExporter implements SpanExporter {
       `Filtered ${filteredSpansBasedOnLibraryName.length - filteredBlockedSpans.length} blocked/oversized span(s), ${filteredBlockedSpans.length} remaining`,
     );
 
-    // Transform spans to CleanSpanData
-    const cleanSpans: CleanSpanData[] = filteredBlockedSpans.map((span) =>
-      SpanTransformer.transformSpanToCleanJSON(span, this.environment),
-    );
+    // Yield the event loop between chunks to avoid blocking pool callbacks, timers, and I/O.
+    const TRANSFORM_CHUNK_SIZE = 20;
+    const cleanSpans: CleanSpanData[] = [];
+    for (let i = 0; i < filteredBlockedSpans.length; i += TRANSFORM_CHUNK_SIZE) {
+      const end = Math.min(i + TRANSFORM_CHUNK_SIZE, filteredBlockedSpans.length);
+      for (let j = i; j < end; j++) {
+        cleanSpans.push(
+          SpanTransformer.transformSpanToCleanJSON(filteredBlockedSpans[j], this.environment),
+        );
+      }
+      if (end < filteredBlockedSpans.length) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    }
 
     if (this.adapters.length === 0) {
-      logger.debug("No adapters configured");
-      resultCallback({ code: ExportResultCode.SUCCESS });
       return;
     }
 
-    // Filter adapters based on mode
-
-    if (this.adapters.length === 0) {
-      logger.debug(`No active adapters for mode: ${this.mode}`);
-      resultCallback({ code: ExportResultCode.SUCCESS });
-      return;
-    }
-
-    // Export to all active adapters
-    Promise.all(this.adapters.map((adapter) => adapter.exportSpans(cleanSpans)))
-      .then(() => resultCallback({ code: ExportResultCode.SUCCESS }))
-      .catch((error) => resultCallback({ code: ExportResultCode.FAILED, error }));
+    await Promise.all(this.adapters.map((adapter) => adapter.exportSpans(cleanSpans)));
   }
 
   /**
