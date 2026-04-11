@@ -24,11 +24,10 @@ import {
   MongodbInstrumentation,
 } from "../instrumentation/libraries";
 import { TdSpanExporter } from "./tracing/TdSpanExporter";
-import { trace, Tracer, SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { context, trace, Tracer, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { ProtobufCommunicator, MockRequestInput, MockResponseOutput } from "./ProtobufCommunicator";
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
-import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME } from "./types";
+import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME, STOP_RECORDING_CHILD_SPANS_CONTEXT_KEY } from "./types";
 import { TuskDriftInstrumentationModuleNames } from "./TuskDriftInstrumentationModuleNames";
 import { SDK_VERSION } from "../version";
 import { SpanUtils } from "./tracing/SpanUtils";
@@ -47,6 +46,14 @@ import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { Resource } from "@opentelemetry/resources";
 import { getRustCoreStartupStatus } from "./rustCoreBinding";
 import { initializeEsmLoader } from "./esmLoader";
+import { monitorEventLoopDelay } from "perf_hooks";
+import type { IntervalHistogram } from "perf_hooks";
+import {
+  AdaptiveSamplingController,
+  RootSamplingDecision,
+  SamplingMode,
+} from "./sampling/AdaptiveSamplingController";
+import { DriftBatchSpanProcessor } from "./tracing/DriftBatchSpanProcessor";
 
 export interface InitParams {
   apiKey?: string;
@@ -73,14 +80,20 @@ export class TuskDriftCore {
   private initialized = false;
   private appReady = false;
   private mode: TuskDriftMode;
-  private initParams: InitParams;
+  private initParams: InitParams = {};
   private config: TuskConfig;
   private communicator?: ProtobufCommunicator | undefined;
-  private samplingRate: number;
-  private cliConnectionPromise: Promise<void> | null;
-  // Add a flag to track connection status
+  private samplingRate = 1;
+  private samplingMode: SamplingMode = "fixed";
+  private minSamplingRate = 0;
+  private adaptiveSamplingController?: AdaptiveSamplingController;
+  private adaptiveSamplingInterval: NodeJS.Timeout | null = null;
+  private eventLoopDelayHistogram: IntervalHistogram | null = null;
+  private effectiveMemoryLimitBytes: number | null = null;
+  private cliConnectionPromise: Promise<void> | null = null;
   private isConnectedWithCLI = false;
   spanExporter?: TdSpanExporter;
+  private driftBatchSpanProcessor?: DriftBatchSpanProcessor;
 
   constructor() {
     this.mode = this.detectMode();
@@ -190,7 +203,7 @@ export class TuskDriftCore {
     const exportSpans = this.config.recording?.export_spans || false;
 
     logger.info(
-      `SDK initialized successfully (version=${SDK_VERSION}, mode=${this.mode}, env=${environment}, service=${serviceName}, serviceId=${serviceId}, exportSpans=${exportSpans}, samplingRate=${this.samplingRate}, logLevel=${logger.getLogLevel()}, runtime=node ${process.version}, platform=${process.platform}/${process.arch}).`,
+      `SDK initialized successfully (version=${SDK_VERSION}, mode=${this.mode}, env=${environment}, service=${serviceName}, serviceId=${serviceId}, exportSpans=${exportSpans}, samplingMode=${this.samplingMode}, samplingBaseRate=${this.samplingRate}, samplingMinRate=${this.minSamplingRate}, logLevel=${logger.getLogLevel()}, runtime=node ${process.version}, platform=${process.platform}/${process.arch}).`,
     );
   }
 
@@ -208,40 +221,92 @@ export class TuskDriftCore {
     return true;
   }
 
-  private determineSamplingRate(initParams: InitParams): number {
-    // Precedence: InitParams > Env Var > Config YAML > Default (1.0)
+  private validateSamplingMode(value: string | undefined, source: string): value is SamplingMode {
+    if (!value) {
+      return false;
+    }
 
-    // 1. Check init params (highest priority)
+    if (value === "fixed" || value === "adaptive") {
+      return true;
+    }
+
+    logger.warn(
+      `Invalid sampling mode from ${source}: ${value}. Must be 'fixed' or 'adaptive'. Ignoring.`,
+    );
+    return false;
+  }
+
+  private determineSamplingConfig(initParams: InitParams): {
+    mode: SamplingMode;
+    baseRate: number;
+    minRate: number;
+  } {
+    const configSampling = this.config.recording?.sampling;
+
+    let mode: SamplingMode = "fixed";
+    if (this.validateSamplingMode(configSampling?.mode, "config.yaml")) {
+      mode = configSampling!.mode!;
+    }
+
+    let baseRate: number | undefined;
     if (initParams.samplingRate !== undefined) {
       if (this.validateSamplingRate(initParams.samplingRate, "init params")) {
         logger.debug(`Using sampling rate from init params: ${initParams.samplingRate}`);
-        return initParams.samplingRate;
+        baseRate = initParams.samplingRate;
       }
     }
 
-    // 2. Check environment variable
-    const envSamplingRate = OriginalGlobalUtils.getOriginalProcessEnvVar("TUSK_SAMPLING_RATE");
-    if (envSamplingRate !== undefined) {
-      const parsed = parseFloat(envSamplingRate);
-      if (this.validateSamplingRate(parsed, "TUSK_SAMPLING_RATE env var")) {
-        logger.debug(`Using sampling rate from TUSK_SAMPLING_RATE env var: ${parsed}`);
-        return parsed;
+    if (baseRate === undefined) {
+      for (const envVarName of ["TUSK_RECORDING_SAMPLING_RATE", "TUSK_SAMPLING_RATE"] as const) {
+        const envSamplingRate = OriginalGlobalUtils.getOriginalProcessEnvVar(envVarName);
+        if (envSamplingRate === undefined) {
+          continue;
+        }
+
+        const parsed = parseFloat(envSamplingRate);
+        if (this.validateSamplingRate(parsed, `${envVarName} env var`)) {
+          logger.debug(`Using sampling rate from ${envVarName} env var: ${parsed}`);
+          baseRate = parsed;
+          break;
+        }
       }
     }
 
-    // 3. Check config file
-    if (this.config.recording?.sampling_rate !== undefined) {
-      if (this.validateSamplingRate(this.config.recording.sampling_rate, "config.yaml")) {
-        logger.debug(
-          `Using sampling rate from config.yaml: ${this.config.recording.sampling_rate}`,
-        );
-        return this.config.recording.sampling_rate;
+    if (baseRate === undefined && configSampling?.base_rate !== undefined) {
+      if (this.validateSamplingRate(configSampling.base_rate, "config.yaml recording.sampling.base_rate")) {
+        baseRate = configSampling.base_rate;
       }
     }
 
-    // 4. Default to 1.0 (100%)
-    logger.debug("Using default sampling rate: 1.0");
-    return 1;
+    if (baseRate === undefined && this.config.recording?.sampling_rate !== undefined) {
+      if (this.validateSamplingRate(this.config.recording.sampling_rate, "config.yaml recording.sampling_rate")) {
+        baseRate = this.config.recording.sampling_rate;
+      }
+    }
+
+    if (baseRate === undefined) {
+      logger.debug("Using default sampling rate: 1.0");
+      baseRate = 1;
+    }
+
+    let minRate = 0;
+    if (mode === "adaptive") {
+      if (configSampling?.min_rate !== undefined) {
+        if (this.validateSamplingRate(configSampling.min_rate, "config.yaml recording.sampling.min_rate")) {
+          minRate = configSampling.min_rate;
+        }
+      } else {
+        minRate = 0.001;
+      }
+
+      minRate = Math.min(baseRate, minRate);
+    }
+
+    return {
+      mode,
+      baseRate,
+      minRate,
+    };
   }
 
   private registerDefaultInstrumentations(): void {
@@ -351,6 +416,11 @@ export class TuskDriftCore {
 
   private initializeTracing({ baseDirectory }: { baseDirectory: string }): void {
     const serviceName = this.config.service?.name || "unknown";
+    const batchProcessorConfig = {
+      maxQueueSize: 2048,
+      maxExportBatchSize: 512,
+      scheduledDelayMillis: 2000,
+    };
 
     logger.debug(`Initializing OpenTelemetry tracing for service: ${serviceName}`);
 
@@ -364,24 +434,20 @@ export class TuskDriftCore {
       environment: this.initParams.env,
       sdkVersion: SDK_VERSION,
       sdkInstanceId: this.generateSdkInstanceId(),
+      exportTimeoutMillis: 30000,
+    });
+
+    this.driftBatchSpanProcessor = new DriftBatchSpanProcessor({
+      exporter: this.spanExporter,
+      config: batchProcessorConfig,
+      mode: this.mode,
     });
 
     const tracerProvider = new NodeTracerProvider({
       resource: new Resource({
         [ATTR_SERVICE_NAME]: serviceName,
       }),
-      spanProcessors: [
-        new BatchSpanProcessor(this.spanExporter, {
-          // Maximum queue size before spans are dropped, default 2048
-          maxQueueSize: 2048,
-          // Maximum batch size per export, default 512
-          maxExportBatchSize: 512,
-          // Interval between exports, default 5s
-          scheduledDelayMillis: 2000,
-          // Max time for export before timeout, default 30s
-          exportTimeoutMillis: 30000,
-        }),
-      ],
+      spanProcessors: [this.driftBatchSpanProcessor],
     });
 
     // Register the tracer provider
@@ -392,6 +458,169 @@ export class TuskDriftCore {
   private generateSdkInstanceId(): string {
     const originalDate = OriginalGlobalUtils.getOriginalDate();
     return `sdk-${originalDate.getTime()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private startAdaptiveSamplingController(): void {
+    if (this.mode !== TuskDriftMode.RECORD || this.samplingMode !== "adaptive") {
+      return;
+    }
+
+    this.adaptiveSamplingController = new AdaptiveSamplingController({
+      mode: this.samplingMode,
+      baseRate: this.samplingRate,
+      minRate: this.minSamplingRate,
+    });
+
+    this.effectiveMemoryLimitBytes = this.detectEffectiveMemoryLimitBytes();
+
+    this.eventLoopDelayHistogram = monitorEventLoopDelay({
+      resolution: 20,
+    });
+    this.eventLoopDelayHistogram.enable();
+
+    this.adaptiveSamplingInterval = setInterval(() => {
+      this.updateAdaptiveSamplingHealth();
+    }, 2000);
+    this.adaptiveSamplingInterval.unref?.();
+
+    this.updateAdaptiveSamplingHealth();
+  }
+
+  private updateAdaptiveSamplingHealth(): void {
+    if (!this.adaptiveSamplingController) {
+      return;
+    }
+
+    const batchHealth = this.driftBatchSpanProcessor?.getHealthSnapshot();
+    const exporterHealth = this.spanExporter?.getHealthSnapshot();
+
+    const eventLoopLagP95Ms =
+      this.eventLoopDelayHistogram && this.eventLoopDelayHistogram.exceeds > 0
+        ? this.eventLoopDelayHistogram.percentile(95) / 1_000_000
+        : this.eventLoopDelayHistogram
+          ? this.eventLoopDelayHistogram.percentile(95) / 1_000_000
+          : null;
+
+    this.eventLoopDelayHistogram?.reset();
+
+    this.adaptiveSamplingController.update({
+      queueFillRatio: batchHealth?.queueFillRatio ?? null,
+      droppedSpanCount: batchHealth?.droppedSpanCount ?? 0,
+      exportFailureCount:
+        (batchHealth?.exportFailureCount ?? 0) + (exporterHealth?.failureCount ?? 0),
+      exportTimeoutCount: exporterHealth?.timeoutCount ?? 0,
+      exportCircuitOpen: exporterHealth?.circuitOpen ?? false,
+      eventLoopLagP95Ms,
+      memoryPressureRatio: this.getMemoryPressureRatio(),
+    });
+  }
+
+  private stopAdaptiveSamplingController(): void {
+    if (this.adaptiveSamplingInterval) {
+      clearInterval(this.adaptiveSamplingInterval);
+      this.adaptiveSamplingInterval = null;
+    }
+
+    if (this.eventLoopDelayHistogram) {
+      this.eventLoopDelayHistogram.disable();
+      this.eventLoopDelayHistogram = null;
+    }
+  }
+
+  private detectEffectiveMemoryLimitBytes(): number | null {
+    const candidates = [
+      "/sys/fs/cgroup/memory.max",
+      "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    ];
+
+    for (const filePath of candidates) {
+      const parsed = this.readNumericControlFile(filePath);
+      if (parsed === null) {
+        continue;
+      }
+      if (parsed <= 0 || parsed > 1_000_000_000_000_000) {
+        continue;
+      }
+      return parsed;
+    }
+
+    return null;
+  }
+
+  private getMemoryPressureRatio(): number | null {
+    if (!this.effectiveMemoryLimitBytes || this.effectiveMemoryLimitBytes <= 0) {
+      return null;
+    }
+
+    const cgroupCurrent = this.readNumericControlFile("/sys/fs/cgroup/memory.current");
+    if (cgroupCurrent !== null) {
+      return cgroupCurrent / this.effectiveMemoryLimitBytes;
+    }
+
+    const cgroupV1Current = this.readNumericControlFile("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+    if (cgroupV1Current !== null) {
+      return cgroupV1Current / this.effectiveMemoryLimitBytes;
+    }
+
+    return process.memoryUsage().rss / this.effectiveMemoryLimitBytes;
+  }
+
+  private readNumericControlFile(filePath: string): number | null {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return null;
+      }
+
+      const rawValue = fs.readFileSync(filePath, "utf8").trim();
+      if (!rawValue || rawValue === "max") {
+        return null;
+      }
+
+      const parsed = Number.parseInt(rawValue, 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  executeWithoutRecording<T>(fn: () => T): T {
+    const suppressedContext = context
+      .active()
+      .setValue(STOP_RECORDING_CHILD_SPANS_CONTEXT_KEY, true);
+    return context.with(suppressedContext, fn);
+  }
+
+  shouldRecordRootRequest({ isPreAppStart }: { isPreAppStart: boolean }): RootSamplingDecision {
+    if (this.adaptiveSamplingController) {
+      return this.adaptiveSamplingController.getDecision({
+        isPreAppStart,
+      });
+    }
+
+    if (isPreAppStart) {
+      return {
+        shouldRecord: true,
+        reason: "pre_app_start",
+        mode: this.samplingMode,
+        state: "fixed",
+        baseRate: this.samplingRate,
+        minRate: this.minSamplingRate,
+        effectiveRate: 1,
+        admissionMultiplier: 1,
+      };
+    }
+
+    const shouldRecord = Math.random() < this.samplingRate;
+    return {
+      shouldRecord,
+      reason: shouldRecord ? "sampled" : "not_sampled",
+      mode: this.samplingMode,
+      state: "fixed",
+      baseRate: this.samplingRate,
+      minRate: this.minSamplingRate,
+      effectiveRate: this.samplingRate,
+      admissionMultiplier: 1,
+    };
   }
 
   /**
@@ -491,7 +720,10 @@ export class TuskDriftCore {
       this.initParams.env = nodeEnv;
     }
 
-    this.samplingRate = this.determineSamplingRate(initParams);
+    const samplingConfig = this.determineSamplingConfig(initParams);
+    this.samplingMode = samplingConfig.mode;
+    this.samplingRate = samplingConfig.baseRate;
+    this.minSamplingRate = samplingConfig.minRate;
 
     // Need to have observable service id if exporting spans to Tusk backend
     if (this.config.recording?.export_spans && !this.config.service?.id) {
@@ -576,6 +808,7 @@ export class TuskDriftCore {
     // Important to do this after registering instrumentations since initializeTracing lazy imports the NodeSDK from OpenTelemetry
     // which imports the gRPC exporter
     this.initializeTracing({ baseDirectory });
+    this.startAdaptiveSamplingController();
 
     // Create env vars snapshot span (only in RECORD mode with env var recording enabled)
     this.createEnvVarsSnapshot();
@@ -758,7 +991,7 @@ interface TuskDriftPublicAPI {
    *   - apiKey: string - Your TuskDrift API key (required)
    *   - env: string - The environment name (e.g., 'development', 'staging', 'production') (required)
    *   - logLevel?: LogLevel - Optional logging level ('silent' | 'error' | 'warn' | 'info' | 'debug'), defaults to 'info'
-   *   - samplingRate?: number - Optional sampling rate (0.0-1.0) for recording requests. Overrides TUSK_SAMPLING_RATE env var and config.yaml. Defaults to 1.0
+   *   - samplingRate?: number - Optional sampling rate (0.0-1.0) for recording requests. Overrides TUSK_RECORDING_SAMPLING_RATE, the legacy TUSK_SAMPLING_RATE alias, and config.yaml. Defaults to 1.0
    *
    * @returns void - Initializes the SDK
    *

@@ -71,7 +71,7 @@ export { TuskDrift };
       <td><code>samplingRate</code></td>
       <td><code>number</code></td>
       <td><code>1.0</code></td>
-      <td>Override sampling rate (0.0 - 1.0) for recording. Takes precedence over <code>TUSK_SAMPLING_RATE</code> env var and config file.</td>
+      <td>Override the base sampling rate (0.0 - 1.0) for recording. Takes precedence over <code>TUSK_RECORDING_SAMPLING_RATE</code> and config file base-rate settings. Does not change <code>recording.sampling.mode</code>.</td>
     </tr>
     <tr>
       <td><code>registerEsmLoaderHooks</code></td>
@@ -137,17 +137,31 @@ For ESM applications, you **cannot** control import order within your applicatio
 
 ### 3. Configure Sampling Rate
 
-The sampling rate determines what percentage of requests are recorded during replay tests. Tusk Drift supports three ways to configure the sampling rate, with the following precedence (highest to lowest):
+Sampling controls what percentage of inbound requests are recorded in `RECORD` mode.
 
-1. **Init Parameter**
-2. **Environment Variable** (`TUSK_SAMPLING_RATE`)
-3. **Configuration File** (`.tusk/config.yaml`)
+Tusk Drift supports two sampling modes in `.tusk/config.yaml`:
 
-If not specified, the default sampling rate is `1.0` (100%).
+- `fixed`: record requests at a constant base rate.
+- `adaptive`: start from a base rate and automatically shed load when queue pressure, export failures, export timeouts, event loop lag, or memory pressure indicate the SDK should back off. In severe conditions the SDK can temporarily pause recording entirely.
 
-#### Method 1: Init Parameter (Programmatic Override)
+Sampling configuration is resolved in two layers:
 
-Set the sampling rate directly in your initialization code:
+1. **Base rate precedence** (highest to lowest):
+   - `TuskDrift.initialize({ samplingRate: ... })`
+   - `TUSK_RECORDING_SAMPLING_RATE`
+   - legacy alias `TUSK_SAMPLING_RATE`
+   - `.tusk/config.yaml` `recording.sampling.base_rate`
+   - `.tusk/config.yaml` legacy `recording.sampling_rate`
+   - default base rate `1.0`
+2. **Mode and minimum rate**:
+   - `recording.sampling.mode` comes from `.tusk/config.yaml` and defaults to `fixed`
+   - `recording.sampling.min_rate` is only used in `adaptive` mode and defaults to `0.001` when omitted
+
+> **Note:** Requests before `TuskDrift.markAppAsReady()` are always recorded. Sampling applies to normal inbound traffic after startup.
+
+#### Method 1: Init Parameter (Programmatic Base-Rate Override)
+
+Set the base sampling rate directly in your initialization code:
 
 ```typescript
 TuskDrift.initialize({
@@ -159,27 +173,51 @@ TuskDrift.initialize({
 
 #### Method 2: Environment Variable
 
-Set the `TUSK_SAMPLING_RATE` environment variable:
+Set the `TUSK_RECORDING_SAMPLING_RATE` environment variable to override the base sampling rate:
 
 ```bash
 # Development - record everything
-TUSK_SAMPLING_RATE=1.0 npm run dev
+TUSK_RECORDING_SAMPLING_RATE=1.0 npm run dev
 
 # Production - sample 10% of requests
-TUSK_SAMPLING_RATE=0.1 npm start
+TUSK_RECORDING_SAMPLING_RATE=0.1 npm start
 ```
+
+`TUSK_SAMPLING_RATE` is still supported as a backward-compatible alias, but new setups should prefer `TUSK_RECORDING_SAMPLING_RATE`.
 
 #### Method 3: Configuration File
 
-Update the configuration file `.tusk/config.yaml` to include a `recording` section. Example `recording` configuration:
+Use the nested `recording.sampling` config to choose `fixed` vs `adaptive` mode and set the base/minimum rates.
 
 ```yaml
 # ... existing configuration ...
 
 recording:
-  sampling_rate: 0.1
+  sampling:
+    mode: fixed
+    base_rate: 0.1
   export_spans: true
   enable_env_var_recording: true
+```
+
+**Adaptive sampling example:**
+
+```yaml
+# ... existing configuration ...
+
+recording:
+  sampling:
+    mode: adaptive
+    base_rate: 0.25
+    min_rate: 0.01
+  export_spans: true
+```
+
+**Legacy config still supported:**
+
+```yaml
+recording:
+  sampling_rate: 0.1
 ```
 
 #### Additional Recording Configuration Options
@@ -195,10 +233,28 @@ recording:
   </thead>
   <tbody>
     <tr>
-      <td><code>sampling_rate</code></td>
+      <td><code>sampling.mode</code></td>
+      <td><code>"fixed" | "adaptive"</code></td>
+      <td><code>"fixed"</code></td>
+      <td>Selects constant sampling or adaptive load shedding.</td>
+    </tr>
+    <tr>
+      <td><code>sampling.base_rate</code></td>
       <td><code>number</code></td>
       <td><code>1.0</code></td>
-      <td>The sampling rate (0.0 - 1.0). 1.0 means 100% of requests are recorded, 0.0 means 0% of requests are recorded.</td>
+      <td>The base sampling rate (0.0 - 1.0). This is the preferred config key and can be overridden by <code>TUSK_RECORDING_SAMPLING_RATE</code> or the <code>samplingRate</code> init parameter.</td>
+    </tr>
+    <tr>
+      <td><code>sampling.min_rate</code></td>
+      <td><code>number</code></td>
+      <td><code>0.001</code> in <code>adaptive</code> mode</td>
+      <td>The minimum steady-state sampling rate for adaptive mode. In critical conditions the SDK can still temporarily pause recording.</td>
+    </tr>
+    <tr>
+      <td><code>sampling_rate</code></td>
+      <td><code>number</code></td>
+      <td><code>None</code></td>
+      <td>Legacy fallback for the base sampling rate. Still supported for backward compatibility, but <code>recording.sampling.base_rate</code> is preferred.</td>
     </tr>
     <tr>
       <td><code>export_spans</code></td>
@@ -249,7 +305,7 @@ In rare cases, the wrapping can cause issues with instrumented packages:
 
 If you encounter errors like:
 
-```
+```text
 SyntaxError: The requested module '...' does not provide an export named '...'
 (node:1234) Error: 'import-in-the-middle' failed to wrap 'file://../../path/to/file.js'
 ```

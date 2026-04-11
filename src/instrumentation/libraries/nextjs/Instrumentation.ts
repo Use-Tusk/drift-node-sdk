@@ -11,7 +11,7 @@ import {
   NextjsBaseServerModule,
 } from "./types";
 import { wrap, handleRecordMode, handleReplayMode } from "../../core/utils";
-import { shouldSample, OriginalGlobalUtils, logger } from "../../../core/utils";
+import { OriginalGlobalUtils, logger } from "../../../core/utils";
 import { PackageType, StatusCode } from "@use-tusk/drift-schemas/core/span";
 import { EncodingType, JsonSchemaHelper } from "../../../core/tracing/JsonSchemaHelper";
 import {
@@ -123,13 +123,13 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
       ) {
         // Sample as soon as we can to avoid additional overhead if this request is not sampled
         if (self.mode === TuskDriftMode.RECORD) {
-          if (
-            !shouldSample({
-              samplingRate: self.tuskDrift.getSamplingRate(),
-              isAppReady: self.tuskDrift.isAppReady(),
-            })
-          ) {
-            return originalHandleRequest.call(this, req, res, parsedUrl);
+          const decision = self.tuskDrift.shouldRecordRootRequest({
+            isPreAppStart: !self.tuskDrift.isAppReady(),
+          });
+          if (!decision.shouldRecord) {
+            return self.tuskDrift.executeWithoutRecording(() =>
+              originalHandleRequest.call(this, req, res, parsedUrl),
+            );
           }
         }
 
