@@ -6,11 +6,22 @@ import { isCommonJS } from "./utils/runtimeDetectionUtils";
 const NODE_MAJOR = parseInt(process.versions.node.split(".")[0]!, 10);
 const NODE_MINOR = parseInt(process.versions.node.split(".")[1]!, 10);
 
+/**
+ * Mutable dependency container — exposed so tests can swap out isCommonJS
+ * without patching non-configurable module exports.
+ * @internal
+ */
+export const _esmLoaderDeps = {
+  isCommonJS,
+  nodeMajor: NODE_MAJOR,
+  nodeMinor: NODE_MINOR,
+};
+
 function supportsModuleRegister(): boolean {
   return (
-    NODE_MAJOR >= 21 ||
-    (NODE_MAJOR === 20 && NODE_MINOR >= 6) ||
-    (NODE_MAJOR === 18 && NODE_MINOR >= 19)
+    _esmLoaderDeps.nodeMajor >= 21 ||
+    (_esmLoaderDeps.nodeMajor === 20 && _esmLoaderDeps.nodeMinor >= 6) ||
+    (_esmLoaderDeps.nodeMajor === 18 && _esmLoaderDeps.nodeMinor >= 19)
   );
 }
 
@@ -25,7 +36,7 @@ function supportsModuleRegister(): boolean {
  * https://nodejs.org/api/module.html#moduleregisterspecifier-parenturl-options
  */
 export function initializeEsmLoader(): void {
-  if (isCommonJS()) {
+  if (_esmLoaderDeps.isCommonJS()) {
     return;
   }
 
@@ -38,9 +49,11 @@ export function initializeEsmLoader(): void {
     return;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if ((globalThis as any).__tuskDriftEsmLoaderRegistered) {
     return;
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).__tuskDriftEsmLoaderRegistered = true;
 
   try {
