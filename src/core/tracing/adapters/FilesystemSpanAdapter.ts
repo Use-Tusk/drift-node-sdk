@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as fsp from "fs/promises";
 import * as path from "path";
 import { ExportResult, ExportResultCode } from "@opentelemetry/core";
 import type { SpanExportAdapter } from "../TdSpanExporter";
@@ -30,21 +31,32 @@ export class FilesystemSpanAdapter implements SpanExportAdapter {
 
   async exportSpans(spans: CleanSpanData[]): Promise<ExportResult> {
     try {
+      // Group spans by trace file so we do one write per file instead of one per span.
+      const linesByFile = new Map<string, string[]>();
+
       for (const span of spans) {
         const traceId = span.traceId;
 
-        // Get or create file path for this trace ID
         let filePath = this.traceFileMap.get(traceId);
-
         if (!filePath) {
           const isoTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
           filePath = path.join(this.baseDirectory, `${isoTimestamp}_trace_${traceId}.jsonl`);
           this.traceFileMap.set(traceId, filePath);
         }
 
-        const jsonLine = JSON.stringify({ ...span, kind: mapOtToPb(span.kind as OtSpanKind) }) + "\n";
-        fs.appendFileSync(filePath, jsonLine, "utf8");
+        let lines = linesByFile.get(filePath);
+        if (!lines) {
+          lines = [];
+          linesByFile.set(filePath, lines);
+        }
+        lines.push(JSON.stringify({ ...span, kind: mapOtToPb(span.kind as OtSpanKind) }));
       }
+
+      await Promise.all(
+        Array.from(linesByFile.entries()).map(([filePath, lines]) =>
+          fsp.appendFile(filePath, lines.join("\n") + "\n", "utf8"),
+        ),
+      );
 
       logger.debug(
         `Exported ${spans.length} span(s) to trace-specific files in ${this.baseDirectory}`,
