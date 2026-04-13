@@ -33,6 +33,11 @@ export interface TuskConfig {
   };
   recording?: {
     sampling_rate?: number;
+    sampling?: {
+      mode?: "fixed" | "adaptive";
+      base_rate?: number;
+      min_rate?: number;
+    };
     export_spans?: boolean;
     enable_env_var_recording?: boolean;
     enable_analytics?: boolean;

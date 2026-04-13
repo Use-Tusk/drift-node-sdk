@@ -118,6 +118,51 @@ test.afterEach(() => {
   SpanUtilsErrorTesting.teardownErrorResilienceTest();
 });
 
+test("should treat the first inbound HTTP request as pre-app-start before auto-marking ready", (t) => {
+  const callOrder: string[] = [];
+  let capturedIsPreAppStart: boolean | undefined;
+
+  (httpInstrumentation as any).tuskDrift = {
+    isAppReady: () => {
+      callOrder.push("isAppReady");
+      return false;
+    },
+    shouldRecordRootRequest: ({ isPreAppStart }: { isPreAppStart: boolean }) => {
+      callOrder.push("shouldRecordRootRequest");
+      capturedIsPreAppStart = isPreAppStart;
+      return { shouldRecord: true };
+    },
+    executeWithoutRecording: (fn: () => unknown) => {
+      callOrder.push("executeWithoutRecording");
+      return fn();
+    },
+    markAppAsReady: () => {
+      callOrder.push("markAppAsReady");
+    },
+  };
+
+  (httpInstrumentation as any)._createServerSpan = () => {
+    callOrder.push("_createServerSpan");
+    return "server-span-result";
+  };
+
+  const wrappedEmit = (httpInstrumentation as any)._getServerEmitPatchFn("http")(() => {
+    callOrder.push("originalEmit");
+    return "original-emit-result";
+  });
+
+  const result = wrappedEmit.call({} as http.Server, "request", {} as http.IncomingMessage, {} as http.ServerResponse);
+
+  t.is(result, "server-span-result");
+  t.true(capturedIsPreAppStart === true);
+  t.deepEqual(callOrder, [
+    "isAppReady",
+    "shouldRecordRootRequest",
+    "_createServerSpan",
+    "markAppAsReady",
+  ]);
+});
+
 // Client Request Error Resilience
 test("should complete HTTP requests when SpanUtils.createSpan throws", async (t) => {
   SpanUtilsErrorTesting.mockCreateSpanWithError({

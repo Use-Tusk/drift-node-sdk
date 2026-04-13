@@ -44,7 +44,6 @@ import {
   SchemaMerges,
 } from "../../../core/tracing/JsonSchemaHelper";
 import {
-  shouldSample,
   OriginalGlobalUtils,
   logger,
   isEsm,
@@ -169,7 +168,7 @@ export class HttpInstrumentation extends TdInstrumentationBase {
       logger.debug(
         `[HttpInstrumentation] Dropping inbound request due to transforms: ${method} ${url}`,
       );
-      return originalHandler.call(this);
+      return this.tuskDrift.executeWithoutRecording(() => originalHandler.call(this));
     }
 
     // Handle replay mode using replay hooks (only if app is ready)
@@ -1365,32 +1364,36 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     return (originalEmit: Function) => {
       return function (this: Server, eventName: string, ...args: any[]) {
         if (eventName === "request") {
-          if (!self.tuskDrift.isAppReady()) {
-            self.tuskDrift.markAppAsReady();
-          }
+          const isPreAppStart = !self.tuskDrift.isAppReady();
 
-          if (self.mode === TuskDriftMode.RECORD) {
-            if (
-              !shouldSample({
-                samplingRate: self.tuskDrift.getSamplingRate(),
-                isAppReady: self.tuskDrift.isAppReady(),
-              })
-            ) {
-              return originalEmit.apply(this, [eventName, ...args]);
+          try {
+            if (self.mode === TuskDriftMode.RECORD) {
+              const decision = self.tuskDrift.shouldRecordRootRequest({
+                isPreAppStart,
+              });
+              if (!decision.shouldRecord) {
+                return self.tuskDrift.executeWithoutRecording(() =>
+                  originalEmit.apply(this, [eventName, ...args]),
+                );
+              }
+            }
+
+            const req = args[0];
+            const res = args[1];
+
+            return self._createServerSpan({
+              req,
+              res,
+              originalHandler: () => {
+                return originalEmit.apply(this, [eventName, ...args]);
+              },
+              protocol,
+            });
+          } finally {
+            if (isPreAppStart) {
+              self.tuskDrift.markAppAsReady();
             }
           }
-
-          const req = args[0];
-          const res = args[1];
-
-          return self._createServerSpan({
-            req,
-            res,
-            originalHandler: () => {
-              return originalEmit.apply(this, [eventName, ...args]);
-            },
-            protocol,
-          });
         }
 
         return originalEmit.apply(this, [eventName, ...args]);

@@ -1,17 +1,21 @@
 import { ExportResult, ExportResultCode } from "@opentelemetry/core";
 import type { SpanExportAdapter } from "../TdSpanExporter";
 import { CleanSpanData } from "../../types";
-import { SpanExportServiceClient } from "@use-tusk/drift-schemas/backend/span_export_service.client";
 import {
   ExportSpansRequest,
   ExportSpansResponse,
 } from "@use-tusk/drift-schemas/backend/span_export_service";
-import { TwirpFetchTransport } from "@protobuf-ts/twirp-transport";
 import { Span, PackageType, SpanKind as DriftSpanKind } from "@use-tusk/drift-schemas/core/span";
 import { SpanKind as OtelSpanKind } from "@opentelemetry/api";
 import { toStruct } from "../../utils/protobufUtils";
 import { logger } from "../../utils/logger";
 import { buildExportSpansRequestBytes } from "../../rustCoreBinding";
+import {
+  CircuitBreaker,
+  CircuitState,
+  NonRetryableError,
+  withRetries,
+} from "./resilience";
 
 export interface ApiSpanAdapterConfig {
   apiKey: string;
@@ -20,9 +24,17 @@ export interface ApiSpanAdapterConfig {
   environment?: string;
   sdkVersion: string;
   sdkInstanceId: string;
+  exportTimeoutMillis: number;
 }
 
 const DRIFT_API_PATH = "/api/drift";
+
+export interface ApiSpanAdapterHealthSnapshot {
+  failureCount: number;
+  timeoutCount: number;
+  circuitState: CircuitState;
+  lastExportLatencyMs: number | null;
+}
 
 /**
  * Exports spans to Tusk backend API via protobuf
@@ -31,11 +43,15 @@ export class ApiSpanAdapter implements SpanExportAdapter {
   readonly name = "api";
   private apiKey: string;
   private tuskBackendBaseUrl: string;
-  private spanExportClient: SpanExportServiceClient;
   private observableServiceId: string;
   private environment?: string;
   private sdkVersion: string;
   private sdkInstanceId: string;
+  private exportTimeoutMillis: number;
+  private circuitBreaker: CircuitBreaker;
+  private failureCount = 0;
+  private timeoutCount = 0;
+  private lastExportLatencyMs: number | null = null;
 
   constructor(config: ApiSpanAdapterConfig) {
     this.apiKey = config.apiKey;
@@ -44,88 +60,61 @@ export class ApiSpanAdapter implements SpanExportAdapter {
     this.environment = config.environment;
     this.sdkVersion = config.sdkVersion;
     this.sdkInstanceId = config.sdkInstanceId;
-
-    const transport = new TwirpFetchTransport({
-      baseUrl: `${config.tuskBackendBaseUrl}${DRIFT_API_PATH}`,
-      meta: {
-        "x-api-key": config.apiKey,
-        "x-td-skip-instrumentation": "true",
-      },
+    this.exportTimeoutMillis = config.exportTimeoutMillis;
+    this.circuitBreaker = new CircuitBreaker({
+      failureThreshold: 5,
+      resetTimeoutMs: 30000,
     });
-    this.spanExportClient = new SpanExportServiceClient(transport);
 
     logger.debug("ApiSpanAdapter initialized");
   }
 
   async exportSpans(spans: CleanSpanData[]): Promise<ExportResult> {
-    try {
-      const rustRequestBytes = buildExportSpansRequestBytes(
-        this.observableServiceId,
-        this.environment || "",
-        this.sdkVersion,
-        this.sdkInstanceId,
-        spans.map((s) => s.protoSpanBytes).filter((s): s is Buffer => Buffer.isBuffer(s)),
-      );
-      const allSpansHavePrebuiltBytes =
-        spans.length > 0 && spans.every((s) => Buffer.isBuffer(s.protoSpanBytes));
-
-      if (allSpansHavePrebuiltBytes && rustRequestBytes) {
-        const response = await fetch(
-          `${this.tuskBackendBaseUrl}${DRIFT_API_PATH}/tusk.drift.backend.v1.SpanExportService/ExportSpans`,
-          {
-            method: "POST",
-            headers: {
-              "x-api-key": this.apiKey,
-              "x-td-skip-instrumentation": "true",
-              "Content-Type": "application/protobuf",
-              Accept: "application/protobuf",
-            },
-            body: new Uint8Array(rustRequestBytes),
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error(`Remote export failed with status ${response.status}`);
-        }
-
-        const responseBytes = new Uint8Array(await response.arrayBuffer());
-        const parsed = ExportSpansResponse.fromBinary(responseBytes);
-        if (!parsed.success) {
-          throw new Error(`Remote export failed: ${parsed.message}`);
-        }
-
-        logger.debug(
-          `Successfully exported ${spans.length} spans to remote endpoint (rust binary path)`,
-        );
-        return { code: ExportResultCode.SUCCESS };
-      }
-
-      // Transform spans to protobuf format
-      const protoSpans: Span[] = spans.map((span) => this.transformSpanToProtobuf(span));
-
-      const request: ExportSpansRequest = {
-        observableServiceId: this.observableServiceId,
-        environment: this.environment || "",
-        sdkVersion: this.sdkVersion,
-        sdkInstanceId: this.sdkInstanceId,
-        spans: protoSpans,
+    if (!this.circuitBreaker.allowRequest()) {
+      const error = new Error("Remote export circuit breaker is open");
+      logger.warn(error.message);
+      return {
+        code: ExportResultCode.FAILED,
+        error,
       };
+    }
 
-      const response = await this.spanExportClient.exportSpans(request);
+    const startedAtMs = Date.now();
 
-      if (!response.response.success) {
-        throw new Error(`Remote export failed: ${response.response.message}`);
-      }
+    try {
+      const requestBytes = this.buildRequestBytes(spans);
+      await withRetries(
+        () => this.postExportRequest(requestBytes),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 500,
+          maxDelayMs: 4000,
+        },
+      );
 
+      this.circuitBreaker.recordSuccess();
+      this.lastExportLatencyMs = Date.now() - startedAtMs;
       logger.debug(`Successfully exported ${spans.length} spans to remote endpoint`);
       return { code: ExportResultCode.SUCCESS };
     } catch (error) {
+      this.failureCount += 1;
+      this.lastExportLatencyMs = Date.now() - startedAtMs;
+      this.circuitBreaker.recordFailure();
       logger.error(`Failed to export spans to remote:`, error);
       return {
         code: ExportResultCode.FAILED,
         error: error instanceof Error ? error : new Error("API export failed"),
       };
     }
+  }
+
+  getHealthSnapshot(): ApiSpanAdapterHealthSnapshot {
+    return {
+      failureCount: this.failureCount,
+      timeoutCount: this.timeoutCount,
+      circuitState: this.circuitBreaker.getState(),
+      lastExportLatencyMs: this.lastExportLatencyMs,
+    };
   }
 
   private transformSpanToProtobuf(cleanSpan: CleanSpanData): Span {
@@ -177,5 +166,78 @@ export class ApiSpanAdapter implements SpanExportAdapter {
   async shutdown(): Promise<void> {
     // No cleanup needed for API exporter
     return Promise.resolve();
+  }
+
+  private buildRequestBytes(spans: CleanSpanData[]): Uint8Array {
+    const rustRequestBytes = buildExportSpansRequestBytes(
+      this.observableServiceId,
+      this.environment || "",
+      this.sdkVersion,
+      this.sdkInstanceId,
+      spans.map((span) => span.protoSpanBytes).filter((value): value is Buffer => Buffer.isBuffer(value)),
+    );
+    const allSpansHavePrebuiltBytes =
+      spans.length > 0 && spans.every((span) => Buffer.isBuffer(span.protoSpanBytes));
+
+    if (allSpansHavePrebuiltBytes && rustRequestBytes) {
+      return new Uint8Array(rustRequestBytes);
+    }
+
+    const protoSpans: Span[] = spans.map((span) => this.transformSpanToProtobuf(span));
+    const request: ExportSpansRequest = {
+      observableServiceId: this.observableServiceId,
+      environment: this.environment || "",
+      sdkVersion: this.sdkVersion,
+      sdkInstanceId: this.sdkInstanceId,
+      spans: protoSpans,
+    };
+    return ExportSpansRequest.toBinary(request);
+  }
+
+  private async postExportRequest(requestBytes: Uint8Array): Promise<void> {
+    const controller = new AbortController();
+    const timeoutError = new Error("Remote export timed out");
+    const timeout = setTimeout(() => {
+      controller.abort(timeoutError);
+    }, this.exportTimeoutMillis);
+
+    try {
+      const response = await fetch(
+        `${this.tuskBackendBaseUrl}${DRIFT_API_PATH}/tusk.drift.backend.v1.SpanExportService/ExportSpans`,
+        {
+          method: "POST",
+          headers: {
+            "x-api-key": this.apiKey,
+            "x-td-skip-instrumentation": "true",
+            "Content-Type": "application/protobuf",
+            Accept: "application/protobuf",
+          },
+          body: Buffer.from(requestBytes),
+          signal: controller.signal,
+        },
+      );
+
+      if (response.status >= 500) {
+        throw new Error(`Remote export failed with status ${response.status}`);
+      }
+
+      if (response.status !== 200) {
+        throw new NonRetryableError(`Remote export failed with status ${response.status}`);
+      }
+
+      const responseBytes = new Uint8Array(await response.arrayBuffer());
+      const parsed = ExportSpansResponse.fromBinary(responseBytes);
+      if (!parsed.success) {
+        throw new Error(`Remote export failed: ${parsed.message}`);
+      }
+    } catch (error) {
+      if (error === timeoutError || (error instanceof Error && error.name === "AbortError")) {
+        this.timeoutCount += 1;
+        throw error;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }

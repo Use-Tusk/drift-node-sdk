@@ -3,7 +3,7 @@ import { ExportResult, ExportResultCode } from "@opentelemetry/core";
 import { TuskDriftMode } from "../TuskDrift";
 import { SpanTransformer } from "./SpanTransformer";
 import { FilesystemSpanAdapter } from "./adapters/FilesystemSpanAdapter";
-import { ApiSpanAdapter } from "./adapters/ApiSpanAdapter";
+import { ApiSpanAdapter, ApiSpanAdapterHealthSnapshot } from "./adapters/ApiSpanAdapter";
 import { logger } from "../utils/logger";
 import { CleanSpanData, TD_INSTRUMENTATION_LIBRARY_NAME, TdSpanAttributes } from "../types";
 import { TraceBlockingManager } from "./TraceBlockingManager";
@@ -20,6 +20,7 @@ export interface TdTraceExporterConfig {
   environment?: string;
   sdkVersion: string;
   sdkInstanceId: string;
+  exportTimeoutMillis: number;
 }
 
 /** A SpanExportAdapter defines the actual thing that exports to api/file/etc.
@@ -28,6 +29,13 @@ export interface SpanExportAdapter {
   name: string;
   exportSpans(spans: CleanSpanData[]): Promise<ExportResult>;
   shutdown(): Promise<void>;
+}
+
+export interface TdExporterHealthSnapshot {
+  failureCount: number;
+  timeoutCount: number;
+  circuitOpen: boolean;
+  lastExportLatencyMs: number | null;
 }
 
 export class TdSpanExporter implements SpanExporter {
@@ -55,6 +63,7 @@ export class TdSpanExporter implements SpanExporter {
           environment: config.environment,
           sdkVersion: config.sdkVersion,
           sdkInstanceId: config.sdkInstanceId,
+          exportTimeoutMillis: config.exportTimeoutMillis,
         }),
       );
     } else {
@@ -69,6 +78,44 @@ export class TdSpanExporter implements SpanExporter {
 
   getAdapters() {
     return this.adapters;
+  }
+
+  getHealthSnapshot(): TdExporterHealthSnapshot {
+    const apiAdapterSnapshots = this.adapters
+      .filter((adapter): adapter is ApiSpanAdapter => adapter instanceof ApiSpanAdapter)
+      .map((adapter) => adapter.getHealthSnapshot());
+
+    if (apiAdapterSnapshots.length === 0) {
+      return {
+        failureCount: 0,
+        timeoutCount: 0,
+        circuitOpen: false,
+        lastExportLatencyMs: null,
+      };
+    }
+
+    const aggregated = apiAdapterSnapshots.reduce<
+      Omit<TdExporterHealthSnapshot, "lastExportLatencyMs">
+    >(
+      (accumulator, snapshot: ApiSpanAdapterHealthSnapshot) => ({
+        failureCount: accumulator.failureCount + snapshot.failureCount,
+        timeoutCount: accumulator.timeoutCount + snapshot.timeoutCount,
+        circuitOpen: accumulator.circuitOpen || snapshot.circuitState === "open",
+      }),
+      {
+        failureCount: 0,
+        timeoutCount: 0,
+        circuitOpen: false,
+      },
+    );
+    const observedLatencies = apiAdapterSnapshots
+      .map((snapshot) => snapshot.lastExportLatencyMs)
+      .filter((latency): latency is number => latency !== null);
+
+    return {
+      ...aggregated,
+      lastExportLatencyMs: observedLatencies.length > 0 ? Math.max(...observedLatencies) : null,
+    };
   }
 
   /**

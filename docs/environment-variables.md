@@ -110,23 +110,28 @@ Your Tusk Drift API key, required when using Tusk Cloud for storing and managing
 
   This will securely store your auth key for future replay sessions.
 
-## TUSK_SAMPLING_RATE
+## TUSK_RECORDING_SAMPLING_RATE
 
 Controls what percentage of requests are recorded during trace collection.
 
 - **Type:** Number between 0.0 and 1.0
-- **Default:** 1.0 (100% of requests)
-- **Precedence:** This environment variable is overridden by the `samplingRate` parameter in `TuskDrift.initialize()`, but takes precedence over the `sampling_rate` setting in `.tusk/config.yaml`
+- **If unset:** Falls back to `.tusk/config.yaml` and then the default base rate of `1.0`
+- **Precedence:** This environment variable is overridden by the `samplingRate` parameter in `TuskDrift.initialize()`, but takes precedence over `recording.sampling.base_rate` and the legacy `recording.sampling_rate` setting in `.tusk/config.yaml`
+- **Scope:** This only overrides the base rate. It does not change `recording.sampling.mode` or `recording.sampling.min_rate`
 
 **Examples:**
 
 ```bash
 # Record all requests (100%)
-TUSK_SAMPLING_RATE=1.0 npm start
+TUSK_RECORDING_SAMPLING_RATE=1.0 npm start
 
 # Record 10% of requests
-TUSK_SAMPLING_RATE=0.1 npm start
+TUSK_RECORDING_SAMPLING_RATE=0.1 npm start
 ```
+
+`TUSK_SAMPLING_RATE` is still accepted as a backward-compatible alias, but `TUSK_RECORDING_SAMPLING_RATE` is the canonical variable going forward.
+
+If `recording.sampling.mode: adaptive` is enabled in `.tusk/config.yaml`, this environment variable still only changes the base rate; adaptive load shedding remains active.
 
 For more details on sampling rate configuration methods and precedence, see the [Initialization Guide](./initialization.md#3-configure-sampling-rate).
 
