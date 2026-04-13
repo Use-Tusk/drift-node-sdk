@@ -48,7 +48,7 @@ export class DriftBatchSpanProcessor implements SpanProcessor {
     this.config = config;
     this.mode = mode;
     this.interval = setInterval(() => {
-      void this.flushOneBatch();
+      this.flushOneBatchSafely();
     }, this.config.scheduledDelayMillis);
     this.interval.unref?.();
   }
@@ -106,7 +106,16 @@ export class DriftBatchSpanProcessor implements SpanProcessor {
     this.flushRequested = true;
     queueMicrotask(() => {
       this.flushRequested = false;
-      void this.flushOneBatch();
+      this.flushOneBatchSafely();
+    });
+  }
+
+  private flushOneBatchSafely(): void {
+    void this.flushOneBatch().catch((error) => {
+      logger.error(
+        `DriftBatchSpanProcessor flush failed: ${error instanceof Error ? error.message : "unknown error"}`,
+        error,
+      );
     });
   }
 
@@ -128,18 +137,27 @@ export class DriftBatchSpanProcessor implements SpanProcessor {
     const startedAtMs = Date.now();
 
     this.flushPromise = new Promise<void>((resolve) => {
-      this.exporter.export(batch, (result) => {
+      try {
+        this.exporter.export(batch, (result) => {
+          this.lastExportLatencyMs = Date.now() - startedAtMs;
+
+          if (result.code === ExportResultCode.FAILED) {
+            this.exportFailureCount += 1;
+            logger.warn(
+              `DriftBatchSpanProcessor export failed for batch of ${batch.length} span(s): ${result.error instanceof Error ? result.error.message : "unknown error"}`,
+            );
+          }
+
+          resolve();
+        });
+      } catch (error) {
         this.lastExportLatencyMs = Date.now() - startedAtMs;
-
-        if (result.code === ExportResultCode.FAILED) {
-          this.exportFailureCount += 1;
-          logger.warn(
-            `DriftBatchSpanProcessor export failed for batch of ${batch.length} span(s): ${result.error instanceof Error ? result.error.message : "unknown error"}`,
-          );
-        }
-
+        this.exportFailureCount += 1;
+        logger.warn(
+          `DriftBatchSpanProcessor export threw synchronously for batch of ${batch.length} span(s): ${error instanceof Error ? error.message : "unknown error"}`,
+        );
         resolve();
-      });
+      }
     }).finally(() => {
       this.flushPromise = null;
       if (!this.stopped && this.queue.length >= this.config.maxExportBatchSize) {

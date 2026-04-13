@@ -196,8 +196,9 @@ export class ApiSpanAdapter implements SpanExportAdapter {
 
   private async postExportRequest(requestBytes: Uint8Array): Promise<void> {
     const controller = new AbortController();
+    const timeoutError = new Error("Remote export timed out");
     const timeout = setTimeout(() => {
-      controller.abort(new Error("Remote export timed out"));
+      controller.abort(timeoutError);
     }, this.exportTimeoutMillis);
 
     try {
@@ -230,7 +231,7 @@ export class ApiSpanAdapter implements SpanExportAdapter {
         throw new Error(`Remote export failed: ${parsed.message}`);
       }
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
+      if (error === timeoutError || (error instanceof Error && error.name === "AbortError")) {
         this.timeoutCount += 1;
         throw error;
       }

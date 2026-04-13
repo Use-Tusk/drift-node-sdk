@@ -62,3 +62,30 @@ test("adaptive controller sheds load and enters critical pause on drops", (t) =>
   t.false(pausedDecision.shouldRecord);
   t.is(pausedDecision.reason, "critical_pause");
 });
+
+test("adaptive controller reports load_shed when load shedding underflows effective rate to zero", (t) => {
+  const controller = new AdaptiveSamplingController(
+    {
+      mode: "adaptive",
+      baseRate: Number.MIN_VALUE,
+      minRate: 0,
+    },
+    {
+      randomFn: () => 0.5,
+      nowFn: () => 1,
+    },
+  );
+
+  controller.update({
+    queueFillRatio: 0.9,
+  });
+
+  const decision = controller.getDecision({
+    isPreAppStart: false,
+  });
+
+  t.false(decision.shouldRecord);
+  t.is(decision.effectiveRate, 0);
+  t.is(decision.state, "hot");
+  t.is(decision.reason, "load_shed");
+});

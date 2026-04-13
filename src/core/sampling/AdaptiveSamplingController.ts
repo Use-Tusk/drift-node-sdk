@@ -198,11 +198,13 @@ export class AdaptiveSamplingController {
 
     const effectiveRate =
       this.config.mode === "adaptive" ? this.getEffectiveSamplingRate() : clamp01(this.config.baseRate);
+    const loadShed =
+      this.config.mode === "adaptive" && effectiveRate < this.config.baseRate;
 
     if (effectiveRate <= 0) {
       return {
         shouldRecord: false,
-        reason: this.state === "critical_pause" ? "critical_pause" : "not_sampled",
+        reason: this.state === "critical_pause" ? "critical_pause" : loadShed ? "load_shed" : "not_sampled",
         mode: this.config.mode,
         state: this.state,
         baseRate: this.config.baseRate,
@@ -217,7 +219,7 @@ export class AdaptiveSamplingController {
       shouldRecord,
       reason: shouldRecord
         ? "sampled"
-        : this.config.mode === "adaptive" && effectiveRate < this.config.baseRate
+        : loadShed
           ? "load_shed"
           : "not_sampled",
       mode: this.config.mode,

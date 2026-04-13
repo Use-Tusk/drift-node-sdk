@@ -94,23 +94,28 @@ export class TdSpanExporter implements SpanExporter {
       };
     }
 
-    return apiAdapterSnapshots.reduce<TdExporterHealthSnapshot>(
+    const aggregated = apiAdapterSnapshots.reduce<
+      Omit<TdExporterHealthSnapshot, "lastExportLatencyMs">
+    >(
       (accumulator, snapshot: ApiSpanAdapterHealthSnapshot) => ({
         failureCount: accumulator.failureCount + snapshot.failureCount,
         timeoutCount: accumulator.timeoutCount + snapshot.timeoutCount,
         circuitOpen: accumulator.circuitOpen || snapshot.circuitState === "open",
-        lastExportLatencyMs: Math.max(
-          accumulator.lastExportLatencyMs ?? 0,
-          snapshot.lastExportLatencyMs ?? 0,
-        ),
       }),
       {
         failureCount: 0,
         timeoutCount: 0,
         circuitOpen: false,
-        lastExportLatencyMs: null,
       },
     );
+    const observedLatencies = apiAdapterSnapshots
+      .map((snapshot) => snapshot.lastExportLatencyMs)
+      .filter((latency): latency is number => latency !== null);
+
+    return {
+      ...aggregated,
+      lastExportLatencyMs: observedLatencies.length > 0 ? Math.max(...observedLatencies) : null,
+    };
   }
 
   /**

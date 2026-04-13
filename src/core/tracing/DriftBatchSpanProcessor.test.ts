@@ -66,3 +66,32 @@ test("drops spans when the queue is full", async (t) => {
 
   await processor.shutdown();
 });
+
+test("handles synchronous exporter throws without rejecting flush", async (t) => {
+  const exporter = {
+    export() {
+      throw new Error("boom");
+    },
+    async shutdown() {},
+  } as unknown as TdSpanExporter;
+
+  const processor = new DriftBatchSpanProcessor({
+    exporter,
+    config: {
+      maxQueueSize: 10,
+      maxExportBatchSize: 10,
+      scheduledDelayMillis: 1000,
+    },
+    mode: TuskDriftMode.RECORD,
+  });
+
+  processor.onEnd(createMockSpan("one") as never);
+
+  await t.notThrowsAsync(() => processor.forceFlush());
+
+  const snapshot = processor.getHealthSnapshot();
+  t.is(snapshot.queueSize, 0);
+  t.is(snapshot.exportFailureCount, 1);
+
+  await processor.shutdown();
+});
