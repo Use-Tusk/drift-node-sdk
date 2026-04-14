@@ -308,6 +308,7 @@ export class TuskDriftCore {
     const envLogTransitions = OriginalGlobalUtils.getOriginalProcessEnvVar(
       "TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS",
     );
+    let parsedEnvLogTransitions: boolean | undefined;
     if (envLogTransitions !== undefined) {
       const parsed = this.parseBooleanSetting(
         envLogTransitions,
@@ -317,8 +318,12 @@ export class TuskDriftCore {
         logger.debug(
           `Using adaptive sampling log_transitions from TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS env var: ${parsed}`,
         );
-        logTransitions = parsed;
+        parsedEnvLogTransitions = parsed;
       }
+    }
+
+    if (parsedEnvLogTransitions !== undefined) {
+      logTransitions = parsedEnvLogTransitions;
     } else if (configSampling?.log_transitions !== undefined) {
       if (typeof configSampling.log_transitions === "boolean") {
         logTransitions = configSampling.log_transitions;

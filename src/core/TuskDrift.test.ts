@@ -102,3 +102,21 @@ test("prefers TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS over config", (t) => {
 
   t.false(samplingConfig.logTransitions);
 });
+
+test("falls back to config when TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS is invalid", (t) => {
+  const drift = createTestDrift(t, {
+    TUSK_DRIFT_MODE: "DISABLED",
+    TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS: "invalid",
+  });
+  drift.config = {
+    recording: {
+      sampling: {
+        log_transitions: false,
+      },
+    },
+  };
+
+  const samplingConfig = drift.determineSamplingConfig({});
+
+  t.false(samplingConfig.logTransitions);
+});
