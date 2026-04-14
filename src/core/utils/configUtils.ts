@@ -37,6 +37,7 @@ export interface TuskConfig {
       mode?: "fixed" | "adaptive";
       base_rate?: number;
       min_rate?: number;
+      log_transitions?: boolean;
     };
     export_spans?: boolean;
     enable_env_var_recording?: boolean;

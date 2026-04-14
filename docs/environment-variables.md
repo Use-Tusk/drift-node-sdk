@@ -135,6 +135,25 @@ If `recording.sampling.mode: adaptive` is enabled in `.tusk/config.yaml`, this e
 
 For more details on sampling rate configuration methods and precedence, see the [Initialization Guide](./initialization.md#3-configure-sampling-rate).
 
+## TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS
+
+Controls whether adaptive sampling emits transition logs like `Adaptive sampling updated (...)`.
+
+- **Type:** Boolean (`true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`)
+- **If unset:** Falls back to `recording.sampling.log_transitions` in `.tusk/config.yaml`, then defaults to `true`
+- **Precedence:** Overrides `recording.sampling.log_transitions`
+- **Scope:** Only affects adaptive sampling transition logs. It does not change recording decisions or the global SDK log level
+
+**Examples:**
+
+```bash
+# Keep adaptive sampling active but silence transition logs
+TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS=false npm start
+
+# Explicitly re-enable transition logs
+TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS=true npm start
+```
+
 ## TUSK_USE_RUST_CORE
 
 Control optional Rust-accelerated paths in the SDK. Truthy (`1`, `true`, `yes`, `on`) enables, falsy (`0`, `false`, `no`, `off`) disables. Enabled when unset.

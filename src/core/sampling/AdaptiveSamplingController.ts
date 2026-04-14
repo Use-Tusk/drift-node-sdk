@@ -58,6 +58,7 @@ export class AdaptiveSamplingController {
   private readonly config: ResolvedSamplingConfig;
   private readonly randomFn: () => number;
   private readonly nowFn: () => number;
+  private readonly logTransitions: boolean;
 
   private admissionMultiplier = 1;
   private state: AdaptiveSamplingState;
@@ -77,14 +78,17 @@ export class AdaptiveSamplingController {
   constructor(
     config: ResolvedSamplingConfig,
     {
+      logTransitions = true,
       randomFn = Math.random,
       nowFn = Date.now,
     }: {
+      logTransitions?: boolean;
       randomFn?: () => number;
       nowFn?: () => number;
     } = {},
   ) {
     this.config = config;
+    this.logTransitions = logTransitions;
     this.randomFn = randomFn;
     this.nowFn = nowFn;
     this.state = config.mode === "fixed" ? "fixed" : "healthy";
@@ -271,6 +275,10 @@ export class AdaptiveSamplingController {
     pressure: number,
     snapshot: AdaptiveSamplingHealthSnapshot,
   ): void {
+    if (!this.logTransitions) {
+      return;
+    }
+
     if (
       previousState === this.state &&
       Math.abs(previousMultiplier - this.admissionMultiplier) < 0.05
