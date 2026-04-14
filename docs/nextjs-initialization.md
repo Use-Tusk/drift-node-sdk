@@ -307,6 +307,12 @@ recording:
       <td>The minimum steady-state sampling rate for adaptive mode. In critical conditions the SDK can still temporarily pause recording.</td>
     </tr>
     <tr>
+      <td><code>sampling.log_transitions</code></td>
+      <td><code>boolean</code></td>
+      <td><code>true</code></td>
+      <td>Controls whether adaptive sampling emits <code>Adaptive sampling updated (...)</code> transition logs. Can be overridden by <code>TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS</code>.</td>
+    </tr>
+    <tr>
       <td><code>sampling_rate</code></td>
       <td><code>number</code></td>
       <td><code>None</code></td>

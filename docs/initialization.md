@@ -220,6 +220,20 @@ recording:
   sampling_rate: 0.1
 ```
 
+#### Adaptive Sampling Logs
+
+When adaptive mode changes state or multiplier, the SDK logs an `Adaptive sampling updated (...)` line at `info` level.
+
+- `state`: controller state such as `healthy`, `warm`, `hot`, or `critical_pause`
+- `multiplier`: factor applied to `base_rate`
+- `effectiveRate`: current root-request recording rate after shedding
+- `pressure`: highest normalized pressure signal (`0..1`) driving the update
+- `queueFill`: smoothed export-queue usage ratio; values near `1.0` mean the exporter is falling behind
+- `eventLoopLagP95Ms`: Node-only p95 event loop lag signal
+- `memoryPressureRatio`: current memory usage relative to its detected limit, when available
+
+Set `recording.sampling.log_transitions: false` in `.tusk/config.yaml`, or set `TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS=false`, if you want to suppress these transition logs without changing the overall SDK log level. Raising `logLevel` to `warn` or higher will also hide them.
+
 #### Additional Recording Configuration Options
 
 <table>
@@ -249,6 +263,12 @@ recording:
       <td><code>number</code></td>
       <td><code>0.001</code> in <code>adaptive</code> mode</td>
       <td>The minimum steady-state sampling rate for adaptive mode. In critical conditions the SDK can still temporarily pause recording.</td>
+    </tr>
+    <tr>
+      <td><code>sampling.log_transitions</code></td>
+      <td><code>boolean</code></td>
+      <td><code>true</code></td>
+      <td>Controls whether adaptive sampling emits <code>Adaptive sampling updated (...)</code> transition logs. Can be overridden by <code>TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS</code>.</td>
     </tr>
     <tr>
       <td><code>sampling_rate</code></td>

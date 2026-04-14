@@ -1,5 +1,6 @@
 import test from "ava";
 import { AdaptiveSamplingController } from "./AdaptiveSamplingController";
+import { logger } from "../utils/logger";
 
 test("pre-app-start requests bypass sampling and always record", (t) => {
   const controller = new AdaptiveSamplingController(
@@ -88,4 +89,40 @@ test("adaptive controller reports load_shed when load shedding underflows effect
   t.is(decision.effectiveRate, 0);
   t.is(decision.state, "hot");
   t.is(decision.reason, "load_shed");
+});
+
+test("adaptive controller can suppress transition logs", (t) => {
+  let now = 0;
+  const originalInfo = logger.info;
+  let infoCalls = 0;
+
+  logger.info = (...args: unknown[]) => {
+    infoCalls += 1;
+  };
+
+  t.teardown(() => {
+    logger.info = originalInfo;
+  });
+
+  const controller = new AdaptiveSamplingController(
+    {
+      mode: "adaptive",
+      baseRate: 0.5,
+      minRate: 0.1,
+    },
+    {
+      logTransitions: false,
+      nowFn: () => now,
+    },
+  );
+
+  controller.update({
+    queueFillRatio: 0.9,
+  });
+  now += 1;
+  controller.update({
+    queueFillRatio: 0.1,
+  });
+
+  t.is(infoCalls, 0);
 });

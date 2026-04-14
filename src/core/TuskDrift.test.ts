@@ -8,6 +8,7 @@ type EnvVars = Record<string, string | undefined>;
 type SamplingConfigResult = {
   baseRate: number;
   minRate: number;
+  logTransitions: boolean;
   mode: "fixed" | "adaptive";
 };
 type TestableTuskDrift = {
@@ -65,4 +66,57 @@ test("falls back to the legacy alias when TUSK_RECORDING_SAMPLING_RATE is invali
   const samplingConfig = drift.determineSamplingConfig({});
 
   t.is(samplingConfig.baseRate, 0.4);
+});
+
+test("uses recording.sampling.log_transitions from config when env var is unset", (t) => {
+  const drift = createTestDrift(t, {
+    TUSK_DRIFT_MODE: "DISABLED",
+  });
+  drift.config = {
+    recording: {
+      sampling: {
+        log_transitions: false,
+      },
+    },
+  };
+
+  const samplingConfig = drift.determineSamplingConfig({});
+
+  t.false(samplingConfig.logTransitions);
+});
+
+test("prefers TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS over config", (t) => {
+  const drift = createTestDrift(t, {
+    TUSK_DRIFT_MODE: "DISABLED",
+    TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS: "false",
+  });
+  drift.config = {
+    recording: {
+      sampling: {
+        log_transitions: true,
+      },
+    },
+  };
+
+  const samplingConfig = drift.determineSamplingConfig({});
+
+  t.false(samplingConfig.logTransitions);
+});
+
+test("falls back to config when TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS is invalid", (t) => {
+  const drift = createTestDrift(t, {
+    TUSK_DRIFT_MODE: "DISABLED",
+    TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS: "invalid",
+  });
+  drift.config = {
+    recording: {
+      sampling: {
+        log_transitions: false,
+      },
+    },
+  };
+
+  const samplingConfig = drift.determineSamplingConfig({});
+
+  t.false(samplingConfig.logTransitions);
 });

@@ -86,6 +86,7 @@ export class TuskDriftCore {
   private samplingRate = 1;
   private samplingMode: SamplingMode = "fixed";
   private minSamplingRate = 0;
+  private samplingLogTransitions = true;
   private adaptiveSamplingController?: AdaptiveSamplingController;
   private adaptiveSamplingInterval: NodeJS.Timeout | null = null;
   private eventLoopDelayHistogram: IntervalHistogram | null = null;
@@ -203,7 +204,7 @@ export class TuskDriftCore {
     const exportSpans = this.config.recording?.export_spans || false;
 
     logger.info(
-      `SDK initialized successfully (version=${SDK_VERSION}, mode=${this.mode}, env=${environment}, service=${serviceName}, serviceId=${serviceId}, exportSpans=${exportSpans}, samplingMode=${this.samplingMode}, samplingBaseRate=${this.samplingRate}, samplingMinRate=${this.minSamplingRate}, logLevel=${logger.getLogLevel()}, runtime=node ${process.version}, platform=${process.platform}/${process.arch}).`,
+      `SDK initialized successfully (version=${SDK_VERSION}, mode=${this.mode}, env=${environment}, service=${serviceName}, serviceId=${serviceId}, exportSpans=${exportSpans}, samplingMode=${this.samplingMode}, samplingBaseRate=${this.samplingRate}, samplingMinRate=${this.minSamplingRate}, samplingLogTransitions=${this.samplingLogTransitions}, logLevel=${logger.getLogLevel()}, runtime=node ${process.version}, platform=${process.platform}/${process.arch}).`,
     );
   }
 
@@ -240,6 +241,7 @@ export class TuskDriftCore {
     mode: SamplingMode;
     baseRate: number;
     minRate: number;
+    logTransitions: boolean;
   } {
     const configSampling = this.config.recording?.sampling;
 
@@ -302,11 +304,55 @@ export class TuskDriftCore {
       minRate = Math.min(baseRate, minRate);
     }
 
+    let logTransitions = true;
+    const envLogTransitions = OriginalGlobalUtils.getOriginalProcessEnvVar(
+      "TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS",
+    );
+    let parsedEnvLogTransitions: boolean | undefined;
+    if (envLogTransitions !== undefined) {
+      const parsed = this.parseBooleanSetting(
+        envLogTransitions,
+        "TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS env var",
+      );
+      if (parsed !== undefined) {
+        logger.debug(
+          `Using adaptive sampling log_transitions from TUSK_RECORDING_SAMPLING_LOG_TRANSITIONS env var: ${parsed}`,
+        );
+        parsedEnvLogTransitions = parsed;
+      }
+    }
+
+    if (parsedEnvLogTransitions !== undefined) {
+      logTransitions = parsedEnvLogTransitions;
+    } else if (configSampling?.log_transitions !== undefined) {
+      if (typeof configSampling.log_transitions === "boolean") {
+        logTransitions = configSampling.log_transitions;
+      } else {
+        logger.warn(
+          `Invalid sampling.log_transitions in config.yaml: expected boolean, got ${typeof configSampling.log_transitions}. Ignoring.`,
+        );
+      }
+    }
+
     return {
       mode,
       baseRate,
       minRate,
+      logTransitions,
     };
+  }
+
+  private parseBooleanSetting(value: string, source: string): boolean | undefined {
+    const normalizedValue = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalizedValue)) {
+      return true;
+    }
+    if (["0", "false", "no", "off"].includes(normalizedValue)) {
+      return false;
+    }
+
+    logger.warn(`Invalid ${source}: ${value}. Expected one of true/false/1/0/yes/no/on/off.`);
+    return undefined;
   }
 
   private registerDefaultInstrumentations(): void {
@@ -469,6 +515,8 @@ export class TuskDriftCore {
       mode: this.samplingMode,
       baseRate: this.samplingRate,
       minRate: this.minSamplingRate,
+    }, {
+      logTransitions: this.samplingLogTransitions,
     });
 
     this.effectiveMemoryLimitBytes = this.detectEffectiveMemoryLimitBytes();
@@ -724,6 +772,7 @@ export class TuskDriftCore {
     this.samplingMode = samplingConfig.mode;
     this.samplingRate = samplingConfig.baseRate;
     this.minSamplingRate = samplingConfig.minRate;
+    this.samplingLogTransitions = samplingConfig.logTransitions;
 
     // Need to have observable service id if exporting spans to Tusk backend
     if (this.config.recording?.export_spans && !this.config.service?.id) {
