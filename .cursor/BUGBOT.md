@@ -84,6 +84,22 @@ kind: options.kind || SpanKind.CLIENT
 kind: options.kind ?? SpanKind.CLIENT
 ```
 
+## Logging Levels
+
+The SDK's default log level during `TuskDrift.initialize(...)` is `"info"` (see `src/core/TuskDrift.ts` — `initializeGlobalLogger({ logLevel: initParams.logLevel || "info" })`). Customers that don't pass an explicit `logLevel` will see every `logger.info(...)` line in their application output.
+
+**Rules:**
+
+1. **Per-call / per-request / per-query log lines MUST use `logger.debug(...)`, never `logger.info(...)`.** This includes anything inside a patched function body that runs on every invocation (e.g. wrapped `connect`, `query`, HTTP send, middleware handlers, cursor wrappers). One INFO line per DB connect or HTTP request floods customer logs and looks like a bug to them.
+
+2. **Setup/patch-installation lines MUST be `logger.debug(...)`.** The existing convention across every instrumentation (`nextjs`, `mongodb`, `mysql`, `pg`, `prisma`, `ioredis`, `postgres`, `redis`, `tcp`, `upstash-redis-js`, `jwks-rsa`, `jsonwebtoken`) is debug — e.g. `"[PgInstrumentation] PG module already patched, skipping"`, `"[NextjsInstrumentation] Patched N already-loaded Next.js modules"`. Match this. Even though setup lines fire once per process, they appear in every customer's startup logs and read as internal SDK noise. Do not include patched function reprs or internals in any level of log.
+
+3. **`logger.info(...)` is reserved for events a customer benefits from seeing once per process:** `"SDK initialized successfully"`, Rust core enable/disable at startup, adaptive sampling state transitions (guard with an early-return when state is unchanged, as in `AdaptiveSamplingController.ts`), deduplicated analytics alerts (e.g. `sendVersionMismatchAlert` per module, `sendUnpatchedDependencyAlert` gated by `loggedSpans` in `tcp/Instrumentation.ts`). If a line can fire more than ~once per process lifetime in normal operation, it must be `debug` — or be gated by dedup / early-return.
+
+4. **Do not log raw header dicts, query args, or connection arguments at INFO** even once — these can be high-cardinality and contain sensitive values. Use `debug` and prefer logging keys or summary shapes, not values.
+
+5. **When adding a sibling instrumentation (e.g. `pg` alongside `postgres`, `mysql` alongside `mysql2`), match the existing level conventions across both.** Divergence between sibling instrumentations is how these bugs get shipped — one path gets `debug`, the other gets `info`, and customers on the second path see noise.
+
 ## Instrumentation Self-Reference (POTENTIAL BUG)
 
 **Problem**: Using instrumented global functions within the SDK's own instrumentation code can cause:
