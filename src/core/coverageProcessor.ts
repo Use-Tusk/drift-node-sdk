@@ -258,10 +258,13 @@ export async function processV8CoverageFile(
   includeAll: boolean = false,
   preParsedData?: V8CoverageData,
 ): Promise<CoverageResult> {
-  // Lazy-loaded: these are only needed when coverage is enabled, which is opt-in.
-  // Using require() avoids loading them on every SDK startup (adds ~50ms + memory).
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { convert } = require("ast-v8-to-istanbul");
+  // Lazy-loaded: only needed when coverage is enabled (opt-in), saves ~50ms + memory at SDK startup.
+  // Using dynamic import (not require) because ast-v8-to-istanbul is ESM-only and pulls in
+  // estree-walker, whose package.json `exports` field has no `require` condition. Under tsx's
+  // ESM loader, `require("ast-v8-to-istanbul")` resolves transitive imports with the require
+  // condition and dies on estree-walker with ERR_PACKAGE_PATH_NOT_EXPORTED. Dynamic import
+  // resolves with the import condition throughout and works under both plain Node and tsx.
+  const { convert } = await import("ast-v8-to-istanbul");
   const data: V8CoverageData = preParsedData ?? JSON.parse(fs.readFileSync(v8FilePath, "utf-8"));
   const coverage: CoverageResult = {};
 
