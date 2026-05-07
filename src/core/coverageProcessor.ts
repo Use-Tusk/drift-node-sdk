@@ -38,9 +38,11 @@ export interface V8CoverageRange {
 }
 
 export interface V8FunctionCoverage {
-  functionName?: string;
+  // V8 always emits these per Node's Profiler.FunctionCoverage contract; matching that
+  // shape lets us pass V8FunctionCoverage[] to ast-v8-to-istanbul.convert without a cast.
+  functionName: string;
   ranges: V8CoverageRange[];
-  isBlockCoverage?: boolean;
+  isBlockCoverage: boolean;
 }
 
 export interface V8ScriptCoverage {
@@ -331,7 +333,10 @@ export async function processV8CoverageFile(
         code: codeForConvert,
         ast,
         coverage: { functions: script.functions, url: script.url },
-        ...(sourceMap ? { sourceMap } : {}),
+        // sourceMap is parsed JSON — loadSourceMap returns Record<string, unknown> rather
+        // than committing to a specific source-map type from a transitive dep. Cast to the
+        // shape convert expects.
+        ...(sourceMap ? { sourceMap: sourceMap as Parameters<typeof convert>[0]["sourceMap"] } : {}),
         ...(cjsWrapperLength ? { wrapperLength: cjsWrapperLength } : {}),
       });
 
