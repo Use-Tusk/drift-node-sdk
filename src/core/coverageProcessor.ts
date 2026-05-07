@@ -38,9 +38,11 @@ export interface V8CoverageRange {
 }
 
 export interface V8FunctionCoverage {
-  functionName?: string;
+  // V8 always emits these per Node's Profiler.FunctionCoverage contract; matching that
+  // shape lets us pass V8FunctionCoverage[] to ast-v8-to-istanbul.convert without a cast.
+  functionName: string;
   ranges: V8CoverageRange[];
-  isBlockCoverage?: boolean;
+  isBlockCoverage: boolean;
 }
 
 export interface V8ScriptCoverage {
@@ -258,10 +260,13 @@ export async function processV8CoverageFile(
   includeAll: boolean = false,
   preParsedData?: V8CoverageData,
 ): Promise<CoverageResult> {
-  // Lazy-loaded: these are only needed when coverage is enabled, which is opt-in.
-  // Using require() avoids loading them on every SDK startup (adds ~50ms + memory).
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { convert } = require("ast-v8-to-istanbul");
+  // Lazy-loaded: only needed when coverage is enabled (opt-in), saves ~50ms + memory at SDK startup.
+  // Using dynamic import (not require) because ast-v8-to-istanbul is ESM-only and pulls in
+  // estree-walker, whose package.json `exports` field has no `require` condition. Under tsx's
+  // ESM loader, `require("ast-v8-to-istanbul")` resolves transitive imports with the require
+  // condition and dies on estree-walker with ERR_PACKAGE_PATH_NOT_EXPORTED. Dynamic import
+  // resolves with the import condition throughout and works under both plain Node and tsx.
+  const { convert } = await import("ast-v8-to-istanbul");
   const data: V8CoverageData = preParsedData ?? JSON.parse(fs.readFileSync(v8FilePath, "utf-8"));
   const coverage: CoverageResult = {};
 
@@ -328,7 +333,10 @@ export async function processV8CoverageFile(
         code: codeForConvert,
         ast,
         coverage: { functions: script.functions, url: script.url },
-        ...(sourceMap ? { sourceMap } : {}),
+        // sourceMap is parsed JSON — loadSourceMap returns Record<string, unknown> rather
+        // than committing to a specific source-map type from a transitive dep. Cast to the
+        // shape convert expects.
+        ...(sourceMap ? { sourceMap: sourceMap as Parameters<typeof convert>[0]["sourceMap"] } : {}),
         ...(cjsWrapperLength ? { wrapperLength: cjsWrapperLength } : {}),
       });
 

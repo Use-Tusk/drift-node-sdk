@@ -60,6 +60,7 @@ test("takeAndProcessSnapshot: skips coverage files without user scripts", async 
             {
               functionName: "",
               ranges: [{ startOffset: 0, endOffset: 10, count: 1 }],
+              isBlockCoverage: false,
             },
           ],
         },
