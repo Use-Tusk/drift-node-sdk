@@ -352,7 +352,8 @@ export class NextjsInstrumentation extends TdInstrumentationBase {
     const originalEnd = actualRes.end?.bind(actualRes);
     if (originalEnd) {
       actualRes.end = function (chunk?: any, encoding?: any, callback?: any) {
-        if (chunk) {
+        // res.end(callback) passes the callback as the first argument; it is not body data
+        if (chunk && typeof chunk !== "function") {
           responseChunks.push(chunk);
         }
         return originalEnd.call(this, chunk, encoding, callback);
