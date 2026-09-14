@@ -413,7 +413,8 @@ export class HttpInstrumentation extends TdInstrumentationBase {
       const statusCode = res.statusCode;
 
       // Capture any final response data
-      if (chunk) {
+      // res.end(callback) passes the callback as the first argument; it is not body data
+      if (chunk && typeof chunk !== "function") {
         responseChunks.push(chunk);
       }
 
@@ -755,7 +756,8 @@ export class HttpInstrumentation extends TdInstrumentationBase {
     if (originalEnd) {
       req.end = function (chunk?: any, encoding?: any, callback?: any): ClientRequest {
         // Capture final chunk if provided
-        if (chunk && !requestBodyCaptured) {
+        // req.end(callback) passes the callback as the first argument; it is not body data
+        if (chunk && typeof chunk !== "function" && !requestBodyCaptured) {
           requestBodyChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding));
         }
 
